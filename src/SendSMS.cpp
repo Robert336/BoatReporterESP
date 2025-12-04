@@ -155,3 +155,8 @@ void SendSMS::urlEncode(const char* input, char* output, size_t outputSize) {
     }
     output[outIdx] = '\0';
 }
+
+
+bool SendSMS::hasPhoneNumber() {
+    return !preferences.getString("phone-number", "").isEmpty();
+}

@@ -42,6 +42,10 @@ class SendSMS {
         /// @param bufferSize Size of the output buffer
         /// @return 0 on success, -1 if buffer is too small or invalid
         int getPhoneNumber(char* outBuf, size_t bufferSize);
+
+        /// Checks if a phone number is currently stored in preferences.
+        /// @return true if a phone number exists, false otherwise
+        bool hasPhoneNumber();
         
     private:
         Preferences preferences;
