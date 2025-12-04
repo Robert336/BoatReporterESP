@@ -5,6 +5,7 @@
 #include "WiFiConfig.h"
 #include "LightCode.h"
 #include "WaterPressureSensor.h"
+#include "SendSMS.h"
 
 // Forward declaration
 void handleButtonPress();
@@ -24,10 +25,11 @@ struct SystemState {
     bool emergencyConditions;
     bool sensorError;
     bool configCommandReceived;
-
+    
     // Timers
     uint32_t lastStateChangeTime;
     uint32_t emergencyStateFalseTime;
+    uint32_t lastEmergencyMessageTime;
 
 };
 
@@ -40,6 +42,7 @@ int EMERGENCY_WATER_LEVEL_CM = 15;
 int EMERGENCY_WATER_CM_PER_HR = 5;
 const int SENSOR_PIN = 32; // Water sensor analog pin ADC1 because wifi is required
 const int EMERGENCY_TIMEOUT_MS = 60000;
+const int EMERGENCY_MESSAGE_TIMEOUT_MS = 60000 * 30; // 30mins
 
 // Create easier references to the singleton objects
 WiFiConfig* wifiConfig = nullptr;
@@ -47,13 +50,14 @@ LightCode light(LED_BUILTIN);
 TimeManagement& rtc = TimeManagement::getInstance(); 
 WiFiManager& wifiMgr = WiFiManager::getInstance();
 WaterPressureSensor waterSensor(SENSOR_PIN);
+SendSMS sms;
 
 void setup() {
-    
     Serial.begin(115200);
     light.setPattern(PATTERN_SLOW_BLINK);
     waterSensor.init();
     
+
     pinMode(ALERT_PIN, OUTPUT);
     pinMode(BUTTON_PIN, INPUT_PULLUP);
     attachInterrupt(BUTTON_PIN, handleButtonPress, FALLING);
@@ -66,12 +70,7 @@ void setup() {
     std::vector<char*> ssids = wifiMgr.getStoredSSIDs();
 
     if (ssids.empty()) {
-        Serial.println("No WiFi credentials found!");
-        Serial.println("Starting setup mode...");
-        
-        // Create and start WiFi config portal
-        wifiConfig = new WiFiConfig(&waterSensor);
-        wifiConfig->startSetupMode();
+        systemState.currentState = CONFIG;
     } else {
         Serial.println("WiFi credentials found, connecting...");
         delay(2000);
@@ -107,7 +106,7 @@ void loop() {
                 systemState.currentState = NORMAL;
                 systemState.lastStateChangeTime = millis();
             }
-            // send message about sensor failure
+            // send message about sensor failure?
             break;
         case NORMAL:
             if (systemState.sensorError == true) {
@@ -130,7 +129,7 @@ void loop() {
                 wifiConfig = new WiFiConfig(&waterSensor);
                 wifiConfig->startSetupMode();
             }
-            else if (wifiConfig && wifiConfig->isSetupModeActive()) {
+            else if (wifiConfig->isSetupModeActive()) {
                 wifiConfig->handleClient();
             } else {
                 systemState.currentState = NORMAL;
@@ -144,8 +143,13 @@ void loop() {
                 systemState.emergencyStateFalseTime = millis();
                 systemState.lastStateChangeTime = millis();
             } 
-            // send message
-            // handle the emerg pin
+
+            if (millis() - systemState.lastEmergencyMessageTime >= EMERGENCY_MESSAGE_TIMEOUT_MS) {
+                char emergMessageBuf[120];
+                snprintf(emergMessageBuf, sizeof(emergMessageBuf), "Boat Monitor Alert: Emergency Level %.2f cm", currentReading.level_cm);
+                systemState.lastEmergencyMessageTime = millis();
+                sms.send(emergMessageBuf);
+            }
             break;
     }
 }
