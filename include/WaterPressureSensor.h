@@ -19,7 +19,6 @@ public:
     bool init(); // setup sensor
     SensorReading readLevel();
     float getRollingRateOfChange(); // cm/sec over last 10s
-    bool isHealthy(); // check sensor health
     void setZeroLevelMilliVolts(int millivolts); // Configure the voltage reading at 0cm water level
     void setCalibrationPoint(int pointIndex, int millivolts, float level_cm); // Set calibration point (0=zero, 1=second point)
     bool hasTwoPointCalibration(); // Check if 2-point calibration is configured
@@ -29,9 +28,9 @@ public:
 
 private:
     Adafruit_ADS1115 ads;
-
+    const uint8_t CHANNEL = 0;
     const int CM_MAX = 100; // Max centimeters the sensor can read
-    static constexpr int READINGS_BUFFER_SIZE = 100; // Size of the circular buffer for smoothing readings
+    static constexpr int READINGS_BUFFER_SIZE = 10; // Size of the circular buffer for smoothing readings
     SensorReading readingsBuffer[READINGS_BUFFER_SIZE]; // Circular buffer for the last readings
     int currentReadingIndex;
     Timestamp lastReadTime;
