@@ -115,8 +115,11 @@ SensorReading WaterPressureSensor::readLevel() {
         reading.level_cm = mockWaterLevel;
     } else {
         
-        reading.millivolts = ads.computeVolts(ads.readADC_SingleEnded(0)) * 1000;
-        
+        int16_t rawADC = ads.readADC_SingleEnded(CHANNEL);
+        reading.millivolts = ads.computeVolts(rawADC) * 1000;
+        Serial.printf("WaterPressureSensor: millivolts reading = %.2f mV\n", reading.millivolts);
+        float computedVolts = ads.computeVolts(rawADC);
+        Serial.printf("WaterPressureSensor: raw ADC = %d, computedVolts = %.5f V\n", rawADC, computedVolts);
         // Use voltage-based conversion for accurate readings
         reading.level_cm = voltageToCentimeters(reading.millivolts);
         
@@ -173,4 +176,9 @@ float WaterPressureSensor::calculateMedianFromBuffer() {
         // Even number of readings: return average of two middle values
         return (validReadings[validCount / 2 - 1] + validReadings[validCount / 2]) / 2.0;
     }
+}
+
+// TODO: implement
+float WaterPressureSensor::getRollingRateOfChange() {
+    return 0.0f;
 }
