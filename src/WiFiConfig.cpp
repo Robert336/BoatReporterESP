@@ -11,6 +11,7 @@ WiFiConfig::WiFiConfig(WaterPressureSensor* sensor) : server(nullptr), waterSens
 
 WiFiConfig::~WiFiConfig() {
     stopSetupMode();
+    calibrationPrefs.end(); // Close Preferences namespace
 }
 
 void WiFiConfig::startSetupMode() {
@@ -304,26 +305,40 @@ void WiFiConfig::loadCalibration() {
     int zero_mv = calibrationPrefs.getInt("zero_mv", -1);
     if (zero_mv >= 0) {
         waterSensor->setCalibrationPoint(0, zero_mv, 0.0f);
+        Serial.printf("[CALIBRATION] Loaded zero point from NVS: %d mV\n", zero_mv);
+    } else {
+        Serial.println("[CALIBRATION] No zero point calibration found in NVS, using default");
     }
     
     int point2_mv = calibrationPrefs.getInt("point2_mv", -1);
     float point2_cm = calibrationPrefs.getFloat("point2_cm", -1.0f);
     if (point2_mv >= 0 && point2_cm >= 0) {
         waterSensor->setCalibrationPoint(1, point2_mv, point2_cm);
+        Serial.printf("[CALIBRATION] Loaded second point from NVS: %d mV = %.2f cm (2-point calibration active)\n", 
+                      point2_mv, point2_cm);
+    } else {
+        Serial.println("[CALIBRATION] No second calibration point found in NVS");
     }
 }
 
 void WiFiConfig::saveCalibration() {
     if (!waterSensor) return;
     
-    calibrationPrefs.putInt("zero_mv", waterSensor->getZeroPointMilliVolts());
+    int zero_mv = waterSensor->getZeroPointMilliVolts();
+    calibrationPrefs.putInt("zero_mv", zero_mv);
+    Serial.printf("[CALIBRATION] Saved zero point to NVS: %d mV\n", zero_mv);
     
     if (waterSensor->hasTwoPointCalibration()) {
-        calibrationPrefs.putInt("point2_mv", waterSensor->getSecondPointMilliVolts());
-        calibrationPrefs.putFloat("point2_cm", waterSensor->getSecondPointLevelCm());
+        int point2_mv = waterSensor->getSecondPointMilliVolts();
+        float point2_cm = waterSensor->getSecondPointLevelCm();
+        calibrationPrefs.putInt("point2_mv", point2_mv);
+        calibrationPrefs.putFloat("point2_cm", point2_cm);
+        Serial.printf("[CALIBRATION] Saved second point to NVS: %d mV = %.2f cm (2-point calibration)\n", 
+                      point2_mv, point2_cm);
     } else {
         calibrationPrefs.remove("point2_mv");
         calibrationPrefs.remove("point2_cm");
+        Serial.println("[CALIBRATION] Removed second calibration point from NVS (single-point mode)");
     }
 }
 
