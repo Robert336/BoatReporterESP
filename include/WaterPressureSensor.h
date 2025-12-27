@@ -28,7 +28,6 @@ public:
     ~WaterPressureSensor();
     bool init(); // setup sensor
     SensorReading readLevel();
-    float getRollingRateOfChange(); // cm/sec over last 10s
     void setZeroLevelMilliVolts(int millivolts); // Configure the voltage reading at 0cm water level
     void setCalibrationPoint(int pointIndex, int millivolts, float level_cm); // Set calibration point (0=zero, 1=second point)
     bool hasTwoPointCalibration(); // Check if 2-point calibration is configured

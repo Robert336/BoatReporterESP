@@ -141,21 +141,18 @@ void loop() {
     lastConfigCommandReceived = systemState.configCommandReceived;
 
     bool previousEmergencyConditions = systemState.emergencyConditions;
-    if (currentReading.level_cm >= EMERGENCY_WATER_LEVEL_CM ||
-        waterSensor.getRollingRateOfChange() >= EMERGENCY_WATER_CM_PER_HR) {
+    if (currentReading.level_cm >= EMERGENCY_WATER_LEVEL_CM) {
         systemState.emergencyConditions = true;
         if (!previousEmergencyConditions) {
             systemState.emergencyConditionsTrueTime = millis(); // Update timer when conditions START
-            Serial.printf("[EVENT] Emergency conditions detected! level=%.2f cm (threshold=%.2f), rate=%.2f cm/hr (threshold=%.2f)\n",
-                          currentReading.level_cm, EMERGENCY_WATER_LEVEL_CM, 
-                          waterSensor.getRollingRateOfChange(), EMERGENCY_WATER_CM_PER_HR);
+            Serial.printf("[EVENT] Emergency conditions detected! level=%.2f cm (threshold=%.2f)",
+                          currentReading.level_cm, EMERGENCY_WATER_LEVEL_CM);
         }
     } else {
         systemState.emergencyConditions = false;
         if (previousEmergencyConditions) {
             systemState.emergencyConditionsFalseTime = millis(); // Update timer when conditions CLEAR
-            Serial.printf("[EVENT] Emergency conditions cleared. level=%.2f cm, rate=%.2f cm/hr\n",
-                          currentReading.level_cm, waterSensor.getRollingRateOfChange());
+            Serial.printf("[EVENT] Emergency conditions cleared. level=%.2f cm\n", currentReading.level_cm);
         }
     }
 
@@ -179,8 +176,8 @@ void loop() {
             }
             else if (systemState.emergencyConditions && 
                 (millis() - systemState.emergencyConditionsTrueTime) >= EMERGENCY_TIMEOUT_MS) {
-                Serial.printf("[STATE] Transitioning from %s to EMERGENCY (water level=%.2f cm, rate=%.2f cm/hr)\n", 
-                              stateToString(systemState.currentState), currentReading.level_cm, waterSensor.getRollingRateOfChange());
+                Serial.printf("[STATE] Transitioning from %s to EMERGENCY (water level=%.2f cm)\n", 
+                              stateToString(systemState.currentState), currentReading.level_cm);
                 systemState.currentState = EMERGENCY;
                 systemState.lastStateChangeTime = millis();
             }
@@ -232,10 +229,9 @@ void loop() {
 
     // Periodic status logging
     if (millis() - lastStatusLogTime >= STATUS_LOG_INTERVAL_MS) {
-        Serial.printf("[STATUS] State=%s, WaterLevel=%.2f cm, Rate=%.2f cm/hr, SensorError=%d, EmergencyConditions=%d\n",
+        Serial.printf("[STATUS] State=%s, WaterLevel=%.2f cm, SensorError=%d, EmergencyConditions=%d\n",
                       stateToString(systemState.currentState),
                       currentReading.level_cm,
-                      waterSensor.getRollingRateOfChange(),
                       systemState.sensorError,
                       systemState.emergencyConditions);
         lastStatusLogTime = millis();
