@@ -21,35 +21,36 @@ const char* stateToString(State state);
 
 struct SystemState {
     State currentState;
-
-    // Event flags
-    bool emergencyConditions;
-    bool sensorError;
-    bool configCommandReceived;
-    
     // Timers
     uint32_t lastStateChangeTime;
     uint32_t emergencyConditionsTrueTime;  // When emergency conditions became true
     uint32_t emergencyConditionsFalseTime; // When emergency conditions became false
     uint32_t lastEmergencyMessageTime;
 
+    // Event flags
+    bool emergencyConditions;
+    bool sensorError;
+    volatile bool configCommandReceived;
 };
 
 SystemState systemState; // Tracks current device state
 
 // Status logging
+static constexpr uint32_t STATUS_LOG_INTERVAL_MS = 10000; // Log status every 10 seconds
 uint32_t lastStatusLogTime = 0;
-const uint32_t STATUS_LOG_INTERVAL_MS = 10000; // Log status every 10 seconds
 
-const int BUTTON_PIN = 23; // GPIO 23
-const int ALERT_PIN = 13; // GPIO 13
-bool buttonPressed = false;
+static constexpr int BUTTON_PIN = 23; // GPIO 23
+static constexpr int ALERT_PIN = 13; // GPIO 13
+static constexpr int SENSOR_PIN = 32; // Water sensor analog pin ADC1 because wifi is required
+
 float EMERGENCY_WATER_LEVEL_CM = 15;
 float EMERGENCY_WATER_CM_PER_HR = 5;
-const int SENSOR_PIN = 32; // Water sensor analog pin ADC1 because wifi is required
-const int EMERGENCY_TIMEOUT_MS = 1000;
-const int EMERGENCY_MESSAGE_TIMEOUT_MS = 1000 * 30;
-unsigned long lastButtonPress = 0;
+
+int EMERGENCY_TIMEOUT_MS = 1000;
+int EMERGENCY_MESSAGE_TIMEOUT_MS = 1000 * 30;
+
+volatile bool buttonPressed = false;
+volatile unsigned long lastButtonPress = 0;
 
 // Create easier references to the singleton objects
 WiFiConfig* wifiConfig = nullptr;
@@ -95,7 +96,7 @@ void setup() {
     
     // Check if we have stored credentials
     // If not, or if user holds a button, start setup mode
-    std::vector<char*> ssids = wifiMgr.getStoredSSIDs();
+    std::vector<String> ssids = wifiMgr.getStoredSSIDs();
 
     if (ssids.empty()) {
         systemState.currentState = CONFIG;
@@ -132,6 +133,12 @@ void loop() {
     } else if (!systemState.sensorError && previousSensorError) {
         Serial.println("[EVENT] Sensor error cleared");
     }
+
+    static bool lastConfigCommandReceived = false;
+    if (systemState.configCommandReceived && !lastConfigCommandReceived) {
+        Serial.println("[EVENT] Button pressed - config command received");
+    }
+    lastConfigCommandReceived = systemState.configCommandReceived;
 
     bool previousEmergencyConditions = systemState.emergencyConditions;
     if (currentReading.level_cm >= EMERGENCY_WATER_LEVEL_CM ||
@@ -239,10 +246,10 @@ void loop() {
 /*
     Button press interrupt handler
 */
-void handleButtonPress() {
+void IRAM_ATTR handleButtonPress() {
     unsigned long now = millis();
     if (now - lastButtonPress <= 50) return; // Debounce 50ms 
     lastButtonPress = now;
     systemState.configCommandReceived = true;
-    Serial.println("[EVENT] Button pressed - config command received");
+    
 }

@@ -19,6 +19,21 @@ WaterPressureSensor::WaterPressureSensor(bool mock)
     }
 }
 
+
+bool WaterPressureSensor::init() {
+    ads.begin();
+    ads.setGain(GAIN_ONE);
+    ads.setDataRate(RATE_ADS1115_8SPS);
+
+    SensorReading firstReading = readLevel();
+    
+    if (!firstReading.valid) {
+        return false; 
+    }
+    return true;
+}
+
+
 WaterPressureSensor::~WaterPressureSensor() {
     // Clean up ADC calibration handle if it was initialized
     // (Note: Arduino framework handles ADC cleanup automatically)
@@ -55,19 +70,6 @@ int WaterPressureSensor::getSecondPointMilliVolts() {
 
 float WaterPressureSensor::getSecondPointLevelCm() {
     return secondPointLevel_cm;
-}
-
-bool WaterPressureSensor::init() {
-    ads.begin();
-    ads.setGain(GAIN_ONE);
-    ads.setDataRate(RATE_ADS1115_8SPS);
-
-    SensorReading firstReading = readLevel();
-    
-    if (!firstReading.valid) {
-        return false; 
-    }
-    return true;
 }
 
 
