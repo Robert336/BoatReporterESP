@@ -6,3 +6,4 @@
 
 # Secrets file - contains sensitive credentials
 include/secrets.h
+secrets.h

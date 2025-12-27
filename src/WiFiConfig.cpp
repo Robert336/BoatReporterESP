@@ -1,7 +1,8 @@
 #include "WiFiConfig.h"
 
 
-WiFiConfig::WiFiConfig(WaterPressureSensor* sensor) : server(nullptr), waterSensor(sensor) {
+WiFiConfig::WiFiConfig(WaterPressureSensor* sensor, SendSMS* sms, SendDiscord* discord) 
+    : server(nullptr), waterSensor(sensor), smsService(sms), discordService(discord) {
     // Initialize calibration preferences
     loadCalibration();
 }
@@ -61,6 +62,15 @@ void WiFiConfig::startSetupMode() {
     
     // Route: POST /calibrate/point2 → set second calibration point
     server->on("/calibrate/point2", HTTP_POST, [this]() { handleCalibratePoint2(); });
+    
+    // Route: GET /notifications → return current notification settings
+    server->on("/notifications", HTTP_GET, [this]() { handleGetNotifications(); });
+    
+    // Route: POST /notifications/phone → set SMS phone number
+    server->on("/notifications/phone", HTTP_POST, [this]() { handleSetPhoneNumber(); });
+    
+    // Route: POST /notifications/discord → set Discord webhook URL
+    server->on("/notifications/discord", HTTP_POST, [this]() { handleSetDiscordWebhook(); });
     
     // Handle 404
     server->onNotFound([this]() {
@@ -296,6 +306,81 @@ void WiFiConfig::handleGetCalibration() {
     server->send(200, "application/json", json);
 }
 
+void WiFiConfig::handleGetNotifications() {
+    serverStartTime = millis();
+    
+    String json = "{";
+    
+    // SMS phone number
+    json += "\"hasPhoneNumber\":";
+    if (smsService && smsService->hasPhoneNumber()) {
+        char phoneBuf[32];
+        if (smsService->getPhoneNumber(phoneBuf, sizeof(phoneBuf)) == 0) {
+            json += "true,\"phoneNumber\":\"" + String(phoneBuf) + "\"";
+        } else {
+            json += "false";
+        }
+    } else {
+        json += "false";
+    }
+    
+    // Discord webhook
+    json += ",\"hasDiscordWebhook\":";
+    if (discordService && discordService->hasWebhookUrl()) {
+        char webhookBuf[256];
+        if (discordService->getWebhookUrl(webhookBuf, sizeof(webhookBuf)) == 0) {
+            json += "true,\"discordWebhook\":\"" + String(webhookBuf) + "\"";
+        } else {
+            json += "false";
+        }
+    } else {
+        json += "false";
+    }
+    
+    json += "}";
+    server->send(200, "application/json", json);
+}
+
+void WiFiConfig::handleSetPhoneNumber() {
+    serverStartTime = millis();
+    
+    if (!smsService) {
+        server->send(503, "application/json", "{\"error\":\"SMS service not available\"}");
+        return;
+    }
+    
+    if (server->hasArg("phone")) {
+        String phone = server->arg("phone");
+        smsService->updatePhoneNumber(phone.c_str());
+        
+        String json = "{\"success\":true,\"message\":\"Phone number updated\",\"phoneNumber\":\"" + phone + "\"}";
+        server->send(200, "application/json", json);
+        Serial.printf("[CONFIG] Phone number updated: %s\n", phone.c_str());
+    } else {
+        server->send(400, "application/json", "{\"error\":\"Missing phone parameter\"}");
+    }
+}
+
+void WiFiConfig::handleSetDiscordWebhook() {
+    serverStartTime = millis();
+    
+    if (!discordService) {
+        server->send(503, "application/json", "{\"error\":\"Discord service not available\"}");
+        return;
+    }
+    
+    if (server->hasArg("webhook")) {
+        String webhook = server->arg("webhook");
+        discordService->updateWebhookUrl(webhook.c_str());
+        
+        String json = "{\"success\":true,\"message\":\"Discord webhook updated\"}";
+        server->send(200, "application/json", json);
+        Serial.printf("[CONFIG] Discord webhook updated\n");
+    } else {
+        server->send(400, "application/json", "{\"error\":\"Missing webhook parameter\"}");
+    }
+}
+
 void WiFiConfig::loadCalibration() {
     
     if (!waterSensor) return;
@@ -403,6 +488,30 @@ String WiFiConfig::getDebugPage() {
                         location.reload();
                     });
                 }
+                function savePhoneNumber() {
+                    const phone = document.getElementById('phone_number').value;
+                    if (!phone) { alert('Please enter a phone number'); return; }
+                    fetch('/notifications/phone', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                        body: 'phone=' + encodeURIComponent(phone)
+                    }).then(r => r.json()).then(data => {
+                        alert(data.success ? 'Phone number saved!' : data.error);
+                        location.reload();
+                    });
+                }
+                function saveDiscordWebhook() {
+                    const webhook = document.getElementById('discord_webhook').value;
+                    if (!webhook) { alert('Please enter a Discord webhook URL'); return; }
+                    fetch('/notifications/discord', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                        body: 'webhook=' + encodeURIComponent(webhook)
+                    }).then(r => r.json()).then(data => {
+                        alert(data.success ? 'Discord webhook saved!' : data.error);
+                        location.reload();
+                    });
+                }
             </script>
         </head>
         <body>
@@ -477,10 +586,65 @@ String WiFiConfig::getDebugPage() {
     html += R"HTML(</p>
             </div>
             
+            <h2>Notification Settings</h2>
+            <div class="section">
+                <h3>SMS Notifications (Twilio)</h3>
+                <label for="phone_number">Phone Number (with country code, e.g. +1234567890):</label>
+                <input type="tel" id="phone_number" placeholder="+1234567890">)HTML";
+    
+    // Pre-fill phone number if available
+    if (smsService && smsService->hasPhoneNumber()) {
+        char phoneBuf[32];
+        if (smsService->getPhoneNumber(phoneBuf, sizeof(phoneBuf)) == 0) {
+            html += "<script>document.getElementById('phone_number').value='";
+            html += String(phoneBuf);
+            html += "';</script>";
+        }
+    }
+    
+    html += R"HTML(
+                <button onclick="savePhoneNumber()">Save Phone Number</button>
+                
+                <h3>Discord Notifications</h3>
+                <label for="discord_webhook">Discord Webhook URL:</label>
+                <input type="url" id="discord_webhook" placeholder="https://discord.com/api/webhooks/...">)HTML";
+    
+    // Pre-fill webhook URL if available
+    if (discordService && discordService->hasWebhookUrl()) {
+        char webhookBuf[256];
+        if (discordService->getWebhookUrl(webhookBuf, sizeof(webhookBuf)) == 0) {
+            html += "<script>document.getElementById('discord_webhook').value='";
+            html += String(webhookBuf);
+            html += "';</script>";
+        }
+    }
+    
+    html += R"HTML(
+                <button onclick="saveDiscordWebhook()">Save Discord Webhook</button>
+                
+                <p><strong>Current Status:</strong><br>)HTML";
+    
+    // Show current notification status
+    if (smsService && smsService->hasPhoneNumber()) {
+        html += "SMS: Configured<br>";
+    } else {
+        html += "SMS: Not configured<br>";
+    }
+    
+    if (discordService && discordService->hasWebhookUrl()) {
+        html += "Discord: Configured";
+    } else {
+        html += "Discord: Not configured";
+    }
+    
+    html += R"HTML(</p>
+            </div>
+            
             <div class="nav">
                 <a href="/">WiFi Config</a>
                 <a href="/read">JSON Reading</a>
                 <a href="/calibration">Calibration JSON</a>
+                <a href="/notifications">Notifications JSON</a>
             </div>
         </body>
         </html>
