@@ -1,10 +1,7 @@
 #include "WiFiManager.h"
 
 
-
-std::vector<WiFiCredential> storedNetworks;
-
-// Singelton instance getter
+// Singleton instance getter
 WiFiManager& WiFiManager::getInstance() {
     static WiFiManager instance;
     return instance;
@@ -27,7 +24,7 @@ WiFiManager::~WiFiManager() {
 }
 
 void WiFiManager::begin() {
-    preferences.begin("wifi", false);
+    
     loadCredentials();
     WiFi.mode(WIFI_STA);
     
@@ -36,6 +33,10 @@ void WiFiManager::begin() {
 }
 
 void WiFiManager::loadCredentials() {
+    if (!preferences.begin(WIFI_PREFERENCES_NAMESPACE, true)) {
+        Serial.println("WiFiManager: Failed to open preferences for reading!");
+        return;
+    }
     // Clear existing networks
     storedNetworks.clear();
     
@@ -62,9 +63,14 @@ void WiFiManager::loadCredentials() {
             Serial.println(cred.ssid);
         }
     }
+    preferences.end();
 }
 
 void WiFiManager::saveCredentials() {
+    if (!preferences.begin(WIFI_PREFERENCES_NAMESPACE, false)) {
+        Serial.println("WiFiManager: Failed to open preferences for writing!");
+        return;
+    }
     // Clear old data
     preferences.clear();
     
@@ -83,6 +89,7 @@ void WiFiManager::saveCredentials() {
         Serial.print("Saved network: ");
         Serial.println(storedNetworks[i].ssid);
     }
+    preferences.end();
 }
 
 void WiFiManager::addNetwork(const char* ssid, const char* password) {
@@ -192,10 +199,10 @@ void WiFiManager::connectToBestNetwork() {
     WiFi.scanDelete();
 }
 
-std::vector<char*> WiFiManager::getStoredSSIDs() {
-    std::vector<char*> ssids;
+std::vector<String> WiFiManager::getStoredSSIDs() {
+    std::vector<String> ssids;
     for (auto& cred : storedNetworks) {
-        ssids.push_back(cred.ssid);
+        ssids.push_back(String(cred.ssid));
     }
     return ssids;
 }

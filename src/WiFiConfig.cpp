@@ -1,11 +1,8 @@
 #include "WiFiConfig.h"
 
-const char* WiFiConfig::AP_SSID = "ESP32-BoatMonitor-Setup";
-const char* WiFiConfig::AP_PASSWORD = "12345678";
 
 WiFiConfig::WiFiConfig(WaterPressureSensor* sensor) : server(nullptr), waterSensor(sensor) {
     // Initialize calibration preferences
-    calibrationPrefs.begin("sensor_cal", false);
     loadCalibration();
 }
 
@@ -300,7 +297,12 @@ void WiFiConfig::handleGetCalibration() {
 }
 
 void WiFiConfig::loadCalibration() {
+    
     if (!waterSensor) return;
+
+    if (!calibrationPrefs.begin(SENSOR_CALIBRATION_NAMESPACE, true)) {
+        Serial.print("Failed to load the calibration NVS storage in read mode");
+    }
     
     int zero_mv = calibrationPrefs.getInt("zero_mv", -1);
     if (zero_mv >= 0) {
@@ -319,10 +321,16 @@ void WiFiConfig::loadCalibration() {
     } else {
         Serial.println("[CALIBRATION] No second calibration point found in NVS");
     }
+
+    calibrationPrefs.end();
 }
 
 void WiFiConfig::saveCalibration() {
     if (!waterSensor) return;
+
+    if (!calibrationPrefs.begin(SENSOR_CALIBRATION_NAMESPACE, false)) {
+        Serial.print("Failed to load the calibration NVS storage in write mode");
+    }
     
     int zero_mv = waterSensor->getZeroPointMilliVolts();
     calibrationPrefs.putInt("zero_mv", zero_mv);
@@ -340,6 +348,8 @@ void WiFiConfig::saveCalibration() {
         calibrationPrefs.remove("point2_cm");
         Serial.println("[CALIBRATION] Removed second calibration point from NVS (single-point mode)");
     }
+
+    calibrationPrefs.end();
 }
 
 String WiFiConfig::getDebugPage() {
