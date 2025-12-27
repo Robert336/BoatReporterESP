@@ -66,6 +66,10 @@ bool SendSMS::send(const char* message) {
 
     int httpResponseCode = http.POST(postData);
 
+    if (httpResponseCode < 0) {
+        Serial.printf("[SMS] HTTP error: %s\n", http.errorToString(httpResponseCode).c_str());
+    }
+
     // Free allocated memory
     free(encodedTo);
     free(encodedSid);
