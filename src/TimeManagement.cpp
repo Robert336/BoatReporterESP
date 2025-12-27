@@ -58,7 +58,7 @@ Timestamp TimeManagement::getCurrentTimestamp() {
 
 void TimeManagement::sync() {
     if (time(NULL) - lastSyncTime < SYNC_EXPIRY) return; // Guard against already synced RTC
-    if (syncStatus == SNTP_SYNCING) return; // Gaurd if currently syncing
+    if (syncStatus == SNTP_SYNCING) return; // Guard if currently syncing
 
     initSNTPSync(); // Sync RTC
 }
