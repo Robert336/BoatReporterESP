@@ -48,8 +48,8 @@ class SendSMS {
         
     private:
         Preferences preferences;
-        static constexpr char* twilio_account_sid = TWILIO_ACCOUNT_SID;
-        static constexpr char* twilio_auth_token = TWILIO_AUTH_TOKEN;
+        static constexpr auto& twilio_account_sid = TWILIO_ACCOUNT_SID;
+        static constexpr auto& twilio_auth_token = TWILIO_AUTH_TOKEN;
         
         /// Builds the Twilio API endpoint URL using the account SID from secrets
         String getEndpointUrl();

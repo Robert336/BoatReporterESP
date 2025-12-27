@@ -6,6 +6,7 @@
 #include "LightCode.h"
 #include "WaterPressureSensor.h"
 #include "SendSMS.h"
+#include "SendDiscord.h"
 
 // System States
 enum State {
@@ -43,6 +44,7 @@ static constexpr int BUTTON_PIN = 23; // GPIO 23
 static constexpr int ALERT_PIN = 19; // GPIO 13
 static constexpr int SENSOR_PIN = 32; // Water sensor analog pin ADC1 because wifi is required
 
+
 float EMERGENCY_WATER_LEVEL_CM = 15;
 float EMERGENCY_WATER_CM_PER_HR = 5;
 
@@ -59,6 +61,7 @@ TimeManagement& rtc = TimeManagement::getInstance();
 WiFiManager& wifiMgr = WiFiManager::getInstance();
 WaterPressureSensor waterSensor(false); // false = use real sensor, not mock data
 SendSMS sms;
+SendDiscord discord;
 
 // Helper function to convert state enum to string
 const char* stateToString(State state) {
@@ -84,7 +87,7 @@ void setup() {
     
     // Initialize WiFiConfig early to load calibration from NVS
     // This ensures saved calibration is applied before first sensor reading
-    wifiConfig = new WiFiConfig(&waterSensor);
+    wifiConfig = new WiFiConfig(&waterSensor, &sms, &discord);
     Serial.println("[SETUP] WiFiConfig initialized - calibration loaded from NVS");
 
     pinMode(ALERT_PIN, OUTPUT);
@@ -166,6 +169,11 @@ void loop() {
                 systemState.currentState = NORMAL;
                 systemState.lastStateChangeTime = millis();
             }
+            else if (systemState.configCommandReceived) {
+                Serial.printf("[STATE] Transitioning from %s to CONFIG (button pressed)\n", stateToString(systemState.currentState));
+                systemState.currentState = CONFIG;
+                systemState.lastStateChangeTime = millis();
+            } 
             // send message about sensor failure?
             break;
         case NORMAL:
@@ -220,7 +228,14 @@ void loop() {
                     Serial.printf("[STATE] EMERGENCY: Sending alert message: %s\n", emergMessageBuf);
                     systemState.lastEmergencyMessageTime = millis();
 
-                    // sms.send(emergMessageBuf);
+                    if (!sms.send(emergMessageBuf)){
+                        Serial.println("[SMS] Emergency SMS failed to send");
+                    }
+
+                    if (!discord.send(emergMessageBuf)){
+                        Serial.println("[Discord] Emergency Discord webhook failed to send");
+                    }
+
                 }
                 digitalWrite(ALERT_PIN, HIGH);
             }
