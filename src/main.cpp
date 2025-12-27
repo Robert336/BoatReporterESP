@@ -40,7 +40,7 @@ static constexpr uint32_t STATUS_LOG_INTERVAL_MS = 10000; // Log status every 10
 uint32_t lastStatusLogTime = 0;
 
 static constexpr int BUTTON_PIN = 23; // GPIO 23
-static constexpr int ALERT_PIN = 13; // GPIO 13
+static constexpr int ALERT_PIN = 19; // GPIO 13
 static constexpr int SENSOR_PIN = 32; // Water sensor analog pin ADC1 because wifi is required
 
 float EMERGENCY_WATER_LEVEL_CM = 15;
