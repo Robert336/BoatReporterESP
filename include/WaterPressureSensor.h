@@ -5,6 +5,16 @@
 #include <Adafruit_ADS1X15.h>
 
 
+// The usable range of the water sensor in centimeters
+constexpr float WATER_LEVEL_RANGE_MIN_CM = 5.0;
+constexpr float WATER_LEVEL_RANGE_MAX_CM = 50.0;
+
+// Size of the circular buffer for smoothing readings
+static constexpr int READINGS_BUFFER_SIZE = 10; 
+
+static constexpr uint8_t CHANNEL = 0;
+static constexpr int CM_MAX = 100; // Max centimeters the sensor can read
+
 struct SensorReading {
     bool valid;   // Check if the reading is trustworthy
     float level_cm; // Water level in centimeters
@@ -28,9 +38,6 @@ public:
 
 private:
     Adafruit_ADS1115 ads;
-    const uint8_t CHANNEL = 0;
-    const int CM_MAX = 100; // Max centimeters the sensor can read
-    static constexpr int READINGS_BUFFER_SIZE = 10; // Size of the circular buffer for smoothing readings
     SensorReading readingsBuffer[READINGS_BUFFER_SIZE]; // Circular buffer for the last readings
     int currentReadingIndex;
     Timestamp lastReadTime;

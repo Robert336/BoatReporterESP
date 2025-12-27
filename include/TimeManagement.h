@@ -11,6 +11,11 @@
 #include <esp_timer.h>
 #include <esp_log.h>
 
+
+static constexpr uint32_t SNTP_MAX_WAIT = 10000;
+static constexpr time_t SYNC_EXPIRY = 86400; // One day in seconds
+static constexpr int TIME_STR_BUFFER = 64;
+
 struct Timestamp {
     bool isNTPSynced;          // Whether time has been synced via NTP
     time_t unixTime;           // Unix timestamp (seconds since epoch)
@@ -33,8 +38,7 @@ class TimeManagement {
         // Get current timestamp with full details
         Timestamp getCurrentTimestamp();
         
-
-        // Handle orcestraiting syncing RTC with SNTP server
+        // Handle orchestrating syncing RTC with SNTP server
         void sync();
 
         // Stop SNTP synchronization
@@ -65,9 +69,9 @@ class TimeManagement {
         
         SNTPSyncStatus syncStatus;
         time_t lastSyncTime;       // Unix time of last SNTP sync
-        const time_t SYNC_EXPIRY = 86400; // One day in seconds
+        
         bool isMocked;
-        char timeStringBuffer[64]; // Buffer for formatted time strings
+        char timeStringBuffer[TIME_STR_BUFFER]; // Buffer for formatted time strings
         
         // Static callback for SNTP time sync events (required for C-style callback)
         static void onSNTPSync(struct timeval *tv);
@@ -76,7 +80,7 @@ class TimeManagement {
         // server: NTP server name (e.g., "pool.ntp.org")
         // maxWaitMs: Maximum time to wait for initial sync
         // Returns: true if sync initiated successfully
-        bool initSNTPSync(const char* server = "pool.ntp.org", uint32_t maxWaitMs = 10000);
+        bool initSNTPSync(const char* server = "pool.ntp.org", uint32_t maxWaitMs = SNTP_MAX_WAIT);
         
 };
 

@@ -1,5 +1,4 @@
-#ifndef SENDSMS_H
-#define SENDSMS_H
+#pragma once
 
 /*
     SendSMS.h
@@ -49,8 +48,8 @@ class SendSMS {
         
     private:
         Preferences preferences;
-        const char* twilio_account_sid = TWILIO_ACCOUNT_SID;
-        const char* twilio_auth_token = TWILIO_AUTH_TOKEN;
+        static constexpr char* twilio_account_sid = TWILIO_ACCOUNT_SID;
+        static constexpr char* twilio_auth_token = TWILIO_AUTH_TOKEN;
         
         /// Builds the Twilio API endpoint URL using the account SID from secrets
         String getEndpointUrl();
@@ -61,5 +60,3 @@ class SendSMS {
         /// @param outputSize Size of the output buffer
         void urlEncode(const char* input, char* output, size_t outputSize);
 };
-
-#endif // SENDSMS_H
