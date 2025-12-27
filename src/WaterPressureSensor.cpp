@@ -180,7 +180,3 @@ float WaterPressureSensor::calculateMedianFromBuffer() {
     }
 }
 
-// TODO: implement
-float WaterPressureSensor::getRollingRateOfChange() {
-    return 0.0f;
-}
