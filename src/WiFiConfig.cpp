@@ -375,7 +375,7 @@ void WiFiConfig::handleSetDiscordWebhook() {
         
         String json = "{\"success\":true,\"message\":\"Discord webhook updated\"}";
         server->send(200, "application/json", json);
-        Serial.printf("[CONFIG] Discord webhook updated\n");
+        Serial.printf("[CONFIG] Discord webhook updated: %s\n", webhook.c_str());
     } else {
         server->send(400, "application/json", "{\"error\":\"Missing webhook parameter\"}");
     }

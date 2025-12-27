@@ -1,13 +1,16 @@
 #include "SendSMS.h"
 #include <Preferences.h>
 
+// Namespace for NVS storage
+static constexpr const char* SMS_PREFS_NAMESPACE = "sms";
+
 SendSMS::SendSMS() {
-    preferences.begin("sms", false);
+    // Don't call preferences.begin() here - NVS may not be ready for global objects
 }
 
 
 SendSMS::~SendSMS() {
-    preferences.end();
+    // Nothing to clean up since we open/close preferences on each operation
 }
 
 
@@ -23,14 +26,22 @@ bool SendSMS::send(const char* message) {
         return false;
     }
 
-    HTTPClient http;
+    // Open preferences for reading
+    if (!preferences.begin(SMS_PREFS_NAMESPACE, true)) {
+        Serial.println("[SMS] Failed to open preferences for reading");
+        return false;
+    }
 
     // Retrieve phone number from preferences
     String toPhoneNumber = preferences.getString("phone-number", "");
+    preferences.end();
+    
     if (toPhoneNumber.length() == 0) {
         // No phone number stored
         return false;
     }
+
+    HTTPClient http;
 
     // Calculate maximum size needed for encoded strings (worst case: every char becomes %XX = 3x)
     // Plus space for "To=", "&MessagingServiceSid=", "&Body=" and null terminator
@@ -88,8 +99,21 @@ void SendSMS::updatePhoneNumber(const char* newPhoneNumber) {
     if (!newPhoneNumber) {
         return; // Invalid input, do nothing
     }
-    preferences.clear();
-    preferences.putString("phone-number", newPhoneNumber);
+    
+    // Open preferences for writing
+    if (!preferences.begin(SMS_PREFS_NAMESPACE, false)) {
+        Serial.println("[SMS] Failed to open preferences for writing");
+        return;
+    }
+    
+    size_t bytesWritten = preferences.putString("phone-number", newPhoneNumber);
+    preferences.end();
+    
+    if (bytesWritten == 0) {
+        Serial.println("[SMS] Failed to store phone number in preferences!");
+    } else {
+        Serial.printf("[SMS] Phone number saved successfully (%d bytes)\n", bytesWritten);
+    }
 }
 
 
@@ -98,8 +122,16 @@ int SendSMS::getPhoneNumber(char* outBuf, size_t bufferSize) {
         return -1;
     }
     
+    // Open preferences for reading
+    if (!preferences.begin(SMS_PREFS_NAMESPACE, true)) {
+        Serial.println("[SMS] Failed to open preferences for reading");
+        return -1;
+    }
+    
     // Store String in a variable to avoid temporary object destruction
     String phoneNumber = preferences.getString("phone-number", "");
+    preferences.end();
+    
     if (phoneNumber.length() == 0) {
         return -1; // No phone number stored
     }
@@ -162,5 +194,13 @@ void SendSMS::urlEncode(const char* input, char* output, size_t outputSize) {
 
 
 bool SendSMS::hasPhoneNumber() {
-    return !preferences.getString("phone-number", "").isEmpty();
+    // Open preferences for reading
+    if (!preferences.begin(SMS_PREFS_NAMESPACE, true)) {
+        return false;
+    }
+    
+    bool hasPhone = !preferences.getString("phone-number", "").isEmpty();
+    preferences.end();
+    
+    return hasPhone;
 }
