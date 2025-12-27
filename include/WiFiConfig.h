@@ -15,12 +15,17 @@
  * - System debugging and monitoring
  * - Real-time sensor readings with millivolt data
  */
+constexpr char* SENSOR_CALIBRATION_NAMESPACE = "sensor_cal";
+constexpr char* AP_SSID = "ESP32-BoatMonitor-Setup";
+constexpr char* AP_PASSWORD = "12345678";
+static constexpr unsigned long SERVER_TIMEOUT_MS = 240000; 
+
 class WiFiConfig {
 private:
     WebServer* server;
     WaterPressureSensor* waterSensor;
     Preferences calibrationPrefs; // NVS storage for calibration data
-    static const unsigned long SERVER_TIMEOUT_MS = 240000; 
+    
     unsigned long serverStartTime;
     bool setupModeActive = false;
     static const char* AP_SSID;
