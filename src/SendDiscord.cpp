@@ -1,12 +1,15 @@
 #include "SendDiscord.h"
 
+// Namespace for NVS storage
+static constexpr const char* DISCORD_PREFS_NAMESPACE = "discord";
+
 SendDiscord::SendDiscord() {
-    preferences.begin("discord", false);
+    // Don't call preferences.begin() here - NVS may not be ready for global objects
 }
 
 
 SendDiscord::~SendDiscord() {
-    preferences.end();
+    // Nothing to clean up since we open/close preferences on each operation
 }
 
 
@@ -21,8 +24,16 @@ bool SendDiscord::send(const char* message) {
         return false;
     }
 
+    // Open preferences for reading
+    if (!preferences.begin(DISCORD_PREFS_NAMESPACE, true)) {
+        Serial.println("[Discord] Failed to open preferences for reading");
+        return false;
+    }
+
     // Retrieve webhook URL from preferences
     String webhookUrl = preferences.getString("webhook-url", "");
+    preferences.end();
+    
     if (webhookUrl.length() == 0) {
         // No webhook URL stored
         return false;
@@ -75,8 +86,21 @@ void SendDiscord::updateWebhookUrl(const char* newWebhookUrl) {
     if (!newWebhookUrl) {
         return; // Invalid input, do nothing
     }
-    preferences.clear();
-    preferences.putString("webhook-url", newWebhookUrl);
+    
+    // Open preferences for writing
+    if (!preferences.begin(DISCORD_PREFS_NAMESPACE, false)) {
+        Serial.println("[Discord] Failed to open preferences for writing");
+        return;
+    }
+    
+    size_t bytesWritten = preferences.putString("webhook-url", newWebhookUrl);
+    preferences.end();
+    
+    if (bytesWritten == 0) {
+        Serial.println("[Discord] Failed to store webhook URL in preferences!");
+    } else {
+        Serial.printf("[Discord] Webhook URL saved successfully (%d bytes)\n", bytesWritten);
+    }
 }
 
 
@@ -85,8 +109,16 @@ int SendDiscord::getWebhookUrl(char* outBuf, size_t bufferSize) {
         return -1;
     }
     
+    // Open preferences for reading
+    if (!preferences.begin(DISCORD_PREFS_NAMESPACE, true)) {
+        Serial.println("[Discord] Failed to open preferences for reading");
+        return -1;
+    }
+    
     // Store String in a variable to avoid temporary object destruction
     String webhookUrl = preferences.getString("webhook-url", "");
+    preferences.end();
+    
     if (webhookUrl.length() == 0) {
         return -1; // No webhook URL stored
     }
@@ -157,6 +189,13 @@ void SendDiscord::escapeJsonString(const char* input, char* output, size_t outpu
 
 
 bool SendDiscord::hasWebhookUrl() {
-    return !preferences.getString("webhook-url", "").isEmpty();
+    // Open preferences for reading
+    if (!preferences.begin(DISCORD_PREFS_NAMESPACE, true)) {
+        return false;
+    }
+    
+    bool hasUrl = !preferences.getString("webhook-url", "").isEmpty();
+    preferences.end();
+    
+    return hasUrl;
 }
-
