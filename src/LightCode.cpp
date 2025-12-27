@@ -23,15 +23,12 @@ void LightCode::update() {
     unsigned long now = millis();
     unsigned long msSinceToggle = now - lastToggleTime;
     unsigned long interval = 0;
-    bool newState;
 
     switch (pattern) {
         case PATTERN_OFF:
-            newState = false; // Stay OFF
             digitalWrite(ledPin, LOW);
             return;
         case PATTERN_SOLID:
-            newState = true; // Stay ON
             digitalWrite(ledPin, HIGH);
             return;
         case PATTERN_FAST_BLINK:
@@ -40,20 +37,11 @@ void LightCode::update() {
         case PATTERN_SLOW_BLINK:
             interval = 500;
             break;
-    }       
-
-    // Check for state change
-    if (msSinceToggle >= interval) {
-        newState = !ledState; // Toggle state
-        lastToggleTime = now;
     }
-
-    if (newState == ledState) return; // Exit here, No change to LED
-
-    ledState = newState; // Change current state to the new state, write to LED
-    if (ledState) {
-        digitalWrite(ledPin, HIGH);
-    } else {
-        digitalWrite(ledPin, LOW);
+    // Only toggle if interval has passed
+    if (msSinceToggle >= interval) {
+        ledState = !ledState;
+        lastToggleTime = now;
+        digitalWrite(ledPin, ledState ? HIGH : LOW);
     }
 }
