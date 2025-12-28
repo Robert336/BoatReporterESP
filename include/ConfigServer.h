@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <WebServer.h>
+#include <DNSServer.h>
 #include <Preferences.h>
 #include "WiFiManager.h"
 #include "WaterPressureSensor.h"
@@ -24,12 +25,14 @@
 constexpr const char SENSOR_CALIBRATION_NAMESPACE[] = "sensor_cal";
 constexpr const char AP_SSID[] = "ESP32-BoatMonitor-Setup";
 constexpr const char AP_PASSWORD[] = "12345678";
-constexpr unsigned long SERVER_TIMEOUT_MS = 240000; 
+constexpr unsigned long SERVER_TIMEOUT_MS = 240000;
+constexpr int DNS_PORT = 53; // Standard DNS port for captive portal 
 
 class ConfigServer {
 private:
     // === Core Members ===
     WebServer* server;
+    DNSServer* dnsServer = nullptr;         // DNS server for captive portal
     WaterPressureSensor* waterSensor;
     SendSMS* smsService;
     SendDiscord* discordService;

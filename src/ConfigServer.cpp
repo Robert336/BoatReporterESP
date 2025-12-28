@@ -11,6 +11,12 @@ ConfigServer::ConfigServer(WaterPressureSensor* sensor, SendSMS* sms, SendDiscor
 }
 
 ConfigServer::~ConfigServer() {
+    // Clean up DNS server if active
+    if (dnsServer) {
+        dnsServer->stop();
+        delete dnsServer;
+        dnsServer = nullptr;
+    }
     stopSetupMode();
     calibrationPrefs.end(); // Close Preferences namespace
 }
@@ -38,10 +44,16 @@ void ConfigServer::startSetupMode() {
     Serial.print("Password: ");
     Serial.println(AP_PASSWORD);
     
-    // Step 3: Create and start web server on port 80
+    // Step 3: Start DNS server for captive portal
+    dnsServer = new DNSServer();
+    dnsServer->start(DNS_PORT, "*", apIP);
+    Serial.println("Captive portal started - users will be automatically redirected");
+    Serial.println("All DNS requests will redirect to config server");
+    
+    // Step 4: Create and start web server on port 80
     server = new WebServer(80);
     
-    // Step 4: Register HTTP handlers
+    // Step 5: Register HTTP handlers
     // Route: GET / → serve HTML form
     server->on("/", HTTP_GET, [this]() { handleRoot(); });
     
@@ -81,9 +93,12 @@ void ConfigServer::startSetupMode() {
     // Route: POST /notifications/test/discord → send test Discord message
     server->on("/notifications/test/discord", HTTP_POST, [this]() { handleTestDiscord(); });
     
-    // Handle 404
+    // Handle 404 and captive portal detection
+    // Redirect all unknown paths to root for better captive portal detection
     server->onNotFound([this]() {
-        server->send(404, "text/plain", "Not Found");
+        // Serve the root page for captive portal detection
+        // Many devices try to access specific URLs to detect captive portals
+        handleRoot();
     });
     
     // Start the server
@@ -92,6 +107,7 @@ void ConfigServer::startSetupMode() {
     serverStartTime = millis();
     
     Serial.println("Setup mode started. Open browser and navigate to 192.168.4.1");
+    Serial.println("Or simply open any website - captive portal will redirect you!");
 }
 
 void ConfigServer::stopSetupMode() {
@@ -99,6 +115,14 @@ void ConfigServer::stopSetupMode() {
         server->stop();
         delete server;
         server = nullptr;
+    }
+    
+    // Stop captive portal DNS server
+    if (dnsServer) {
+        dnsServer->stop();
+        delete dnsServer;
+        dnsServer = nullptr;
+        Serial.println("Captive portal stopped");
     }
     
     // Stop AP, keep STA mode
@@ -116,6 +140,12 @@ void ConfigServer::handleClient() {
     // Guard clause: Only continue if server exists and setup mode is active
     if (!server || !setupModeActive) return;
 
+    // Process captive portal DNS requests
+    if (dnsServer) {
+        dnsServer->processNextRequest();
+    }
+    
+    // Handle web server requests
     server->handleClient();
 
     // Handle server timeout
