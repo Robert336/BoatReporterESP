@@ -1,18 +1,21 @@
-#include "WiFiConfig.h"
+#include "ConfigServer.h"
 
+// ============================================================================
+// CORE LIFECYCLE METHODS
+// ============================================================================
 
-WiFiConfig::WiFiConfig(WaterPressureSensor* sensor, SendSMS* sms, SendDiscord* discord) 
+ConfigServer::ConfigServer(WaterPressureSensor* sensor, SendSMS* sms, SendDiscord* discord) 
     : server(nullptr), waterSensor(sensor), smsService(sms), discordService(discord) {
     // Initialize calibration preferences
     loadCalibration();
 }
 
-WiFiConfig::~WiFiConfig() {
+ConfigServer::~ConfigServer() {
     stopSetupMode();
     calibrationPrefs.end(); // Close Preferences namespace
 }
 
-void WiFiConfig::startSetupMode() {
+void ConfigServer::startSetupMode() {
     Serial.println("\n=== Starting WiFi Setup Mode ===");
 
     if (setupModeActive) {
@@ -72,6 +75,12 @@ void WiFiConfig::startSetupMode() {
     // Route: POST /notifications/discord → set Discord webhook URL
     server->on("/notifications/discord", HTTP_POST, [this]() { handleSetDiscordWebhook(); });
     
+    // Route: POST /notifications/test/sms → send test SMS
+    server->on("/notifications/test/sms", HTTP_POST, [this]() { handleTestSMS(); });
+    
+    // Route: POST /notifications/test/discord → send test Discord message
+    server->on("/notifications/test/discord", HTTP_POST, [this]() { handleTestDiscord(); });
+    
     // Handle 404
     server->onNotFound([this]() {
         server->send(404, "text/plain", "Not Found");
@@ -85,7 +94,7 @@ void WiFiConfig::startSetupMode() {
     Serial.println("Setup mode started. Open browser and navigate to 192.168.4.1");
 }
 
-void WiFiConfig::stopSetupMode() {
+void ConfigServer::stopSetupMode() {
     if (server) {
         server->stop();
         delete server;
@@ -99,11 +108,11 @@ void WiFiConfig::stopSetupMode() {
     Serial.println("\n=== Setup mode stopped, resuming normal WiFi ===");
 }
 
-bool WiFiConfig::isSetupModeActive() {
+bool ConfigServer::isSetupModeActive() {
     return setupModeActive;
 }
 
-void WiFiConfig::handleClient() {
+void ConfigServer::handleClient() {
     // Guard clause: Only continue if server exists and setup mode is active
     if (!server || !setupModeActive) return;
 
@@ -115,13 +124,17 @@ void WiFiConfig::handleClient() {
     }   
 }
 
-void WiFiConfig::handleRoot() {
+// ============================================================================
+// WIFI CONFIGURATION HANDLERS
+// ============================================================================
+
+void ConfigServer::handleRoot() {
     String html = getConfigPage();
     server->send(200, "text/html", html);
     serverStartTime = millis(); // Reset the timeout on page load
 }
 
-void WiFiConfig::handleSubmit() {
+void ConfigServer::handleSubmit() {
     // Check if SSID and password were submitted
     if (server->hasArg("ssid") && server->hasArg("password")) {
         String ssid = server->arg("ssid");
@@ -151,7 +164,7 @@ void WiFiConfig::handleSubmit() {
     }
 }
 
-void WiFiConfig::handleStatus() {
+void ConfigServer::handleStatus() {
     // Return connection status as JSON
     String json = "{";
     json += "\"connected\":" + String(WiFiManager::getInstance().isConnected() ? "true" : "false") + ",";
@@ -162,7 +175,7 @@ void WiFiConfig::handleStatus() {
     server->send(200, "application/json", json);
 }
 
-String WiFiConfig::getConfigPage() {
+String ConfigServer::getConfigPage() {
     String html = R"(
         <!DOCTYPE html>
         <html>
@@ -198,38 +211,11 @@ String WiFiConfig::getConfigPage() {
     return html;
 }
 
-void WiFiConfig::handleGetReading() {
-    serverStartTime = millis();
+// ============================================================================
+// SENSOR CALIBRATION HANDLERS
+// ============================================================================
 
-    if (!waterSensor) {
-        String json = "{";
-        json += "\"sensorAvailable\":false,";
-        json += "\"error\":\"Water sensor not connected\"";
-        json += "}";
-        server->send(503, "application/json", json);
-        return;
-    }
-
-    SensorReading reading = waterSensor->readLevel();
-    String json = "{";
-    json += "\"sensorAvailable\":true,";
-    json += "\"valid\":" + String(reading.valid ? "true" : "false") + ",";
-    json += "\"millivolts\":" + String(reading.millivolts, 2);
-    if (reading.valid) {
-        json += ",\"level_cm\":" + String(reading.level_cm, 2);
-    }
-    json += "}";
-
-    server->send(200, "application/json", json);
-}
-
-void WiFiConfig::handleDebug() {
-    serverStartTime = millis();
-    String html = getDebugPage();
-    server->send(200, "text/html", html);
-}
-
-void WiFiConfig::handleCalibrateZero() {
+void ConfigServer::handleCalibrateZero() {
     serverStartTime = millis();
     
     if (!waterSensor) {
@@ -257,7 +243,7 @@ void WiFiConfig::handleCalibrateZero() {
     }
 }
 
-void WiFiConfig::handleCalibratePoint2() {
+void ConfigServer::handleCalibratePoint2() {
     serverStartTime = millis();
     
     if (!waterSensor) {
@@ -285,7 +271,7 @@ void WiFiConfig::handleCalibratePoint2() {
     }
 }
 
-void WiFiConfig::handleGetCalibration() {
+void ConfigServer::handleGetCalibration() {
     serverStartTime = millis();
     
     if (!waterSensor) {
@@ -306,7 +292,67 @@ void WiFiConfig::handleGetCalibration() {
     server->send(200, "application/json", json);
 }
 
-void WiFiConfig::handleGetNotifications() {
+void ConfigServer::loadCalibration() {
+    
+    if (!waterSensor) return;
+
+    if (!calibrationPrefs.begin(SENSOR_CALIBRATION_NAMESPACE, true)) {
+        Serial.print("Failed to load the calibration NVS storage in read mode");
+    }
+    
+    int zero_mv = calibrationPrefs.getInt("zero_mv", -1);
+    if (zero_mv >= 0) {
+        waterSensor->setCalibrationPoint(0, zero_mv, 0.0f);
+        Serial.printf("[CALIBRATION] Loaded zero point from NVS: %d mV\n", zero_mv);
+    } else {
+        Serial.println("[CALIBRATION] No zero point calibration found in NVS, using default");
+    }
+    
+    int point2_mv = calibrationPrefs.getInt("point2_mv", -1);
+    float point2_cm = calibrationPrefs.getFloat("point2_cm", -1.0f);
+    if (point2_mv >= 0 && point2_cm >= 0) {
+        waterSensor->setCalibrationPoint(1, point2_mv, point2_cm);
+        Serial.printf("[CALIBRATION] Loaded second point from NVS: %d mV = %.2f cm (2-point calibration active)\n", 
+                      point2_mv, point2_cm);
+    } else {
+        Serial.println("[CALIBRATION] No second calibration point found in NVS");
+    }
+
+    calibrationPrefs.end();
+}
+
+void ConfigServer::saveCalibration() {
+    if (!waterSensor) return;
+
+    if (!calibrationPrefs.begin(SENSOR_CALIBRATION_NAMESPACE, false)) {
+        Serial.print("Failed to load the calibration NVS storage in write mode");
+    }
+    
+    int zero_mv = waterSensor->getZeroPointMilliVolts();
+    calibrationPrefs.putInt("zero_mv", zero_mv);
+    Serial.printf("[CALIBRATION] Saved zero point to NVS: %d mV\n", zero_mv);
+    
+    if (waterSensor->hasTwoPointCalibration()) {
+        int point2_mv = waterSensor->getSecondPointMilliVolts();
+        float point2_cm = waterSensor->getSecondPointLevelCm();
+        calibrationPrefs.putInt("point2_mv", point2_mv);
+        calibrationPrefs.putFloat("point2_cm", point2_cm);
+        Serial.printf("[CALIBRATION] Saved second point to NVS: %d mV = %.2f cm (2-point calibration)\n", 
+                      point2_mv, point2_cm);
+    } else {
+        calibrationPrefs.remove("point2_mv");
+        calibrationPrefs.remove("point2_cm");
+        Serial.println("[CALIBRATION] Removed second calibration point from NVS (single-point mode)");
+    }
+
+    calibrationPrefs.end();
+}
+
+// ============================================================================
+// NOTIFICATION SETTINGS HANDLERS
+// ============================================================================
+
+void ConfigServer::handleGetNotifications() {
     serverStartTime = millis();
     
     String json = "{";
@@ -341,7 +387,7 @@ void WiFiConfig::handleGetNotifications() {
     server->send(200, "application/json", json);
 }
 
-void WiFiConfig::handleSetPhoneNumber() {
+void ConfigServer::handleSetPhoneNumber() {
     serverStartTime = millis();
     
     if (!smsService) {
@@ -361,7 +407,7 @@ void WiFiConfig::handleSetPhoneNumber() {
     }
 }
 
-void WiFiConfig::handleSetDiscordWebhook() {
+void ConfigServer::handleSetDiscordWebhook() {
     serverStartTime = millis();
     
     if (!discordService) {
@@ -381,63 +427,102 @@ void WiFiConfig::handleSetDiscordWebhook() {
     }
 }
 
-void WiFiConfig::loadCalibration() {
+void ConfigServer::handleTestSMS() {
+    serverStartTime = millis();
     
-    if (!waterSensor) return;
-
-    if (!calibrationPrefs.begin(SENSOR_CALIBRATION_NAMESPACE, true)) {
-        Serial.print("Failed to load the calibration NVS storage in read mode");
+    if (!smsService) {
+        server->send(503, "application/json", "{\"error\":\"SMS service not available\"}");
+        return;
     }
     
-    int zero_mv = calibrationPrefs.getInt("zero_mv", -1);
-    if (zero_mv >= 0) {
-        waterSensor->setCalibrationPoint(0, zero_mv, 0.0f);
-        Serial.printf("[CALIBRATION] Loaded zero point from NVS: %d mV\n", zero_mv);
+    if (!smsService->hasPhoneNumber()) {
+        server->send(400, "application/json", "{\"error\":\"No phone number configured. Please save a phone number first.\"}");
+        return;
+    }
+    
+    if (!WiFi.isConnected()) {
+        server->send(503, "application/json", "{\"error\":\"WiFi not connected. Cannot send SMS.\"}");
+        return;
+    }
+    
+    Serial.println("[TEST] Sending test SMS...");
+    bool success = smsService->send("Boat Monitor Test: This is a test message from your ESP32 boat monitor.");
+    
+    if (success) {
+        Serial.println("[TEST] Test SMS sent successfully!");
+        server->send(200, "application/json", "{\"success\":true,\"message\":\"Test SMS sent successfully!\"}");
     } else {
-        Serial.println("[CALIBRATION] No zero point calibration found in NVS, using default");
+        Serial.println("[TEST] Test SMS failed to send");
+        server->send(500, "application/json", "{\"success\":false,\"error\":\"Failed to send test SMS. Check serial log for details.\"}");
     }
-    
-    int point2_mv = calibrationPrefs.getInt("point2_mv", -1);
-    float point2_cm = calibrationPrefs.getFloat("point2_cm", -1.0f);
-    if (point2_mv >= 0 && point2_cm >= 0) {
-        waterSensor->setCalibrationPoint(1, point2_mv, point2_cm);
-        Serial.printf("[CALIBRATION] Loaded second point from NVS: %d mV = %.2f cm (2-point calibration active)\n", 
-                      point2_mv, point2_cm);
-    } else {
-        Serial.println("[CALIBRATION] No second calibration point found in NVS");
-    }
-
-    calibrationPrefs.end();
 }
 
-void WiFiConfig::saveCalibration() {
-    if (!waterSensor) return;
-
-    if (!calibrationPrefs.begin(SENSOR_CALIBRATION_NAMESPACE, false)) {
-        Serial.print("Failed to load the calibration NVS storage in write mode");
+void ConfigServer::handleTestDiscord() {
+    serverStartTime = millis();
+    
+    if (!discordService) {
+        server->send(503, "application/json", "{\"error\":\"Discord service not available\"}");
+        return;
     }
     
-    int zero_mv = waterSensor->getZeroPointMilliVolts();
-    calibrationPrefs.putInt("zero_mv", zero_mv);
-    Serial.printf("[CALIBRATION] Saved zero point to NVS: %d mV\n", zero_mv);
+    if (!discordService->hasWebhookUrl()) {
+        server->send(400, "application/json", "{\"error\":\"No Discord webhook configured. Please save a webhook URL first.\"}");
+        return;
+    }
     
-    if (waterSensor->hasTwoPointCalibration()) {
-        int point2_mv = waterSensor->getSecondPointMilliVolts();
-        float point2_cm = waterSensor->getSecondPointLevelCm();
-        calibrationPrefs.putInt("point2_mv", point2_mv);
-        calibrationPrefs.putFloat("point2_cm", point2_cm);
-        Serial.printf("[CALIBRATION] Saved second point to NVS: %d mV = %.2f cm (2-point calibration)\n", 
-                      point2_mv, point2_cm);
+    if (!WiFi.isConnected()) {
+        server->send(503, "application/json", "{\"error\":\"WiFi not connected. Cannot send Discord message.\"}");
+        return;
+    }
+    
+    Serial.println("[TEST] Sending test Discord message...");
+    bool success = discordService->send("🚤 **Boat Monitor Test** - This is a test message from your ESP32 boat monitor.");
+    
+    if (success) {
+        Serial.println("[TEST] Test Discord message sent successfully!");
+        server->send(200, "application/json", "{\"success\":true,\"message\":\"Test Discord message sent successfully!\"}");
     } else {
-        calibrationPrefs.remove("point2_mv");
-        calibrationPrefs.remove("point2_cm");
-        Serial.println("[CALIBRATION] Removed second calibration point from NVS (single-point mode)");
+        Serial.println("[TEST] Test Discord message failed to send");
+        server->send(500, "application/json", "{\"success\":false,\"error\":\"Failed to send test Discord message. Check serial log for details.\"}");
     }
-
-    calibrationPrefs.end();
 }
 
-String WiFiConfig::getDebugPage() {
+// ============================================================================
+// DEBUG AND MONITORING HANDLERS
+// ============================================================================
+
+void ConfigServer::handleGetReading() {
+    serverStartTime = millis();
+
+    if (!waterSensor) {
+        String json = "{";
+        json += "\"sensorAvailable\":false,";
+        json += "\"error\":\"Water sensor not connected\"";
+        json += "}";
+        server->send(503, "application/json", json);
+        return;
+    }
+
+    SensorReading reading = waterSensor->readLevel();
+    String json = "{";
+    json += "\"sensorAvailable\":true,";
+    json += "\"valid\":" + String(reading.valid ? "true" : "false") + ",";
+    json += "\"millivolts\":" + String(reading.millivolts, 2);
+    if (reading.valid) {
+        json += ",\"level_cm\":" + String(reading.level_cm, 2);
+    }
+    json += "}";
+
+    server->send(200, "application/json", json);
+}
+
+void ConfigServer::handleDebug() {
+    serverStartTime = millis();
+    String html = getDebugPage();
+    server->send(200, "text/html", html);
+}
+
+String ConfigServer::getDebugPage() {
     if (!waterSensor) {
         return "<html><body><h1>Debug Page</h1><p>Sensor not available</p></body></html>";
     }
@@ -510,6 +595,38 @@ String WiFiConfig::getDebugPage() {
                     }).then(r => r.json()).then(data => {
                         alert(data.success ? 'Discord webhook saved!' : data.error);
                         location.reload();
+                    });
+                }
+                function testSMS() {
+                    if (!confirm('Send a test SMS message?')) return;
+                    document.getElementById('sms_test_btn').disabled = true;
+                    document.getElementById('sms_test_btn').textContent = 'Sending...';
+                    fetch('/notifications/test/sms', {
+                        method: 'POST'
+                    }).then(r => r.json()).then(data => {
+                        alert(data.success ? data.message : ('Error: ' + data.error));
+                        document.getElementById('sms_test_btn').disabled = false;
+                        document.getElementById('sms_test_btn').textContent = 'Test SMS';
+                    }).catch(err => {
+                        alert('Request failed: ' + err);
+                        document.getElementById('sms_test_btn').disabled = false;
+                        document.getElementById('sms_test_btn').textContent = 'Test SMS';
+                    });
+                }
+                function testDiscord() {
+                    if (!confirm('Send a test Discord message?')) return;
+                    document.getElementById('discord_test_btn').disabled = true;
+                    document.getElementById('discord_test_btn').textContent = 'Sending...';
+                    fetch('/notifications/test/discord', {
+                        method: 'POST'
+                    }).then(r => r.json()).then(data => {
+                        alert(data.success ? data.message : ('Error: ' + data.error));
+                        document.getElementById('discord_test_btn').disabled = false;
+                        document.getElementById('discord_test_btn').textContent = 'Test Discord';
+                    }).catch(err => {
+                        alert('Request failed: ' + err);
+                        document.getElementById('discord_test_btn').disabled = false;
+                        document.getElementById('discord_test_btn').textContent = 'Test Discord';
                     });
                 }
             </script>
@@ -604,6 +721,7 @@ String WiFiConfig::getDebugPage() {
     
     html += R"HTML(
                 <button onclick="savePhoneNumber()">Save Phone Number</button>
+                <button id="sms_test_btn" onclick="testSMS()" style="background-color:#4CAF50;color:white;">Test SMS</button>
                 
                 <h3>Discord Notifications</h3>
                 <label for="discord_webhook">Discord Webhook URL:</label>
@@ -621,6 +739,7 @@ String WiFiConfig::getDebugPage() {
     
     html += R"HTML(
                 <button onclick="saveDiscordWebhook()">Save Discord Webhook</button>
+                <button id="discord_test_btn" onclick="testDiscord()" style="background-color:#5865F2;color:white;">Test Discord</button>
                 
                 <p><strong>Current Status:</strong><br>)HTML";
     
@@ -651,3 +770,4 @@ String WiFiConfig::getDebugPage() {
     )HTML";
     return html;
 }
+

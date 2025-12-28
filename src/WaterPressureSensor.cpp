@@ -4,9 +4,9 @@
 
 WaterPressureSensor::WaterPressureSensor(bool mock)
     : currentReadingIndex(0), useMockData(mock), mockWaterLevel(0),
-      adcCalHandle(nullptr), calibrationInitialized(false), zeroReadingVoltage_mv(142),
+      adcCalHandle(nullptr), calibrationInitialized(false), zeroReadingVoltage_mv(590),
       secondPointVoltage_mv(0), secondPointLevel_cm(0.0f), twoPointCalibrationActive(false) {
-    // Default zero level is 142mV (typical for many pressure sensors)
+    // Default zero level is 590mV (typical for our setup)
     // This can be calibrated by measuring the sensor voltage at 0cm water level
     
     Timestamp lastReadTime;
@@ -21,9 +21,13 @@ WaterPressureSensor::WaterPressureSensor(bool mock)
 
 
 bool WaterPressureSensor::init() {
-    ads.begin();
-    ads.setGain(GAIN_ONE);
-    ads.setDataRate(RATE_ADS1115_8SPS);
+
+    // When mocked, don't setup i2c with ADC as this will error
+    if (!useMockData) {
+        ads.begin();
+        ads.setGain(GAIN_ONE);
+        ads.setDataRate(RATE_ADS1115_8SPS);
+    }
 
     SensorReading firstReading = readLevel();
     
@@ -113,7 +117,7 @@ SensorReading WaterPressureSensor::readLevel() {
     reading.valid = true; // Assume valid until proven otherwise
     
     if (useMockData) {
-        mockWaterLevel += random(-1, 4);
+        mockWaterLevel = random(4, 20);
         reading.level_cm = mockWaterLevel;
     } else {
         
@@ -126,7 +130,7 @@ SensorReading WaterPressureSensor::readLevel() {
         reading.level_cm = voltageToCentimeters(reading.millivolts);
         
         // Validate reading based on voltage
-        if (reading.millivolts < zeroReadingVoltage_mv) reading.valid = false;
+        if (reading.millivolts < (zeroReadingVoltage_mv - READING_ERROR_MARGIN_MV)) reading.valid = false;
     }
     
     reading.timestamp = TimeManagement::getInstance().getCurrentTimestamp();
