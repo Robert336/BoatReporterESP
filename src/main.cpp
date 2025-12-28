@@ -2,7 +2,7 @@
 #include <WiFi.h>
 #include "TimeManagement.h"
 #include "WiFiManager.h"
-#include "WiFiConfig.h"
+#include "ConfigServer.h"
 #include "LightCode.h"
 #include "WaterPressureSensor.h"
 #include "SendSMS.h"
@@ -40,9 +40,10 @@ SystemState systemState; // Tracks current device state
 static constexpr uint32_t STATUS_LOG_INTERVAL_MS = 10000; // Log status every 10 seconds
 uint32_t lastStatusLogTime = 0;
 
-static constexpr int BUTTON_PIN = 23; // GPIO 23
-static constexpr int ALERT_PIN = 19; // GPIO 13
+static constexpr int BUTTON_PIN = 23; // GPIO
+static constexpr int ALERT_PIN = 19; // GPIO
 static constexpr int SENSOR_PIN = 32; // Water sensor analog pin ADC1 because wifi is required
+static constexpr bool USE_MOCK = true; // For mocking sensor readings
 
 
 float EMERGENCY_WATER_LEVEL_CM = 15;
@@ -55,11 +56,11 @@ volatile bool buttonPressed = false;
 volatile unsigned long lastButtonPress = 0;
 
 // Create easier references to the singleton objects
-WiFiConfig* wifiConfig = nullptr;
+ConfigServer* configServer = nullptr;
 LightCode light(LED_BUILTIN);
 TimeManagement& rtc = TimeManagement::getInstance(); 
 WiFiManager& wifiMgr = WiFiManager::getInstance();
-WaterPressureSensor waterSensor(false); // false = use real sensor, not mock data
+WaterPressureSensor waterSensor(USE_MOCK); // false = use real sensor, not mock data
 SendSMS sms;
 SendDiscord discord;
 
@@ -85,10 +86,10 @@ void setup() {
     systemState.emergencyConditionsFalseTime = millis();
     systemState.lastEmergencyMessageTime = 0;
     
-    // Initialize WiFiConfig early to load calibration from NVS
+    // Initialize ConfigServer early to load calibration from NVS
     // This ensures saved calibration is applied before first sensor reading
-    wifiConfig = new WiFiConfig(&waterSensor, &sms, &discord);
-    Serial.println("[SETUP] WiFiConfig initialized - calibration loaded from NVS");
+    configServer = new ConfigServer(&waterSensor, &sms, &discord);
+    Serial.println("[SETUP] ConfigServer initialized - calibration loaded from NVS");
 
     pinMode(ALERT_PIN, OUTPUT);
     pinMode(BUTTON_PIN, INPUT_PULLUP);
@@ -196,16 +197,16 @@ void loop() {
             } 
             break;
         case CONFIG:
-            if (!wifiConfig->isSetupModeActive()) {
-                // Start setup mode (wifiConfig already exists from setup())
-                Serial.println("[STATE] Starting WiFi config mode");
-                wifiConfig->startSetupMode();
+            if (!configServer->isSetupModeActive()) {
+                // Start setup mode (configServer already exists from setup())
+                Serial.println("[STATE] Starting configuration server mode");
+                configServer->startSetupMode();
             }
             else {
-                wifiConfig->handleClient();
+                configServer->handleClient();
                 
                 // Check if setup mode has ended (timeout or manual stop)
-                if (!wifiConfig->isSetupModeActive()) {
+                if (!configServer->isSetupModeActive()) {
                     Serial.printf("[STATE] Transitioning from %s to NORMAL (config completed)\n", stateToString(systemState.currentState));
                     systemState.currentState = NORMAL;
                     systemState.configCommandReceived = false;

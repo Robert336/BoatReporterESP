@@ -8,6 +8,7 @@
 // The usable range of the water sensor in centimeters
 constexpr float WATER_LEVEL_RANGE_MIN_CM = 5.0;
 constexpr float WATER_LEVEL_RANGE_MAX_CM = 50.0;
+static constexpr int READING_ERROR_MARGIN_MV = 15;
 
 // Size of the circular buffer for smoothing readings
 static constexpr int READINGS_BUFFER_SIZE = 10; 
