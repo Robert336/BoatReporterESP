@@ -45,9 +45,7 @@ static constexpr int ALERT_PIN = 19; // GPIO
 static constexpr int SENSOR_PIN = 32; // Water sensor analog pin ADC1 because wifi is required
 static constexpr bool USE_MOCK = true; // For mocking sensor readings
 
-
-float EMERGENCY_WATER_LEVEL_CM = 15;
-float EMERGENCY_WATER_CM_PER_HR = 5;
+float EMERGENCY_WATER_LEVEL_CM = 30;
 
 int EMERGENCY_TIMEOUT_MS = 1000;
 int EMERGENCY_MESSAGE_TIMEOUT_MS = 1000 * 30;
