@@ -23,10 +23,21 @@
  * a user-friendly web interface for all system configuration needs.
  */
 constexpr const char SENSOR_CALIBRATION_NAMESPACE[] = "sensor_cal";
+constexpr const char EMERGENCY_SETTINGS_NAMESPACE[] = "emergency";
 constexpr const char AP_SSID[] = "ESP32-BoatMonitor-Setup";
 constexpr const char AP_PASSWORD[] = "12345678";
 constexpr unsigned long SERVER_TIMEOUT_MS = 240000;
-constexpr int DNS_PORT = 53; // Standard DNS port for captive portal 
+constexpr int DNS_PORT = 53; // Standard DNS port for captive portal
+
+// Default emergency settings
+constexpr float DEFAULT_EMERGENCY_WATER_LEVEL_CM = 30.0f;
+constexpr int DEFAULT_EMERGENCY_NOTIF_FREQ_MS = 900000; // 15 minutes
+
+// Emergency settings validation limits
+constexpr float MIN_EMERGENCY_WATER_LEVEL_CM = WATER_LEVEL_RANGE_MIN_CM; // 5.0 cm
+constexpr float MAX_EMERGENCY_WATER_LEVEL_CM = WATER_LEVEL_RANGE_MAX_CM; // 100 cm (max sensor range)
+constexpr int MIN_EMERGENCY_NOTIF_FREQ_MS = 5000;      // 5 seconds
+constexpr int MAX_EMERGENCY_NOTIF_FREQ_MS = 3600000;   // 1 hour 
 
 class ConfigServer {
 private:
@@ -37,8 +48,13 @@ private:
     SendSMS* smsService;
     SendDiscord* discordService;
     Preferences calibrationPrefs;           // NVS storage for calibration data
+    Preferences emergencyPrefs;             // NVS storage for emergency settings
     unsigned long serverStartTime;
     bool setupModeActive = false;
+    
+    // === Emergency Settings ===
+    float emergencyWaterLevel_cm;
+    int emergencyNotifFreq_ms;
     
     // === WiFi Configuration Handlers ===
     void handleRoot();                      // Serve main configuration page
@@ -52,6 +68,12 @@ private:
     void handleGetCalibration();            // GET: Return current calibration settings
     void loadCalibration();                 // Load calibration from NVS
     void saveCalibration();                 // Save calibration to NVS
+    
+    // === Emergency Settings Handlers ===
+    void handleSetEmergencyLevel();         // POST: Set emergency water level threshold
+    void handleSetEmergencyNotifFreq();     // POST: Set emergency notification frequency
+    void loadEmergencySettings();           // Load emergency settings from NVS
+    void saveEmergencySettings();           // Save emergency settings to NVS
     
     // === Notification Settings Handlers ===
     void handleGetNotifications();          // GET: Return current notification settings
@@ -80,6 +102,10 @@ public:
     
     // Should be called in main loop
     void handleClient();
+    
+    // === Emergency Settings Getters ===
+    float getEmergencyWaterLevel() const { return emergencyWaterLevel_cm; }
+    int getEmergencyNotifFreq() const { return emergencyNotifFreq_ms; }
 };
 
 
