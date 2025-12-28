@@ -77,7 +77,6 @@ const char* stateToString(State state) {
 
 void setup() {
     Serial.begin(115200);
-    light.setPattern(PATTERN_SLOW_BLINK);
     waterSensor.init();
     
     // Initialize system state timers
@@ -105,9 +104,11 @@ void setup() {
     if (ssids.empty()) {
         systemState.currentState = CONFIG;
         Serial.printf("[STATE] Initial state: %s (no WiFi credentials found)\n", stateToString(systemState.currentState));
+        light.setPattern(PATTERN_SLOW_BLINK); // CONFIG state pattern
     } else {
         systemState.currentState = NORMAL;
         Serial.printf("[STATE] Initial state: %s\n", stateToString(systemState.currentState));
+        light.setPattern(PATTERN_OFF); // NORMAL state pattern
         Serial.println("WiFi credentials found, connecting...");
         delay(2000);
         
@@ -122,6 +123,9 @@ void loop() {
     
     rtc.sync();
     light.update();
+
+    // Track state before processing to detect changes
+    State previousState = systemState.currentState;
 
     SensorReading currentReading = waterSensor.readLevel();
     Serial.printf("SensorReading: valid=%d, level_cm=%.2f, millivolts=%.2f, timestamp={isNTPSynced=%d, unixTime=%ld, timeSinceBoot=%u}\n",
@@ -174,7 +178,8 @@ void loop() {
                 Serial.printf("[STATE] Transitioning from %s to CONFIG (button pressed)\n", stateToString(systemState.currentState));
                 systemState.currentState = CONFIG;
                 systemState.lastStateChangeTime = millis();
-            } 
+            }
+            
             // send message about sensor failure?
             break;
         case NORMAL:
@@ -241,6 +246,24 @@ void loop() {
                 digitalWrite(ALERT_PIN, HIGH);
             }
             break;
+    }
+
+    // Automatically update LED pattern if state changed
+    if (systemState.currentState != previousState) {
+        switch (systemState.currentState) {
+            case NORMAL:
+                light.setPattern(PATTERN_OFF);
+                break;
+            case CONFIG:
+                light.setPattern(PATTERN_SLOW_BLINK);
+                break;
+            case ERROR:
+                light.setPattern(PATTERN_FAST_BLINK);
+                break;
+            case EMERGENCY:
+                light.setPattern(PATTERN_SOLID);
+                break;
+        }
     }
 
     // Periodic status logging
