@@ -8,6 +8,8 @@ ConfigServer::ConfigServer(WaterPressureSensor* sensor, SendSMS* sms, SendDiscor
     : server(nullptr), waterSensor(sensor), smsService(sms), discordService(discord) {
     // Initialize calibration preferences
     loadCalibration();
+    // Initialize emergency settings
+    loadEmergencySettings();
 }
 
 ConfigServer::~ConfigServer() {
@@ -19,6 +21,7 @@ ConfigServer::~ConfigServer() {
     }
     stopSetupMode();
     calibrationPrefs.end(); // Close Preferences namespace
+    emergencyPrefs.end(); // Close emergency settings namespace
 }
 
 void ConfigServer::startSetupMode() {
@@ -77,9 +80,25 @@ void ConfigServer::startSetupMode() {
     
     // Route: POST /calibrate/point2 → set second calibration point
     server->on("/calibrate/point2", HTTP_POST, [this]() { handleCalibratePoint2(); });
+
+    // Route: POST /calibration/emergency-level -> set emergency water level
+    server->on("/calibration/emergency-level", HTTP_POST, [this]() { handleSetEmergencyLevel(); });
+    
+    // Route: GET /emergency-settings → return current emergency settings
+    server->on("/emergency-settings", HTTP_GET, [this]() { 
+        String json = "{";
+        json += "\"emergencyWaterLevel_cm\":" + String(emergencyWaterLevel_cm, 2) + ",";
+        json += "\"emergencyNotifFreq_ms\":" + String(emergencyNotifFreq_ms);
+        json += "}";
+        server->send(200, "application/json", json);
+        serverStartTime = millis();
+    });
     
     // Route: GET /notifications → return current notification settings
     server->on("/notifications", HTTP_GET, [this]() { handleGetNotifications(); });
+
+    // Route: POST /notifications/emergency-notif-freq -> set emergency notification frequency
+    server->on("/notifications/emergency-freq", HTTP_POST, [this]() { handleSetEmergencyNotifFreq(); });
     
     // Route: POST /notifications/phone → set SMS phone number
     server->on("/notifications/phone", HTTP_POST, [this]() { handleSetPhoneNumber(); });
@@ -379,6 +398,119 @@ void ConfigServer::saveCalibration() {
 }
 
 // ============================================================================
+// EMERGENCY SETTINGS HANDLERS
+// ============================================================================
+
+void ConfigServer::handleSetEmergencyLevel() {
+    serverStartTime = millis();
+    
+    if (server->hasArg("level_cm")) {
+        float level_cm = server->arg("level_cm").toFloat();
+        
+        // Validate the input against sensor usable range
+        if (level_cm < MIN_EMERGENCY_WATER_LEVEL_CM || level_cm > MAX_EMERGENCY_WATER_LEVEL_CM) {
+            String errorMsg = "{\"error\":\"Invalid level. Must be between ";
+            errorMsg += String(MIN_EMERGENCY_WATER_LEVEL_CM, 1) + " and ";
+            errorMsg += String(MAX_EMERGENCY_WATER_LEVEL_CM, 1) + " cm\"}";
+            server->send(400, "application/json", errorMsg);
+            return;
+        }
+        
+        emergencyWaterLevel_cm = level_cm;
+        saveEmergencySettings();
+        
+        String json = "{";
+        json += "\"success\":true,";
+        json += "\"message\":\"Emergency water level updated\",";
+        json += "\"level_cm\":" + String(level_cm, 2);
+        json += "}";
+        
+        server->send(200, "application/json", json);
+        Serial.printf("[CONFIG] Emergency water level updated: %.2f cm\n", level_cm);
+    } else {
+        server->send(400, "application/json", "{\"error\":\"Missing level_cm parameter\"}");
+    }
+}
+
+void ConfigServer::handleSetEmergencyNotifFreq() {
+    serverStartTime = millis();
+    
+    if (server->hasArg("freq_ms")) {
+        int freq_ms = server->arg("freq_ms").toInt();
+        
+        // Validate the input
+        if (freq_ms < MIN_EMERGENCY_NOTIF_FREQ_MS || freq_ms > MAX_EMERGENCY_NOTIF_FREQ_MS) {
+            String errorMsg = "{\"error\":\"Invalid frequency. Must be between ";
+            errorMsg += String(MIN_EMERGENCY_NOTIF_FREQ_MS) + "ms (" + String(MIN_EMERGENCY_NOTIF_FREQ_MS / 1000) + "s) and ";
+            errorMsg += String(MAX_EMERGENCY_NOTIF_FREQ_MS) + "ms (" + String(MAX_EMERGENCY_NOTIF_FREQ_MS / 1000) + "s)\"}";
+            server->send(400, "application/json", errorMsg);
+            return;
+        }
+        
+        emergencyNotifFreq_ms = freq_ms;
+        saveEmergencySettings();
+        
+        String json = "{";
+        json += "\"success\":true,";
+        json += "\"message\":\"Emergency notification frequency updated\",";
+        json += "\"freq_ms\":" + String(freq_ms) + ",";
+        json += "\"freq_seconds\":" + String(freq_ms / 1000);
+        json += "}";
+        
+        server->send(200, "application/json", json);
+        Serial.printf("[CONFIG] Emergency notification frequency updated: %d ms (%d seconds)\n", freq_ms, freq_ms / 1000);
+    } else {
+        server->send(400, "application/json", "{\"error\":\"Missing freq_ms parameter\"}");
+    }
+}
+
+void ConfigServer::loadEmergencySettings() {
+    // Set defaults first
+    emergencyWaterLevel_cm = DEFAULT_EMERGENCY_WATER_LEVEL_CM;
+    emergencyNotifFreq_ms = DEFAULT_EMERGENCY_NOTIF_FREQ_MS;
+    
+    if (!emergencyPrefs.begin(EMERGENCY_SETTINGS_NAMESPACE, true)) {
+        Serial.println("[EMERGENCY] Failed to load emergency settings NVS storage in read mode");
+        return;
+    }
+    
+    float saved_level = emergencyPrefs.getFloat("level_cm", -1.0f);
+    if (saved_level >= 0) {
+        emergencyWaterLevel_cm = saved_level;
+        Serial.printf("[EMERGENCY] Loaded emergency water level from NVS: %.2f cm\n", emergencyWaterLevel_cm);
+    } else {
+        Serial.printf("[EMERGENCY] No saved emergency water level found, using default: %.2f cm\n", emergencyWaterLevel_cm);
+    }
+    
+    int saved_freq = emergencyPrefs.getInt("notif_freq_ms", -1);
+    if (saved_freq >= 0) {
+        emergencyNotifFreq_ms = saved_freq;
+        Serial.printf("[EMERGENCY] Loaded emergency notification frequency from NVS: %d ms (%d seconds)\n", 
+                      emergencyNotifFreq_ms, emergencyNotifFreq_ms / 1000);
+    } else {
+        Serial.printf("[EMERGENCY] No saved notification frequency found, using default: %d ms (%d seconds)\n",
+                      emergencyNotifFreq_ms, emergencyNotifFreq_ms / 1000);
+    }
+    
+    emergencyPrefs.end();
+}
+
+void ConfigServer::saveEmergencySettings() {
+    if (!emergencyPrefs.begin(EMERGENCY_SETTINGS_NAMESPACE, false)) {
+        Serial.println("[EMERGENCY] Failed to load emergency settings NVS storage in write mode");
+        return;
+    }
+    
+    emergencyPrefs.putFloat("level_cm", emergencyWaterLevel_cm);
+    emergencyPrefs.putInt("notif_freq_ms", emergencyNotifFreq_ms);
+    
+    Serial.printf("[EMERGENCY] Saved emergency settings to NVS: level=%.2f cm, freq=%d ms\n", 
+                  emergencyWaterLevel_cm, emergencyNotifFreq_ms);
+    
+    emergencyPrefs.end();
+}
+
+// ============================================================================
 // NOTIFICATION SETTINGS HANDLERS
 // ============================================================================
 
@@ -603,6 +735,31 @@ String ConfigServer::getDebugPage() {
                         location.reload();
                     });
                 }
+                function saveEmergencyLevel() {
+                    const level = document.getElementById('emergency_level').value;
+                    if (!level) { alert('Please enter emergency water level'); return; }
+                    fetch('/calibration/emergency-level', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                        body: 'level_cm=' + level
+                    }).then(r => r.json()).then(data => {
+                        alert(data.success ? 'Emergency level saved!' : data.error);
+                        location.reload();
+                    });
+                }
+                function saveEmergencyFreq() {
+                    const freq_sec = document.getElementById('emergency_freq').value;
+                    if (!freq_sec) { alert('Please enter notification frequency in seconds'); return; }
+                    const freq_ms = freq_sec * 1000;
+                    fetch('/notifications/emergency-freq', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                        body: 'freq_ms=' + freq_ms
+                    }).then(r => r.json()).then(data => {
+                        alert(data.success ? 'Emergency frequency saved!' : data.error);
+                        location.reload();
+                    });
+                }
                 function savePhoneNumber() {
                     const phone = document.getElementById('phone_number').value;
                     if (!phone) { alert('Please enter a phone number'); return; }
@@ -731,6 +888,42 @@ String ConfigServer::getDebugPage() {
         html += "<em>Single-point calibration</em>";
     }
     html += R"HTML(</p>
+            </div>
+            
+            <h2>Emergency Settings</h2>
+            <div class="section">
+                <h3>Emergency Water Level Threshold</h3>
+                <p>Set the water level (in cm) that triggers emergency alerts.</p>
+                <label for="emergency_level">Emergency Level (cm):</label>
+                <input type="number" id="emergency_level" step="1" min=")HTML";
+    html += String(MIN_EMERGENCY_WATER_LEVEL_CM, 1);
+    html += R"HTML(" max=")HTML";
+    html += String(MAX_EMERGENCY_WATER_LEVEL_CM, 1);
+    html += R"HTML(">)HTML";
+    html += "<script>document.getElementById('emergency_level').value=";
+    html += String(emergencyWaterLevel_cm, 1);
+    html += R"HTML(;</script>
+                <button onclick="saveEmergencyLevel()">Save Emergency Level</button>
+                
+                <h3>Emergency Notification Frequency</h3>
+                <p>Set how often (in seconds) emergency notifications should be sent while in emergency state.</p>
+                <label for="emergency_freq">Notification Frequency (seconds):</label>
+                <input type="number" id="emergency_freq" min=")HTML";
+    html += String(MIN_EMERGENCY_NOTIF_FREQ_MS / 1000);
+    html += R"HTML(" max=")HTML";
+    html += String(MAX_EMERGENCY_NOTIF_FREQ_MS / 1000);
+    html += R"HTML(">)HTML";
+    html += "<script>document.getElementById('emergency_freq').value=";
+    html += String(emergencyNotifFreq_ms / 1000);
+    html += R"HTML(;</script>
+                <button onclick="saveEmergencyFreq()">Save Notification Frequency</button>
+                
+                <p><strong>Current Settings:</strong><br>
+                Emergency Level: )HTML";
+    html += String(emergencyWaterLevel_cm, 2);
+    html += " cm<br>Notification Frequency: ";
+    html += String(emergencyNotifFreq_ms / 1000);
+    html += R"HTML( seconds</p>
             </div>
             
             <h2>Notification Settings</h2>

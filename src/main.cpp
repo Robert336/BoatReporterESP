@@ -45,10 +45,8 @@ static constexpr int ALERT_PIN = 19; // GPIO
 static constexpr int SENSOR_PIN = 32; // Water sensor analog pin ADC1 because wifi is required
 static constexpr bool USE_MOCK = true; // For mocking sensor readings
 
-float EMERGENCY_WATER_LEVEL_CM = 30;
-
-int EMERGENCY_TIMEOUT_MS = 1000;
-int EMERGENCY_MESSAGE_TIMEOUT_MS = 1000 * 30;
+// Emergency timeout before transitioning to EMERGENCY state
+static constexpr int EMERGENCY_TIMEOUT_MS = 1000;
 
 volatile bool buttonPressed = false;
 volatile unsigned long lastButtonPress = 0;
@@ -147,12 +145,13 @@ void loop() {
     lastConfigCommandReceived = systemState.configCommandReceived;
 
     bool previousEmergencyConditions = systemState.emergencyConditions;
-    if (currentReading.level_cm >= EMERGENCY_WATER_LEVEL_CM) {
+    float emergencyThreshold = configServer->getEmergencyWaterLevel();
+    if (currentReading.level_cm >= emergencyThreshold) {
         systemState.emergencyConditions = true;
         if (!previousEmergencyConditions) {
             systemState.emergencyConditionsTrueTime = millis(); // Update timer when conditions START
-            Serial.printf("[EVENT] Emergency conditions detected! level=%.2f cm (threshold=%.2f)",
-                          currentReading.level_cm, EMERGENCY_WATER_LEVEL_CM);
+            Serial.printf("[EVENT] Emergency conditions detected! level=%.2f cm (threshold=%.2f cm)\n",
+                          currentReading.level_cm, emergencyThreshold);
         }
     } else {
         systemState.emergencyConditions = false;
@@ -226,7 +225,8 @@ void loop() {
                 digitalWrite(ALERT_PIN, LOW);
             } else {
                 // Only do EMERGENCY operations if we're staying in EMERGENCY state
-                if (millis() - systemState.lastEmergencyMessageTime >= EMERGENCY_MESSAGE_TIMEOUT_MS) {
+                int emergencyFreq = configServer->getEmergencyNotifFreq();
+                if (millis() - systemState.lastEmergencyMessageTime >= emergencyFreq) {
                     char emergMessageBuf[120];
                     snprintf(emergMessageBuf, sizeof(emergMessageBuf), "Boat Monitor Alert: Emergency Level %.2f cm", currentReading.level_cm);
                     Serial.printf("[STATE] EMERGENCY: Sending alert message: %s\n", emergMessageBuf);
