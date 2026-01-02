@@ -110,8 +110,10 @@ On first boot (or when no WiFi credentials are saved), the device automatically 
 
 1. The built-in LED will **slow blink** indicating CONFIG mode
 2. Connect to the WiFi access point: `BoatMonitor-Setup`
-3. Open a web browser and navigate to `http://192.168.4.1` or any website as the captive portal should automatically open `http://192.168.4.1`
+3. Open a web browser and navigate to `http://192.168.4.1` or any `http://...` domain (`https://...` will not work since the site does not use SSL) as the captive portal should automatically open `http://192.168.4.1`
 4. You'll see the configuration web interface
+
+In case you are concerned about no SSL, remember this device is not connected to the internet. The only way to man-in-the-middle attack would to be physically there with you as you connect to the config server on your boat.
 
 ### WiFi Configuration
 
