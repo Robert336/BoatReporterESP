@@ -81,14 +81,23 @@ void ConfigServer::startSetupMode() {
     // Route: POST /calibrate/point2 → set second calibration point
     server->on("/calibrate/point2", HTTP_POST, [this]() { handleCalibratePoint2(); });
 
-    // Route: POST /calibration/emergency-level -> set emergency water level
+    // Route: POST /calibration/emergency-level -> set emergency water level (Tier 1)
     server->on("/calibration/emergency-level", HTTP_POST, [this]() { handleSetEmergencyLevel(); });
+    
+    // Route: POST /emergency/urgent-level -> set urgent emergency water level (Tier 2)
+    server->on("/emergency/urgent-level", HTTP_POST, [this]() { handleSetUrgentEmergencyLevel(); });
+    
+    // Route: POST /emergency/test-pin -> test the emergency pin output
+    server->on("/emergency/test-pin", HTTP_POST, [this]() { handleTestEmergencyPin(); });
     
     // Route: GET /emergency-settings → return current emergency settings
     server->on("/emergency-settings", HTTP_GET, [this]() { 
         String json = "{";
         json += "\"emergencyWaterLevel_cm\":" + String(emergencyWaterLevel_cm, 2) + ",";
-        json += "\"emergencyNotifFreq_ms\":" + String(emergencyNotifFreq_ms);
+        json += "\"emergencyNotifFreq_ms\":" + String(emergencyNotifFreq_ms) + ",";
+        json += "\"urgentEmergencyWaterLevel_cm\":" + String(urgentEmergencyWaterLevel_cm, 2) + ",";
+        json += "\"hornOnDuration_ms\":" + String(hornOnDuration_ms) + ",";
+        json += "\"hornOffDuration_ms\":" + String(hornOffDuration_ms);
         json += "}";
         server->send(200, "application/json", json);
         serverStartTime = millis();
@@ -416,17 +425,25 @@ void ConfigServer::handleSetEmergencyLevel() {
             return;
         }
         
+        // Validate that Tier 1 threshold is less than Tier 2 threshold
+        if (level_cm >= urgentEmergencyWaterLevel_cm) {
+            String errorMsg = "{\"error\":\"Tier 1 threshold must be less than Tier 2 threshold (";
+            errorMsg += String(urgentEmergencyWaterLevel_cm, 2) + " cm)\"}";
+            server->send(400, "application/json", errorMsg);
+            return;
+        }
+        
         emergencyWaterLevel_cm = level_cm;
         saveEmergencySettings();
         
         String json = "{";
         json += "\"success\":true,";
-        json += "\"message\":\"Emergency water level updated\",";
+        json += "\"message\":\"Emergency water level (Tier 1) updated\",";
         json += "\"level_cm\":" + String(level_cm, 2);
         json += "}";
         
         server->send(200, "application/json", json);
-        Serial.printf("[CONFIG] Emergency water level updated: %.2f cm\n", level_cm);
+        Serial.printf("[CONFIG] Emergency water level (Tier 1) updated: %.2f cm\n", level_cm);
     } else {
         server->send(400, "application/json", "{\"error\":\"Missing level_cm parameter\"}");
     }
@@ -464,10 +481,75 @@ void ConfigServer::handleSetEmergencyNotifFreq() {
     }
 }
 
+void ConfigServer::handleSetUrgentEmergencyLevel() {
+    serverStartTime = millis();
+    
+    if (server->hasArg("level_cm")) {
+        float level_cm = server->arg("level_cm").toFloat();
+        
+        // Validate the input against sensor usable range
+        if (level_cm < MIN_EMERGENCY_WATER_LEVEL_CM || level_cm > MAX_EMERGENCY_WATER_LEVEL_CM) {
+            String errorMsg = "{\"error\":\"Invalid level. Must be between ";
+            errorMsg += String(MIN_EMERGENCY_WATER_LEVEL_CM, 1) + " and ";
+            errorMsg += String(MAX_EMERGENCY_WATER_LEVEL_CM, 1) + " cm\"}";
+            server->send(400, "application/json", errorMsg);
+            return;
+        }
+        
+        // Validate that Tier 2 threshold is greater than Tier 1 threshold
+        if (level_cm <= emergencyWaterLevel_cm) {
+            String errorMsg = "{\"error\":\"Tier 2 threshold must be greater than Tier 1 threshold (";
+            errorMsg += String(emergencyWaterLevel_cm, 2) + " cm)\"}";
+            server->send(400, "application/json", errorMsg);
+            return;
+        }
+        
+        urgentEmergencyWaterLevel_cm = level_cm;
+        saveEmergencySettings();
+        
+        String json = "{";
+        json += "\"success\":true,";
+        json += "\"message\":\"Urgent emergency water level (Tier 2) updated\",";
+        json += "\"level_cm\":" + String(level_cm, 2);
+        json += "}";
+        
+        server->send(200, "application/json", json);
+        Serial.printf("[CONFIG] Urgent emergency water level (Tier 2) updated: %.2f cm\n", level_cm);
+    } else {
+        server->send(400, "application/json", "{\"error\":\"Missing level_cm parameter\"}");
+    }
+}
+
+void ConfigServer::handleTestEmergencyPin() {
+    serverStartTime = millis();
+    
+    Serial.println("[TEST] Testing emergency pin output...");
+    
+    // Set the pin HIGH for 2 seconds to test the connected device
+    const int ALERT_PIN = 19; // GPIO 19 as defined in main.cpp
+    digitalWrite(ALERT_PIN, HIGH);
+    Serial.println("[TEST] Emergency pin set HIGH");
+    
+    delay(2000); // 2 second test pulse
+    
+    digitalWrite(ALERT_PIN, LOW);
+    Serial.println("[TEST] Emergency pin set LOW - test complete");
+    
+    String json = "{";
+    json += "\"success\":true,";
+    json += "\"message\":\"Emergency pin test completed (2 second pulse)\"";
+    json += "}";
+    
+    server->send(200, "application/json", json);
+}
+
 void ConfigServer::loadEmergencySettings() {
     // Set defaults first
     emergencyWaterLevel_cm = DEFAULT_EMERGENCY_WATER_LEVEL_CM;
     emergencyNotifFreq_ms = DEFAULT_EMERGENCY_NOTIF_FREQ_MS;
+    urgentEmergencyWaterLevel_cm = DEFAULT_URGENT_EMERGENCY_WATER_LEVEL_CM;
+    hornOnDuration_ms = DEFAULT_HORN_ON_DURATION_MS;
+    hornOffDuration_ms = DEFAULT_HORN_OFF_DURATION_MS;
     
     if (!emergencyPrefs.begin(EMERGENCY_SETTINGS_NAMESPACE, true)) {
         Serial.println("[EMERGENCY] Failed to load emergency settings NVS storage in read mode");
@@ -477,7 +559,7 @@ void ConfigServer::loadEmergencySettings() {
     float saved_level = emergencyPrefs.getFloat("level_cm", -1.0f);
     if (saved_level >= 0) {
         emergencyWaterLevel_cm = saved_level;
-        Serial.printf("[EMERGENCY] Loaded emergency water level from NVS: %.2f cm\n", emergencyWaterLevel_cm);
+        Serial.printf("[EMERGENCY] Loaded emergency water level (Tier 1) from NVS: %.2f cm\n", emergencyWaterLevel_cm);
     } else {
         Serial.printf("[EMERGENCY] No saved emergency water level found, using default: %.2f cm\n", emergencyWaterLevel_cm);
     }
@@ -492,6 +574,30 @@ void ConfigServer::loadEmergencySettings() {
                       emergencyNotifFreq_ms, emergencyNotifFreq_ms / 1000);
     }
     
+    float saved_urgent_level = emergencyPrefs.getFloat("urgent_level_cm", -1.0f);
+    if (saved_urgent_level >= 0) {
+        urgentEmergencyWaterLevel_cm = saved_urgent_level;
+        Serial.printf("[EMERGENCY] Loaded urgent emergency water level (Tier 2) from NVS: %.2f cm\n", urgentEmergencyWaterLevel_cm);
+    } else {
+        Serial.printf("[EMERGENCY] No saved urgent emergency water level found, using default: %.2f cm\n", urgentEmergencyWaterLevel_cm);
+    }
+    
+    int saved_horn_on = emergencyPrefs.getInt("horn_on_ms", -1);
+    if (saved_horn_on >= 0) {
+        hornOnDuration_ms = saved_horn_on;
+        Serial.printf("[EMERGENCY] Loaded horn ON duration from NVS: %d ms\n", hornOnDuration_ms);
+    } else {
+        Serial.printf("[EMERGENCY] No saved horn ON duration found, using default: %d ms\n", hornOnDuration_ms);
+    }
+    
+    int saved_horn_off = emergencyPrefs.getInt("horn_off_ms", -1);
+    if (saved_horn_off >= 0) {
+        hornOffDuration_ms = saved_horn_off;
+        Serial.printf("[EMERGENCY] Loaded horn OFF duration from NVS: %d ms\n", hornOffDuration_ms);
+    } else {
+        Serial.printf("[EMERGENCY] No saved horn OFF duration found, using default: %d ms\n", hornOffDuration_ms);
+    }
+    
     emergencyPrefs.end();
 }
 
@@ -503,9 +609,12 @@ void ConfigServer::saveEmergencySettings() {
     
     emergencyPrefs.putFloat("level_cm", emergencyWaterLevel_cm);
     emergencyPrefs.putInt("notif_freq_ms", emergencyNotifFreq_ms);
+    emergencyPrefs.putFloat("urgent_level_cm", urgentEmergencyWaterLevel_cm);
+    emergencyPrefs.putInt("horn_on_ms", hornOnDuration_ms);
+    emergencyPrefs.putInt("horn_off_ms", hornOffDuration_ms);
     
-    Serial.printf("[EMERGENCY] Saved emergency settings to NVS: level=%.2f cm, freq=%d ms\n", 
-                  emergencyWaterLevel_cm, emergencyNotifFreq_ms);
+    Serial.printf("[EMERGENCY] Saved emergency settings to NVS: Tier1=%.2f cm, Tier2=%.2f cm, freq=%d ms, horn=%d/%d ms\n", 
+                  emergencyWaterLevel_cm, urgentEmergencyWaterLevel_cm, emergencyNotifFreq_ms, hornOnDuration_ms, hornOffDuration_ms);
     
     emergencyPrefs.end();
 }
@@ -816,6 +925,34 @@ String ConfigServer::getDebugPage() {
                         document.getElementById('discord_test_btn').textContent = 'Test Discord';
                     });
                 }
+                function saveUrgentEmergencyLevel() {
+                    const level = document.getElementById('urgent_emergency_level').value;
+                    if (!level) { alert('Please enter urgent emergency water level'); return; }
+                    fetch('/emergency/urgent-level', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                        body: 'level_cm=' + level
+                    }).then(r => r.json()).then(data => {
+                        alert(data.success ? 'Urgent emergency level saved!' : data.error);
+                        location.reload();
+                    });
+                }
+                function testEmergencyPin() {
+                    if (!confirm('Test the emergency pin output device? This will activate it for 2 seconds.')) return;
+                    document.getElementById('pin_test_btn').disabled = true;
+                    document.getElementById('pin_test_btn').textContent = 'Testing...';
+                    fetch('/emergency/test-pin', {
+                        method: 'POST'
+                    }).then(r => r.json()).then(data => {
+                        alert(data.success ? data.message : ('Error: ' + data.error));
+                        document.getElementById('pin_test_btn').disabled = false;
+                        document.getElementById('pin_test_btn').textContent = 'Test Emergency Pin';
+                    }).catch(err => {
+                        alert('Request failed: ' + err);
+                        document.getElementById('pin_test_btn').disabled = false;
+                        document.getElementById('pin_test_btn').textContent = 'Test Emergency Pin';
+                    });
+                }
             </script>
         </head>
         <body>
@@ -892,9 +1029,9 @@ String ConfigServer::getDebugPage() {
             
             <h2>Emergency Settings</h2>
             <div class="section">
-                <h3>Emergency Water Level Threshold</h3>
-                <p>Set the water level (in cm) that triggers emergency alerts.</p>
-                <label for="emergency_level">Emergency Level (cm):</label>
+                <h3>Tier 1 Emergency - Message Notifications</h3>
+                <p>Set the water level (in cm) that triggers emergency message alerts (SMS/Discord).</p>
+                <label for="emergency_level">Tier 1 Emergency Level (cm):</label>
                 <input type="number" id="emergency_level" step="1" min=")HTML";
     html += String(MIN_EMERGENCY_WATER_LEVEL_CM, 1);
     html += R"HTML(" max=")HTML";
@@ -903,7 +1040,21 @@ String ConfigServer::getDebugPage() {
     html += "<script>document.getElementById('emergency_level').value=";
     html += String(emergencyWaterLevel_cm, 1);
     html += R"HTML(;</script>
-                <button onclick="saveEmergencyLevel()">Save Emergency Level</button>
+                <button onclick="saveEmergencyLevel()">Save Tier 1 Level</button>
+                
+                <h3>Tier 2 Emergency - Horn Alarm (Urgent)</h3>
+                <p>Set the water level (in cm) that triggers the horn alarm. Must be higher than Tier 1.</p>
+                <label for="urgent_emergency_level">Tier 2 Emergency Level (cm):</label>
+                <input type="number" id="urgent_emergency_level" step="1" min=")HTML";
+    html += String(MIN_EMERGENCY_WATER_LEVEL_CM, 1);
+    html += R"HTML(" max=")HTML";
+    html += String(MAX_EMERGENCY_WATER_LEVEL_CM, 1);
+    html += R"HTML(">)HTML";
+    html += "<script>document.getElementById('urgent_emergency_level').value=";
+    html += String(urgentEmergencyWaterLevel_cm, 1);
+    html += R"HTML(;</script>
+                <button onclick="saveUrgentEmergencyLevel()">Save Tier 2 Level</button>
+                <button id="pin_test_btn" onclick="testEmergencyPin()" style="background-color:#FF9800;color:white;">Test Emergency Pin</button>
                 
                 <h3>Emergency Notification Frequency</h3>
                 <p>Set how often (in seconds) emergency notifications should be sent while in emergency state.</p>
@@ -919,11 +1070,17 @@ String ConfigServer::getDebugPage() {
                 <button onclick="saveEmergencyFreq()">Save Notification Frequency</button>
                 
                 <p><strong>Current Settings:</strong><br>
-                Emergency Level: )HTML";
+                <strong>Tier 1 (Messages):</strong> )HTML";
     html += String(emergencyWaterLevel_cm, 2);
-    html += " cm<br>Notification Frequency: ";
+    html += " cm<br><strong>Tier 2 (Horn Alarm):</strong> ";
+    html += String(urgentEmergencyWaterLevel_cm, 2);
+    html += " cm<br><strong>Notification Frequency:</strong> ";
     html += String(emergencyNotifFreq_ms / 1000);
-    html += R"HTML( seconds</p>
+    html += " seconds<br><strong>Horn Pattern:</strong> ";
+    html += String(hornOnDuration_ms / 1000.0, 1);
+    html += "s ON / ";
+    html += String(hornOffDuration_ms / 1000.0, 1);
+    html += R"HTML(s OFF</p>
             </div>
             
             <h2>Notification Settings</h2>

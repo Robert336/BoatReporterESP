@@ -24,12 +24,15 @@ struct SystemState {
     State currentState;
     // Timers
     uint32_t lastStateChangeTime;
-    uint32_t emergencyConditionsTrueTime;  // When emergency conditions became true
-    uint32_t emergencyConditionsFalseTime; // When emergency conditions became false
+    uint32_t emergencyConditionsTrueTime;  // When emergency conditions became true (Tier 1)
+    uint32_t emergencyConditionsFalseTime; // When emergency conditions became false (Tier 1)
     uint32_t lastEmergencyMessageTime;
-
+    uint32_t lastHornToggleTime;           // For horn pulsing pattern (Tier 2)
+    
     // Event flags
-    bool emergencyConditions;
+    bool emergencyConditions;              // Tier 1 threshold exceeded
+    bool urgentEmergencyConditions;        // Tier 2 threshold exceeded
+    bool hornCurrentlyOn;                  // Tracks horn state for pulsing
     bool sensorError;
     volatile bool configCommandReceived;
 };
@@ -80,6 +83,12 @@ void setup() {
     systemState.emergencyConditionsTrueTime = millis();
     systemState.emergencyConditionsFalseTime = millis();
     systemState.lastEmergencyMessageTime = 0;
+    systemState.lastHornToggleTime = 0;
+    
+    // Initialize system state flags
+    systemState.emergencyConditions = false;
+    systemState.urgentEmergencyConditions = false;
+    systemState.hornCurrentlyOn = false;
     
     // Initialize ConfigServer early to load calibration from NVS
     // This ensures saved calibration is applied before first sensor reading
@@ -144,20 +153,37 @@ void loop() {
     }
     lastConfigCommandReceived = systemState.configCommandReceived;
 
+    // Check Tier 1 emergency conditions (message notifications)
     bool previousEmergencyConditions = systemState.emergencyConditions;
     float emergencyThreshold = configServer->getEmergencyWaterLevel();
     if (currentReading.level_cm >= emergencyThreshold) {
         systemState.emergencyConditions = true;
         if (!previousEmergencyConditions) {
             systemState.emergencyConditionsTrueTime = millis(); // Update timer when conditions START
-            Serial.printf("[EVENT] Emergency conditions detected! level=%.2f cm (threshold=%.2f cm)\n",
+            Serial.printf("[EVENT] Tier 1 Emergency conditions detected! level=%.2f cm (threshold=%.2f cm)\n",
                           currentReading.level_cm, emergencyThreshold);
         }
     } else {
         systemState.emergencyConditions = false;
         if (previousEmergencyConditions) {
             systemState.emergencyConditionsFalseTime = millis(); // Update timer when conditions CLEAR
-            Serial.printf("[EVENT] Emergency conditions cleared. level=%.2f cm\n", currentReading.level_cm);
+            Serial.printf("[EVENT] Tier 1 Emergency conditions cleared. level=%.2f cm\n", currentReading.level_cm);
+        }
+    }
+    
+    // Check Tier 2 urgent emergency conditions (horn alarm)
+    bool previousUrgentEmergencyConditions = systemState.urgentEmergencyConditions;
+    float urgentEmergencyThreshold = configServer->getUrgentEmergencyWaterLevel();
+    if (currentReading.level_cm >= urgentEmergencyThreshold) {
+        systemState.urgentEmergencyConditions = true;
+        if (!previousUrgentEmergencyConditions) {
+            Serial.printf("[EVENT] Tier 2 URGENT Emergency conditions detected! level=%.2f cm (threshold=%.2f cm)\n",
+                          currentReading.level_cm, urgentEmergencyThreshold);
+        }
+    } else {
+        systemState.urgentEmergencyConditions = false;
+        if (previousUrgentEmergencyConditions) {
+            Serial.printf("[EVENT] Tier 2 URGENT Emergency conditions cleared. level=%.2f cm\n", currentReading.level_cm);
         }
     }
 
@@ -222,13 +248,20 @@ void loop() {
                 Serial.printf("[STATE] Transitioning from %s to NORMAL (emergency cleared)\n", stateToString(systemState.currentState));
                 systemState.currentState = NORMAL;
                 systemState.lastStateChangeTime = millis();
+                // Ensure horn is OFF when exiting EMERGENCY state
                 digitalWrite(ALERT_PIN, LOW);
+                systemState.hornCurrentlyOn = false;
             } else {
-                // Only do EMERGENCY operations if we're staying in EMERGENCY state
+                // TIER 1: Send emergency message notifications (always in EMERGENCY state)
                 int emergencyFreq = configServer->getEmergencyNotifFreq();
+                
                 if (millis() - systemState.lastEmergencyMessageTime >= emergencyFreq) {
                     char emergMessageBuf[120];
-                    snprintf(emergMessageBuf, sizeof(emergMessageBuf), "Boat Monitor Alert: Emergency Level %.2f cm", currentReading.level_cm);
+                    if (systemState.urgentEmergencyConditions) {
+                        snprintf(emergMessageBuf, sizeof(emergMessageBuf), "Boat Monitor URGENT Alert: Critical Level %.2f cm - HORN ACTIVATED!", currentReading.level_cm);
+                    } else {
+                        snprintf(emergMessageBuf, sizeof(emergMessageBuf), "Boat Monitor Alert: Emergency Level %.2f cm", currentReading.level_cm);
+                    }
                     Serial.printf("[STATE] EMERGENCY: Sending alert message: %s\n", emergMessageBuf);
                     systemState.lastEmergencyMessageTime = millis();
 
@@ -239,9 +272,28 @@ void loop() {
                     if (!discord.send(emergMessageBuf)){
                         Serial.println("[Discord] Emergency Discord webhook failed to send");
                     }
-
                 }
-                digitalWrite(ALERT_PIN, HIGH);
+                
+                // TIER 2: Horn alarm pulsing (only if urgent emergency conditions met)
+                if (systemState.urgentEmergencyConditions) {
+                    int hornOnDuration = configServer->getHornOnDuration();
+                    int hornOffDuration = configServer->getHornOffDuration();
+                    uint32_t currentDuration = systemState.hornCurrentlyOn ? hornOnDuration : hornOffDuration;
+                    
+                    if (millis() - systemState.lastHornToggleTime >= currentDuration) {
+                        systemState.hornCurrentlyOn = !systemState.hornCurrentlyOn;
+                        digitalWrite(ALERT_PIN, systemState.hornCurrentlyOn ? HIGH : LOW);
+                        systemState.lastHornToggleTime = millis();
+                        Serial.printf("[HORN] Horn %s\n", systemState.hornCurrentlyOn ? "ON" : "OFF");
+                    }
+                } else {
+                    // Not urgent emergency - ensure horn is OFF
+                    if (systemState.hornCurrentlyOn) {
+                        digitalWrite(ALERT_PIN, LOW);
+                        systemState.hornCurrentlyOn = false;
+                        Serial.println("[HORN] Horn deactivated (Tier 2 conditions cleared)");
+                    }
+                }
             }
             break;
     }
