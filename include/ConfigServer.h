@@ -29,15 +29,22 @@ constexpr const char AP_PASSWORD[] = "12345678";
 constexpr unsigned long SERVER_TIMEOUT_MS = 240000;
 constexpr int DNS_PORT = 53; // Standard DNS port for captive portal
 
-// Default emergency settings
+// Default emergency settings (Tier 1 - Message Notifications)
 constexpr float DEFAULT_EMERGENCY_WATER_LEVEL_CM = 30.0f;
 constexpr int DEFAULT_EMERGENCY_NOTIF_FREQ_MS = 900000; // 15 minutes
+
+// Default urgent emergency settings (Tier 2 - Horn Alarm)
+constexpr float DEFAULT_URGENT_EMERGENCY_WATER_LEVEL_CM = 50.0f;
+constexpr int DEFAULT_HORN_ON_DURATION_MS = 1000;  // 1 second on
+constexpr int DEFAULT_HORN_OFF_DURATION_MS = 1000; // 1 second off
 
 // Emergency settings validation limits
 constexpr float MIN_EMERGENCY_WATER_LEVEL_CM = WATER_LEVEL_RANGE_MIN_CM; // 5.0 cm
 constexpr float MAX_EMERGENCY_WATER_LEVEL_CM = WATER_LEVEL_RANGE_MAX_CM; // 100 cm (max sensor range)
 constexpr int MIN_EMERGENCY_NOTIF_FREQ_MS = 5000;      // 5 seconds
-constexpr int MAX_EMERGENCY_NOTIF_FREQ_MS = 3600000;   // 1 hour 
+constexpr int MAX_EMERGENCY_NOTIF_FREQ_MS = 3600000;   // 1 hour
+constexpr int MIN_HORN_DURATION_MS = 100;              // 0.1 seconds
+constexpr int MAX_HORN_DURATION_MS = 10000;            // 10 seconds 
 
 class ConfigServer {
 private:
@@ -53,8 +60,11 @@ private:
     bool setupModeActive = false;
     
     // === Emergency Settings ===
-    float emergencyWaterLevel_cm;
+    float emergencyWaterLevel_cm;           // Tier 1 threshold
     int emergencyNotifFreq_ms;
+    float urgentEmergencyWaterLevel_cm;     // Tier 2 threshold
+    int hornOnDuration_ms;                  // Horn alarm on duration
+    int hornOffDuration_ms;                 // Horn alarm off duration
     
     // === WiFi Configuration Handlers ===
     void handleRoot();                      // Serve main configuration page
@@ -70,8 +80,10 @@ private:
     void saveCalibration();                 // Save calibration to NVS
     
     // === Emergency Settings Handlers ===
-    void handleSetEmergencyLevel();         // POST: Set emergency water level threshold
+    void handleSetEmergencyLevel();         // POST: Set emergency water level threshold (Tier 1)
     void handleSetEmergencyNotifFreq();     // POST: Set emergency notification frequency
+    void handleSetUrgentEmergencyLevel();   // POST: Set urgent emergency water level threshold (Tier 2)
+    void handleTestEmergencyPin();          // POST: Test the emergency pin output device
     void loadEmergencySettings();           // Load emergency settings from NVS
     void saveEmergencySettings();           // Save emergency settings to NVS
     
@@ -106,6 +118,9 @@ public:
     // === Emergency Settings Getters ===
     float getEmergencyWaterLevel() const { return emergencyWaterLevel_cm; }
     int getEmergencyNotifFreq() const { return emergencyNotifFreq_ms; }
+    float getUrgentEmergencyWaterLevel() const { return urgentEmergencyWaterLevel_cm; }
+    int getHornOnDuration() const { return hornOnDuration_ms; }
+    int getHornOffDuration() const { return hornOffDuration_ms; }
 };
 
 
