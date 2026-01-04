@@ -35,6 +35,7 @@ struct SystemState {
     bool hornCurrentlyOn;                  // Tracks horn state for pulsing
     bool sensorError;
     volatile bool configCommandReceived;
+    bool notificationsSilenced;            // Tracks if emergency alerts are silenced
 };
 
 SystemState systemState; // Tracks current device state
@@ -46,13 +47,15 @@ uint32_t lastStatusLogTime = 0;
 static constexpr int BUTTON_PIN = 23; // GPIO
 static constexpr int ALERT_PIN = 19; // GPIO
 static constexpr int SENSOR_PIN = 32; // Water sensor analog pin ADC1 because wifi is required
-static constexpr bool USE_MOCK = true; // For mocking sensor readings
+static constexpr bool USE_MOCK = false; // For mocking sensor readings
 
 // Emergency timeout before transitioning to EMERGENCY state
 static constexpr int EMERGENCY_TIMEOUT_MS = 1000;
 
 volatile bool buttonPressed = false;
 volatile unsigned long lastButtonPress = 0;
+volatile unsigned long buttonPressStartTime = 0;
+volatile bool buttonCurrentlyPressed = false;
 
 // Create easier references to the singleton objects
 ConfigServer* configServer = nullptr;
@@ -89,6 +92,7 @@ void setup() {
     systemState.emergencyConditions = false;
     systemState.urgentEmergencyConditions = false;
     systemState.hornCurrentlyOn = false;
+    systemState.notificationsSilenced = false;
     
     // Initialize ConfigServer early to load calibration from NVS
     // This ensures saved calibration is applied before first sensor reading
@@ -97,7 +101,7 @@ void setup() {
 
     pinMode(ALERT_PIN, OUTPUT);
     pinMode(BUTTON_PIN, INPUT_PULLUP);
-    attachInterrupt(BUTTON_PIN, handleButtonPress, FALLING);
+    attachInterrupt(BUTTON_PIN, handleButtonPress, CHANGE);
 
     // Initialize WiFiManager
     wifiMgr.begin();
@@ -152,6 +156,38 @@ void loop() {
         Serial.println("[EVENT] Button pressed - config command received");
     }
     lastConfigCommandReceived = systemState.configCommandReceived;
+
+    // Check for 5-second button hold to toggle silence in EMERGENCY state
+    if (buttonCurrentlyPressed && systemState.currentState == EMERGENCY) {
+        unsigned long holdDuration = millis() - buttonPressStartTime;
+        if (holdDuration >= 5000) {
+            static bool silenceToggleHandled = false;
+            if (!silenceToggleHandled) {
+                // Toggle silence state
+                systemState.notificationsSilenced = !systemState.notificationsSilenced;
+                silenceToggleHandled = true;
+                
+                if (systemState.notificationsSilenced) {
+                    Serial.println("[EVENT] Emergency notifications SILENCED by button hold");
+                    
+                    // Send confirmation notification
+                    const char* silenceMessage = "Boat Monitor: Emergency alerts have been temporarily silenced";
+                    if (!sms.send(silenceMessage)) {
+                        Serial.println("[SMS] Failed to send silence confirmation SMS");
+                    }
+                    if (!discord.send(silenceMessage)) {
+                        Serial.println("[Discord] Failed to send silence confirmation to Discord");
+                    }
+                } else {
+                    Serial.println("[EVENT] Emergency notifications RE-ENABLED by button hold");
+                }
+            }
+            // Reset flag when button is released
+            if (!buttonCurrentlyPressed) {
+                silenceToggleHandled = false;
+            }
+        }
+    }
 
     // Check Tier 1 emergency conditions (message notifications)
     bool previousEmergencyConditions = systemState.emergencyConditions;
@@ -251,31 +287,43 @@ void loop() {
                 // Ensure horn is OFF when exiting EMERGENCY state
                 digitalWrite(ALERT_PIN, LOW);
                 systemState.hornCurrentlyOn = false;
+                // Auto-clear silence flag when emergency ends (safety feature)
+                if (systemState.notificationsSilenced) {
+                    Serial.println("[STATE] Auto-clearing notification silence (emergency cleared)");
+                    systemState.notificationsSilenced = false;
+                }
             } else {
                 // TIER 1: Send emergency message notifications (always in EMERGENCY state)
                 int emergencyFreq = configServer->getEmergencyNotifFreq();
                 
                 if (millis() - systemState.lastEmergencyMessageTime >= emergencyFreq) {
-                    char emergMessageBuf[120];
-                    if (systemState.urgentEmergencyConditions) {
-                        snprintf(emergMessageBuf, sizeof(emergMessageBuf), "Boat Monitor URGENT Alert: Critical Level %.2f cm - HORN ACTIVATED!", currentReading.level_cm);
-                    } else {
-                        snprintf(emergMessageBuf, sizeof(emergMessageBuf), "Boat Monitor Alert: Emergency Level %.2f cm", currentReading.level_cm);
-                    }
-                    Serial.printf("[STATE] EMERGENCY: Sending alert message: %s\n", emergMessageBuf);
+                    // Update timer even when silenced to prevent message burst when un-silenced
                     systemState.lastEmergencyMessageTime = millis();
+                    
+                    // Only send notifications if not silenced
+                    if (!systemState.notificationsSilenced) {
+                        char emergMessageBuf[120];
+                        if (systemState.urgentEmergencyConditions) {
+                            snprintf(emergMessageBuf, sizeof(emergMessageBuf), "Boat Monitor URGENT Alert: Critical Level %.2f cm - HORN ACTIVATED!", currentReading.level_cm);
+                        } else {
+                            snprintf(emergMessageBuf, sizeof(emergMessageBuf), "Boat Monitor Alert: Emergency Level %.2f cm", currentReading.level_cm);
+                        }
+                        Serial.printf("[STATE] EMERGENCY: Sending alert message: %s\n", emergMessageBuf);
 
-                    if (!sms.send(emergMessageBuf)){
-                        Serial.println("[SMS] Emergency SMS failed to send");
-                    }
+                        if (!sms.send(emergMessageBuf)){
+                            Serial.println("[SMS] Emergency SMS failed to send");
+                        }
 
-                    if (!discord.send(emergMessageBuf)){
-                        Serial.println("[Discord] Emergency Discord webhook failed to send");
+                        if (!discord.send(emergMessageBuf)){
+                            Serial.println("[Discord] Emergency Discord webhook failed to send");
+                        }
+                    } else {
+                        Serial.println("[STATE] EMERGENCY: Notifications silenced, skipping alert message");
                     }
                 }
                 
-                // TIER 2: Horn alarm pulsing (only if urgent emergency conditions met)
-                if (systemState.urgentEmergencyConditions) {
+                // TIER 2: Horn alarm pulsing (only if urgent emergency conditions met and not silenced)
+                if (systemState.urgentEmergencyConditions && !systemState.notificationsSilenced) {
                     int hornOnDuration = configServer->getHornOnDuration();
                     int hornOffDuration = configServer->getHornOffDuration();
                     uint32_t currentDuration = systemState.hornCurrentlyOn ? hornOnDuration : hornOffDuration;
@@ -287,11 +335,15 @@ void loop() {
                         Serial.printf("[HORN] Horn %s\n", systemState.hornCurrentlyOn ? "ON" : "OFF");
                     }
                 } else {
-                    // Not urgent emergency - ensure horn is OFF
+                    // Not urgent emergency or notifications silenced - ensure horn is OFF
                     if (systemState.hornCurrentlyOn) {
                         digitalWrite(ALERT_PIN, LOW);
                         systemState.hornCurrentlyOn = false;
-                        Serial.println("[HORN] Horn deactivated (Tier 2 conditions cleared)");
+                        if (systemState.notificationsSilenced) {
+                            Serial.println("[HORN] Horn deactivated (notifications silenced)");
+                        } else {
+                            Serial.println("[HORN] Horn deactivated (Tier 2 conditions cleared)");
+                        }
                     }
                 }
             }
@@ -333,8 +385,24 @@ void loop() {
 */
 void IRAM_ATTR handleButtonPress() {
     unsigned long now = millis();
-    if (now - lastButtonPress <= 50) return; // Debounce 50ms 
-    lastButtonPress = now;
-    systemState.configCommandReceived = true;
+    bool currentPinState = digitalRead(BUTTON_PIN);
     
+    // Button is pressed when pin is LOW (INPUT_PULLUP)
+    if (currentPinState == LOW && !buttonCurrentlyPressed) {
+        // Button press detected
+        if (now - lastButtonPress <= 50) return; // Debounce 50ms
+        buttonPressStartTime = now;
+        buttonCurrentlyPressed = true;
+        lastButtonPress = now;
+    } else if (currentPinState == HIGH && buttonCurrentlyPressed) {
+        // Button release detected
+        buttonCurrentlyPressed = false;
+        unsigned long holdDuration = now - buttonPressStartTime;
+        
+        // Short press (< 5 seconds) = config command
+        if (holdDuration < 5000) {
+            systemState.configCommandReceived = true;
+        }
+        // Long press (>= 5 seconds) will be handled in main loop for silence toggle
+    }
 }
