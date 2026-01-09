@@ -67,10 +67,14 @@ private:
     int hornOffDuration_ms;                 // Horn alarm off duration
     
     // === WiFi Configuration Handlers ===
-    void handleRoot();                      // Serve main configuration page
+    void handleRoot();                      // Serve main dashboard page
+    void handleWiFiConfig();                // Serve WiFi configuration page
+    void handleNotificationsPage();         // Serve notifications configuration page
     void handleSubmit();                    // Process WiFi configuration submission
     void handleStatus();                    // Return WiFi connection status JSON
-    String getConfigPage();                 // Generate HTML for main config page
+    String getConfigPage();                 // Generate HTML for main dashboard page
+    String getWiFiConfigPage();             // Generate HTML for WiFi config page
+    String getNotificationsPageHTML();      // Generate HTML for notifications page
     
     // === Sensor Calibration Handlers ===
     void handleCalibrateZero();             // POST: Set zero calibration point

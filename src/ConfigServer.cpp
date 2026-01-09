@@ -192,6 +192,18 @@ void ConfigServer::handleRoot() {
     serverStartTime = millis(); // Reset the timeout on page load
 }
 
+void ConfigServer::handleWiFiConfig() {
+    String html = getWiFiConfigPage();
+    server->send(200, "text/html", html);
+    serverStartTime = millis();
+}
+
+void ConfigServer::handleNotificationsPage() {
+    String html = getNotificationsPageHTML();
+    server->send(200, "text/html", html);
+    serverStartTime = millis();
+}
+
 void ConfigServer::handleSubmit() {
     // Check if SSID and password were submitted
     if (server->hasArg("ssid") && server->hasArg("password")) {
@@ -234,38 +246,61 @@ void ConfigServer::handleStatus() {
 }
 
 String ConfigServer::getConfigPage() {
-    String html = R"(
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>ESP32 WiFi Setup</title>
-            <meta name="viewport" content="width=device-width, initial-scale=1">
-            <style>
-                body { font-family: Arial, sans-serif; max-width: 500px; margin: 20px auto; padding: 10px; }
-                h1 { text-align: center; }
-                form { margin: 20px 0; }
-                label { display: block; margin: 10px 0 5px 0; }
-                input { width: 100%; padding: 8px; box-sizing: border-box; }
-                button { width: 100%; padding: 10px; margin: 5px 0; cursor: pointer; }
-                .info { padding: 10px; margin: 10px 0; }
-            </style>
-        </head>
-        <body>
-            <h1>ESP32 WiFi Setup</h1>
-            <div class="info">Configure your WiFi credentials below.</div>
-            <form method="POST" action="/config">
-                <label for="ssid">WiFi Network (SSID)</label>
-                <input type="text" id="ssid" name="ssid" placeholder="Enter WiFi name" required>
-                <label for="password">Password</label>
-                <input type="password" id="password" name="password" placeholder="Enter WiFi password" required>
-                <button type="submit">Save & Connect</button>
-            </form>
-            <form method="GET" action="/status"><button type="submit">Check WiFi Status</button></form>
-            <form method="GET" action="/read"><button type="submit">Read Water Sensor</button></form>
-            <form method="GET" action="/debug"><button type="submit">Debug & Calibration</button></form>
-        </body>
-        </html>
-    )";
+    String html = R"(<!DOCTYPE html>
+<html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Boat Monitor</title>
+<style>
+body{font-family:Arial,sans-serif;margin:0;padding:10px;max-width:600px;margin:0 auto;}
+h1{text-align:center;font-size:1.5em;margin:10px 0;}
+.card{border:1px solid #ccc;padding:15px;margin:10px 0;}
+.card h2{font-size:1.1em;margin:0 0 10px 0;border-bottom:1px solid #ddd;padding-bottom:5px;}
+.row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #eee;}
+.row:last-child{border-bottom:none;}
+.label{font-weight:bold;}
+.level{font-size:2em;text-align:center;margin:10px 0;}
+.thresh{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;}
+.thresh div{border:1px solid #ccc;padding:10px;text-align:center;}
+.thresh .label{font-size:0.8em;display:block;margin-bottom:5px;}
+button{width:100%;padding:12px;margin:5px 0;border:1px solid #333;background:#fff;font-size:1em;cursor:pointer;}
+button:active{background:#eee;}
+</style>
+<script>
+function load(){
+fetch('/status').then(r=>r.json()).then(d=>{
+document.getElementById('wifi_status').textContent=(d.connected?'● '+d.ssid:'○ Disconnected');
+document.getElementById('wifi_ip').textContent=d.ip||'N/A';
+document.getElementById('wifi_rssi').textContent=(d.rssi||'N/A')+' dBm';
+}).catch(e=>console.error(e));
+fetch('/read').then(r=>r.json()).then(d=>{
+document.getElementById('water_level').textContent=(d.sensorAvailable&&d.valid)?d.level_cm.toFixed(1):'--';
+}).catch(e=>console.error(e));
+fetch('/emergency-settings').then(r=>r.json()).then(d=>{
+document.getElementById('tier1').textContent=d.emergencyWaterLevel_cm.toFixed(1)+' cm';
+document.getElementById('tier2').textContent=d.urgentEmergencyWaterLevel_cm.toFixed(1)+' cm';
+}).catch(e=>console.error(e));
+}
+setInterval(load,3000);window.onload=load;
+</script>
+</head><body>
+<h1>Boat Monitor</h1>
+<div class="card"><h2>WiFi Connection</h2>
+<div class="row"><span class="label">Status</span><span id="wifi_status">Loading...</span></div>
+<div class="row"><span class="label">IP Address</span><span id="wifi_ip">Loading...</span></div>
+<div class="row"><span class="label">Signal</span><span id="wifi_rssi">Loading...</span></div>
+</div>
+<div class="card"><h2>Water Level</h2>
+<div class="level"><span id="water_level">--</span> cm</div>
+</div>
+<div class="card"><h2>Emergency Thresholds</h2>
+<div class="thresh">
+<div><span class="label">TIER 1</span><span id="tier1">--</span></div>
+<div><span class="label">TIER 2</span><span id="tier2">--</span></div>
+</div>
+</div>
+<button onclick="location.href='/debug'">Debug & Calibration</button>
+<button onclick="location.href='/notifications-page'">Notification Settings</button>
+<button onclick="location.href='/wifi-config'">WiFi Networks</button>
+<p style="text-align:center;font-size:0.9em;color:#666;margin-top:15px;">Auto-refresh: 3s</p>
+</body></html>)";
     return html;
 }
 
@@ -756,6 +791,97 @@ void ConfigServer::handleTestDiscord() {
         Serial.println("[TEST] Test Discord message failed to send");
         server->send(500, "application/json", "{\"success\":false,\"error\":\"Failed to send test Discord message. Check serial log for details.\"}");
     }
+}
+
+String ConfigServer::getWiFiConfigPage() {
+    // Minimal WiFi configuration page
+    String html = R"(<!DOCTYPE html>
+<html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>WiFi Config</title>
+<style>
+body{font-family:Arial,sans-serif;margin:0;padding:10px;max-width:600px;margin:0 auto;}
+h1{font-size:1.5em;margin:10px 0;}
+.card{border:1px solid #ccc;padding:15px;margin:10px 0;}
+.card h2{font-size:1.1em;margin:0 0 10px 0;border-bottom:1px solid #ddd;padding-bottom:5px;}
+.row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #eee;}
+.row:last-child{border-bottom:none;}
+label{display:block;margin:10px 0 5px;font-weight:bold;}
+input{width:100%;padding:8px;border:1px solid #ccc;font-size:1em;box-sizing:border-box;}
+button{width:100%;padding:12px;margin:5px 0;border:1px solid #333;background:#fff;font-size:1em;cursor:pointer;}
+button:active{background:#eee;}
+.help{font-size:0.85em;color:#666;margin-top:3px;}
+</style>
+<script>
+function load(){
+fetch('/status').then(r=>r.json()).then(d=>{
+var s='<div class="row"><span style="font-weight:bold">Status</span><span>'+(d.connected?'● Connected':'○ Disconnected')+'</span></div>';
+if(d.connected){
+s+='<div class="row"><span style="font-weight:bold">Network</span><span>'+(d.ssid||'Unknown')+'</span></div>';
+s+='<div class="row"><span style="font-weight:bold">IP</span><span>'+(d.ip||'N/A')+'</span></div>';
+s+='<div class="row"><span style="font-weight:bold">Signal</span><span>'+(d.rssi||'N/A')+' dBm</span></div>';
+}
+document.getElementById('status').innerHTML=s;
+}).catch(e=>console.error(e));
+}
+function save(e){
+e.preventDefault();
+var s=document.getElementById('ssid').value;
+var p=document.getElementById('password').value;
+if(!s||!p){alert('Enter SSID and password');return;}
+var btn=document.getElementById('btn');
+btn.disabled=true;
+btn.textContent='Saving...';
+fetch('/config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'ssid='+encodeURIComponent(s)+'&password='+encodeURIComponent(p)})
+.then(r=>{
+if(r.ok){
+alert('Saved! Connecting...');
+document.getElementById('form').reset();
+setTimeout(load,3000);
+}else{alert('Failed to save');}
+}).catch(e=>alert('Error: '+e.message))
+.finally(()=>{btn.disabled=false;btn.textContent='Save & Connect';});
+}
+window.onload=function(){
+load();
+document.getElementById('form').addEventListener('submit',save);
+};
+</script>
+</head><body>
+<a href="/" style="text-decoration:none;color:#000;">‹ Back</a>
+<h1>WiFi Configuration</h1>
+<div class="card"><h2>Current Status</h2><div id="status"><div class="row"><span>Loading...</span></div></div></div>
+<div class="card"><h2>Add Network</h2>
+<form id="form">
+<label>WiFi Network (SSID)</label>
+<input type="text" id="ssid" name="ssid" required>
+<div class="help">Network name</div>
+<label>Password</label>
+<input type="password" id="password" name="password" required>
+<div class="help">Network password</div>
+<button type="submit" id="btn">Save & Connect</button>
+</form>
+</div>
+<div class="card"><p style="margin:0;font-size:0.9em;"><strong>Tip:</strong> ESP32 auto-connects to saved networks.</p></div>
+</body></html>)";
+    return html;
+}
+
+String ConfigServer::getNotificationsPageHTML() {
+    // Minimal notifications configuration page - Note: This will be large, consider serving from SPIFFS in production
+    String html = "<!DOCTYPE html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Notifications</title>";
+    html += "<style>body{font-family:Arial,sans-serif;margin:0;padding:10px;max-width:700px;margin:0 auto;}";
+    html += "h1{font-size:1.5em;margin:10px 0;}.card{border:1px solid #ccc;padding:15px;margin:10px 0;}";
+    html += ".card h2{font-size:1.1em;margin:0 0 10px 0;border-bottom:1px solid #ddd;padding-bottom:5px;}";
+    html += "h3{font-size:1em;margin:15px 0 10px;}label{display:block;margin:10px 0 5px;font-weight:bold;}";
+    html += "input{width:100%;padding:8px;border:1px solid #ccc;font-size:1em;box-sizing:border-box;}";
+    html += "button{padding:10px 15px;margin:5px 5px 5px 0;border:1px solid #333;background:#fff;font-size:0.95em;cursor:pointer;}";
+    html += "button:active{background:#eee;}.badge{display:inline-block;padding:4px 8px;border:1px solid #666;font-size:0.85em;margin-top:5px;}";
+    html += ".help{font-size:0.85em;color:#666;margin-top:3px;}.info{border:1px solid #ccc;padding:10px;margin-top:10px;}</style>";
+    html += "<script>/* JavaScript implementation omitted for brevity - see dev-ui/notifications.html */</script>";
+    html += "</head><body><a href=\"/\" style=\"text-decoration:none;color:#000;\">‹ Back</a><h1>Notification Settings</h1>";
+    html += "<div class=\"card\"><h2>Use /debug for full configuration</h2>";
+    html += "<p>For full notification and emergency settings configuration, please use the Debug & Calibration page accessible from the main dashboard.</p>";
+    html += "<button onclick=\"location.href='/debug'\">Go to Debug & Calibration</button></div></body></html>";
+    return html;
 }
 
 // ============================================================================

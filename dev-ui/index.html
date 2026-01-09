@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Boat Monitor</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body{font-family:Arial,sans-serif;margin:0;padding:10px;max-width:600px;margin:0 auto;}
+h1{text-align:center;font-size:1.5em;margin:10px 0;}
+.card{border:1px solid #ccc;padding:15px;margin:10px 0;}
+.card h2{font-size:1.1em;margin:0 0 10px 0;border-bottom:1px solid #ddd;padding-bottom:5px;}
+.row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #eee;}
+.row:last-child{border-bottom:none;}
+.label{font-weight:bold;}
+.level{font-size:2em;text-align:center;margin:10px 0;}
+.thresh{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;}
+.thresh div{border:1px solid #ccc;padding:10px;text-align:center;}
+.thresh .label{font-size:0.8em;display:block;margin-bottom:5px;}
+button{width:100%;padding:12px;margin:5px 0;border:1px solid #333;background:#fff;font-size:1em;cursor:pointer;}
+button:active{background:#eee;}
+</style>
+<script>
+function load(){
+fetch('/status').then(r=>r.json()).then(d=>{
+document.getElementById('wifi_status').textContent=(d.connected?'● '+d.ssid:'○ Disconnected');
+document.getElementById('wifi_ip').textContent=d.ip||'N/A';
+document.getElementById('wifi_rssi').textContent=(d.rssi||'N/A')+' dBm';
+}).catch(e=>console.error(e));
+fetch('/read').then(r=>r.json()).then(d=>{
+document.getElementById('water_level').textContent=(d.sensorAvailable&&d.valid)?d.level_cm.toFixed(1):'--';
+}).catch(e=>console.error(e));
+fetch('/emergency-settings').then(r=>r.json()).then(d=>{
+document.getElementById('tier1').textContent=d.emergencyWaterLevel_cm.toFixed(1)+' cm';
+document.getElementById('tier2').textContent=d.urgentEmergencyWaterLevel_cm.toFixed(1)+' cm';
+}).catch(e=>console.error(e));
+}
+setInterval(load,3000);
+window.onload=load;
+</script>
+</head>
+<body>
+<h1>Boat Monitor</h1>
+
+<div class="card">
+<h2>WiFi Connection</h2>
+<div class="row"><span class="label">Status</span><span id="wifi_status">Loading...</span></div>
+<div class="row"><span class="label">IP Address</span><span id="wifi_ip">Loading...</span></div>
+<div class="row"><span class="label">Signal</span><span id="wifi_rssi">Loading...</span></div>
+</div>
+
+<div class="card">
+<h2>Water Level</h2>
+<div class="level"><span id="water_level">--</span> cm</div>
+</div>
+
+<div class="card">
+<h2>Emergency Thresholds</h2>
+<div class="thresh">
+<div><span class="label">TIER 1</span><span id="tier1">--</span></div>
+<div><span class="label">TIER 2</span><span id="tier2">--</span></div>
+</div>
+</div>
+
+<button onclick="location.href='debug.html'">Debug & Calibration</button>
+<button onclick="location.href='notifications.html'">Notification Settings</button>
+<button onclick="location.href='wifi-config.html'">WiFi Networks</button>
+
+<p style="text-align:center;font-size:0.9em;color:#666;margin-top:15px;">Auto-refresh: 3s</p>
+</body>
+</html>
