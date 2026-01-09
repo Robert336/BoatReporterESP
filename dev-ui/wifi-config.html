@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>WiFi Config</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body{font-family:Arial,sans-serif;margin:0;padding:10px;max-width:600px;margin:0 auto;}
+h1{font-size:1.5em;margin:10px 0;}
+.card{border:1px solid #ccc;padding:15px;margin:10px 0;}
+.card h2{font-size:1.1em;margin:0 0 10px 0;border-bottom:1px solid #ddd;padding-bottom:5px;}
+.row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #eee;}
+.row:last-child{border-bottom:none;}
+.label{font-weight:bold;}
+label{display:block;margin:10px 0 5px;font-weight:bold;}
+input{width:100%;padding:8px;border:1px solid #ccc;font-size:1em;box-sizing:border-box;}
+button{width:100%;padding:12px;margin:5px 0;border:1px solid #333;background:#fff;font-size:1em;cursor:pointer;}
+button:active{background:#eee;}
+.alert{padding:10px;margin:10px 0;border:1px solid #ccc;}
+.help{font-size:0.85em;color:#666;margin-top:3px;}
+</style>
+<script>
+async function loadStatus(){
+try{
+const r=await fetch('/status');
+const d=await r.json();
+const s=document.getElementById('status');
+s.innerHTML=`<div class="row"><span class="label">Status</span><span>${d.connected?'● Connected':'○ Disconnected'}</span></div>`;
+if(d.connected){
+s.innerHTML+=`<div class="row"><span class="label">Network</span><span>${d.ssid||'Unknown'}</span></div>
+<div class="row"><span class="label">IP</span><span>${d.ip||'N/A'}</span></div>
+<div class="row"><span class="label">Signal</span><span>${d.rssi||'N/A'} dBm</span></div>`;
+}
+}catch(e){console.error(e);}
+}
+async function save(e){
+e.preventDefault();
+const ssid=document.getElementById('ssid').value;
+const pass=document.getElementById('password').value;
+if(!ssid||!pass){alert('Enter SSID and password');return;}
+const btn=document.getElementById('btn');
+btn.disabled=true;
+btn.textContent='Saving...';
+try{
+const r=await fetch('/config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'ssid='+encodeURIComponent(ssid)+'&password='+encodeURIComponent(pass)});
+if(r.ok){
+alert('Saved! Connecting...');
+document.getElementById('form').reset();
+setTimeout(loadStatus,3000);
+}else{alert('Failed to save');}
+}catch(e){alert('Error: '+e.message);}finally{
+btn.disabled=false;
+btn.textContent='Save & Connect';
+}
+}
+window.onload=function(){
+loadStatus();
+document.getElementById('form').addEventListener('submit',save);
+};
+</script>
+</head>
+<body>
+<a href="index.html" style="text-decoration:none;color:#000;">‹ Back</a>
+<h1>WiFi Configuration</h1>
+
+<div class="card">
+<h2>Current Status</h2>
+<div id="status"><div class="row"><span>Loading...</span></div></div>
+</div>
+
+<div class="card">
+<h2>Add Network</h2>
+<form id="form">
+<label>WiFi Network (SSID)</label>
+<input type="text" id="ssid" name="ssid" required>
+<div class="help">Network name</div>
+
+<label>Password</label>
+<input type="password" id="password" name="password" required>
+<div class="help">Network password</div>
+
+<button type="submit" id="btn">Save & Connect</button>
+</form>
+</div>
+
+<div class="card">
+<p style="margin:0;font-size:0.9em;"><strong>Tip:</strong> ESP32 auto-connects to saved networks. If failed, config portal starts automatically.</p>
+</div>
+</body>
+</html>

@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Notifications</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body{font-family:Arial,sans-serif;margin:0;padding:10px;max-width:700px;margin:0 auto;}
+h1{font-size:1.5em;margin:10px 0;}
+.card{border:1px solid #ccc;padding:15px;margin:10px 0;}
+.card h2{font-size:1.1em;margin:0 0 10px 0;border-bottom:1px solid #ddd;padding-bottom:5px;}
+h3{font-size:1em;margin:15px 0 10px;}
+label{display:block;margin:10px 0 5px;font-weight:bold;}
+input{width:100%;padding:8px;border:1px solid #ccc;font-size:1em;box-sizing:border-box;}
+button{padding:10px 15px;margin:5px 5px 5px 0;border:1px solid #333;background:#fff;font-size:0.95em;cursor:pointer;}
+button:active{background:#eee;}
+.row{display:flex;justify-content:space-between;padding:5px 0;}
+.badge{display:inline-block;padding:4px 8px;border:1px solid #666;font-size:0.85em;margin-top:5px;}
+.help{font-size:0.85em;color:#666;margin-top:3px;}
+.info{border:1px solid #ccc;padding:10px;margin-top:10px;}
+</style>
+<script>
+async function loadNotif(){
+try{
+const r=await fetch('/notifications');
+const d=await r.json();
+document.getElementById('phone').value=d.phoneNumber||'';
+document.getElementById('sms_status').textContent=d.hasPhoneNumber?'SMS: Configured':'SMS: Not Configured';
+document.getElementById('webhook').value=d.discordWebhook||'';
+document.getElementById('disc_status').textContent=d.hasDiscordWebhook?'Discord: Configured':'Discord: Not Configured';
+}catch(e){console.error(e);}
+}
+async function loadEmerg(){
+try{
+const r=await fetch('/emergency-settings');
+const d=await r.json();
+document.getElementById('tier1_lv').value=d.emergencyWaterLevel_cm.toFixed(1);
+document.getElementById('tier2_lv').value=d.urgentEmergencyWaterLevel_cm.toFixed(1);
+document.getElementById('freq').value=(d.emergencyNotifFreq_ms/1000).toFixed(0);
+document.getElementById('cur_tier1').textContent=d.emergencyWaterLevel_cm.toFixed(1)+' cm';
+document.getElementById('cur_tier2').textContent=d.urgentEmergencyWaterLevel_cm.toFixed(1)+' cm';
+document.getElementById('cur_freq').textContent=(d.emergencyNotifFreq_ms/1000)+' seconds';
+}catch(e){console.error(e);}
+}
+async function savePhone(){
+const phone=document.getElementById('phone').value;
+if(!phone){alert('Enter phone number');return;}
+try{
+const r=await fetch('/notifications/phone',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'phone='+encodeURIComponent(phone)});
+const d=await r.json();
+alert(d.success?'Saved!':d.error);
+if(d.success)loadNotif();
+}catch(e){alert('Error: '+e.message);}
+}
+async function saveWebhook(){
+const wh=document.getElementById('webhook').value;
+if(!wh){alert('Enter webhook URL');return;}
+try{
+const r=await fetch('/notifications/discord',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'webhook='+encodeURIComponent(wh)});
+const d=await r.json();
+alert(d.success?'Saved!':d.error);
+if(d.success)loadNotif();
+}catch(e){alert('Error: '+e.message);}
+}
+async function testSMS(){
+if(!confirm('Send test SMS?'))return;
+const btn=document.getElementById('test_sms');
+btn.disabled=true;
+btn.textContent='Sending...';
+try{
+const r=await fetch('/notifications/test/sms',{method:'POST'});
+const d=await r.json();
+alert(d.success?d.message:d.error);
+}catch(e){alert('Error: '+e.message);}finally{
+btn.disabled=false;
+btn.textContent='Test';
+}
+}
+async function testDisc(){
+if(!confirm('Send test Discord?'))return;
+const btn=document.getElementById('test_disc');
+btn.disabled=true;
+btn.textContent='Sending...';
+try{
+const r=await fetch('/notifications/test/discord',{method:'POST'});
+const d=await r.json();
+alert(d.success?d.message:d.error);
+}catch(e){alert('Error: '+e.message);}finally{
+btn.disabled=false;
+btn.textContent='Test';
+}
+}
+async function saveTier1(){
+const lv=document.getElementById('tier1_lv').value;
+if(!lv){alert('Enter level');return;}
+try{
+const r=await fetch('/calibration/emergency-level',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'level_cm='+lv});
+const d=await r.json();
+alert(d.success?'Saved!':d.error);
+if(d.success)loadEmerg();
+}catch(e){alert('Error: '+e.message);}
+}
+async function saveTier2(){
+const lv=document.getElementById('tier2_lv').value;
+if(!lv){alert('Enter level');return;}
+try{
+const r=await fetch('/emergency/urgent-level',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'level_cm='+lv});
+const d=await r.json();
+alert(d.success?'Saved!':d.error);
+if(d.success)loadEmerg();
+}catch(e){alert('Error: '+e.message);}
+}
+async function saveFreq(){
+const f=document.getElementById('freq').value;
+if(!f){alert('Enter frequency');return;}
+try{
+const r=await fetch('/notifications/emergency-freq',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'freq_ms='+(f*1000)});
+const d=await r.json();
+alert(d.success?'Saved!':d.error);
+if(d.success)loadEmerg();
+}catch(e){alert('Error: '+e.message);}
+}
+window.onload=function(){loadNotif();loadEmerg();};
+</script>
+</head>
+<body>
+<a href="index.html" style="text-decoration:none;color:#000;">‹ Back</a>
+<h1>Notification Settings</h1>
+
+<div class="card">
+<h2>SMS Notifications (Twilio)</h2>
+<span id="sms_status" class="badge">Loading...</span>
+<label>Phone Number</label>
+<input type="tel" id="phone" placeholder="+1234567890">
+<div class="help">Include country code (e.g., +1 for US/Canada)</div>
+<button onclick="savePhone()">Save</button>
+<button id="test_sms" onclick="testSMS()">Test</button>
+</div>
+
+<div class="card">
+<h2>Discord Notifications</h2>
+<span id="disc_status" class="badge">Loading...</span>
+<label>Webhook URL</label>
+<input type="url" id="webhook" placeholder="https://discord.com/api/webhooks/...">
+<div class="help">From Discord: Server Settings → Integrations → Webhooks</div>
+<button onclick="saveWebhook()">Save</button>
+<button id="test_disc" onclick="testDisc()">Test</button>
+</div>
+
+<div class="card">
+<h2>Emergency Settings</h2>
+
+<h3>Tier 1: Message Notifications</h3>
+<label>Emergency Water Level (cm)</label>
+<input type="number" id="tier1_lv" min="5" max="100" step="1">
+<div class="help">Triggers SMS/Discord when water reaches this level</div>
+<button onclick="saveTier1()">Save Tier 1 Level</button>
+
+<h3>Tier 2: Horn Alarm (Urgent)</h3>
+<label>Urgent Emergency Level (cm)</label>
+<input type="number" id="tier2_lv" min="5" max="100" step="1">
+<div class="help">Triggers horn alarm (must be higher than Tier 1)</div>
+<button onclick="saveTier2()">Save Tier 2 Level</button>
+
+<h3>Notification Frequency</h3>
+<label>How often to send (seconds)</label>
+<input type="number" id="freq" min="5" max="3600" step="1">
+<div class="help">Frequency while in emergency state</div>
+<button onclick="saveFreq()">Save Frequency</button>
+
+<div class="info">
+<strong>Current Settings:</strong><br>
+Tier 1: <span id="cur_tier1">--</span><br>
+Tier 2: <span id="cur_tier2">--</span><br>
+Frequency: <span id="cur_freq">--</span>
+</div>
+</div>
+</body>
+</html>

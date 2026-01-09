@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Debug & Calibration</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body{font-family:Arial,sans-serif;margin:0;padding:10px;max-width:800px;margin:0 auto;}
+h1{font-size:1.5em;margin:10px 0;}
+.card{border:1px solid #ccc;padding:15px;margin:10px 0;}
+.card h2{font-size:1.1em;margin:0 0 10px 0;border-bottom:1px solid #ddd;padding-bottom:5px;}
+h3{font-size:1em;margin:15px 0 10px;}
+table{width:100%;border-collapse:collapse;}
+td{padding:8px;border-bottom:1px solid #eee;}
+tr:last-child td{border-bottom:none;}
+td:first-child{font-weight:bold;width:50%;}
+.section{border:1px solid #ddd;padding:15px;margin:10px 0;}
+label{display:block;margin:10px 0 5px;font-weight:bold;}
+input{width:100%;padding:8px;border:1px solid #ccc;font-size:1em;box-sizing:border-box;}
+button{padding:10px 15px;margin:5px 5px 5px 0;border:1px solid #333;background:#fff;font-size:0.95em;cursor:pointer;}
+button:active{background:#eee;}
+.current{border:1px solid #ccc;padding:10px;margin:10px 0;text-align:center;}
+.info{border:1px solid #ccc;padding:10px;margin-top:10px;}
+.help{font-size:0.85em;color:#666;margin-top:3px;}
+</style>
+<script>
+let autoRefresh=true;
+async function refreshReading(){
+try{
+const r=await fetch('/read');
+const d=await r.json();
+if(d.sensorAvailable){
+document.getElementById('status').textContent=d.valid?'Valid':'Invalid';
+document.getElementById('mv').textContent=d.millivolts.toFixed(2)+' mV';
+document.getElementById('level').textContent=d.valid?d.level_cm.toFixed(2)+' cm':'N/A';
+document.getElementById('cur_zero').textContent=Math.round(d.millivolts)+' mV';
+document.getElementById('cur_p2').textContent=Math.round(d.millivolts)+' mV';
+document.getElementById('zero_mv').value=Math.round(d.millivolts);
+document.getElementById('p2_mv').value=Math.round(d.millivolts);
+}
+}catch(e){console.error(e);}
+}
+async function loadCal(){
+try{
+const r=await fetch('/calibration');
+const d=await r.json();
+document.getElementById('cal_zero').textContent=d.zeroPoint_mv+' mV = 0 cm';
+document.getElementById('cal_p2').textContent=d.hasTwoPointCalibration?(d.secondPoint_mv+' mV = '+d.secondPoint_cm.toFixed(2)+' cm'):'Not set';
+document.getElementById('cal_status').textContent=d.hasTwoPointCalibration?'2-point active':'Single-point';
+if(d.hasTwoPointCalibration){
+document.getElementById('p2_lv').value=d.secondPoint_cm.toFixed(1);
+}
+}catch(e){console.error(e);}
+}
+async function calZero(){
+const mv=document.getElementById('zero_mv').value;
+const lv=document.getElementById('zero_lv').value||0;
+try{
+const r=await fetch('/calibrate/zero',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'millivolts='+mv+'&level_cm='+lv});
+const d=await r.json();
+alert(d.success?'Zero calibrated!':d.error);
+if(d.success)loadCal();
+}catch(e){alert('Error: '+e.message);}
+}
+async function calP2(){
+const mv=document.getElementById('p2_mv').value;
+const lv=document.getElementById('p2_lv').value;
+if(!lv){alert('Enter water level');return;}
+try{
+const r=await fetch('/calibrate/point2',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'millivolts='+mv+'&level_cm='+lv});
+const d=await r.json();
+alert(d.success?'Point 2 calibrated!':d.error);
+if(d.success)loadCal();
+}catch(e){alert('Error: '+e.message);}
+}
+window.onload=function(){
+refreshReading();
+loadCal();
+setInterval(()=>{if(autoRefresh)refreshReading();},2000);
+};
+</script>
+</head>
+<body>
+<a href="index.html" style="text-decoration:none;color:#000;">‹ Back</a>
+<h1>Debug & Calibration</h1>
+
+<div class="card">
+<h2>Current Sensor Reading</h2>
+<table>
+<tr><td>Status</td><td id="status">Loading...</td></tr>
+<tr><td>Millivolts (Raw ADC)</td><td id="mv">Loading...</td></tr>
+<tr><td>Water Level</td><td id="level">Loading...</td></tr>
+</table>
+<p style="margin:10px 0 0;font-size:0.9em;color:#666;">Auto-refresh: 2s</p>
+</div>
+
+<div class="card">
+<h2>Sensor Calibration</h2>
+
+<div class="section">
+<h3>Zero Point Calibration</h3>
+<div class="current">Current: <strong id="cur_zero">--</strong></div>
+<label>Zero Point Millivolts</label>
+<input type="number" id="zero_mv" min="0" max="3300">
+<div class="help">Sensor reading at zero (or reference point)</div>
+
+<label>Reference Level (cm) - optional</label>
+<input type="number" id="zero_lv" value="0" step="0.1" min="0">
+<div class="help">Leave as 0 for zero point, or enter reference level</div>
+<button onclick="calZero()">Set Zero Point</button>
+</div>
+
+<div class="section">
+<h3>Second Point Calibration (2-Point)</h3>
+<div class="current">Current: <strong id="cur_p2">--</strong></div>
+<label>Second Point Millivolts</label>
+<input type="number" id="p2_mv" min="0" max="3300">
+<div class="help">Sensor reading at known water level</div>
+
+<label>Water Level at Second Point (cm)</label>
+<input type="number" id="p2_lv" step="0.1" min="0" required>
+<div class="help">Actual water level in cm at this reading</div>
+<button onclick="calP2()">Set Second Point</button>
+</div>
+
+<div class="info">
+<strong>Current Calibration:</strong><br>
+Zero: <span id="cal_zero">--</span><br>
+Point 2: <span id="cal_p2">--</span><br>
+<em id="cal_status">--</em>
+</div>
+</div>
+
+<div class="card">
+<h2>API Endpoints</h2>
+<a href="/read" target="_blank" style="display:inline-block;padding:8px;margin:5px;border:1px solid #333;text-decoration:none;color:#000;">/read</a>
+<a href="/calibration" target="_blank" style="display:inline-block;padding:8px;margin:5px;border:1px solid #333;text-decoration:none;color:#000;">/calibration</a>
+</div>
+</body>
+</html>
