@@ -25,7 +25,6 @@
 constexpr const char SENSOR_CALIBRATION_NAMESPACE[] = "sensor_cal";
 constexpr const char EMERGENCY_SETTINGS_NAMESPACE[] = "emergency";
 constexpr const char AP_SSID[] = "ESP32-BoatMonitor-Setup";
-constexpr const char AP_PASSWORD[] = "12345678";
 constexpr unsigned long SERVER_TIMEOUT_MS = 240000;
 constexpr int DNS_PORT = 53; // Standard DNS port for captive portal
 
@@ -58,6 +57,7 @@ private:
     Preferences emergencyPrefs;             // NVS storage for emergency settings
     unsigned long serverStartTime;
     bool setupModeActive = false;
+    String apPassword;                      // Unique per-device AP password generated from chip ID
     
     // === Emergency Settings ===
     float emergencyWaterLevel_cm;           // Tier 1 threshold
@@ -125,6 +125,9 @@ public:
     float getUrgentEmergencyWaterLevel() const { return urgentEmergencyWaterLevel_cm; }
     int getHornOnDuration() const { return hornOnDuration_ms; }
     int getHornOffDuration() const { return hornOffDuration_ms; }
+    
+    // === AP Password Getter ===
+    String getAPPassword() const { return apPassword; }
 };
 
 

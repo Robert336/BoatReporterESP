@@ -6,6 +6,13 @@
 
 ConfigServer::ConfigServer(WaterPressureSensor* sensor, SendSMS* sms, SendDiscord* discord) 
     : server(nullptr), waterSensor(sensor), smsService(sms), discordService(discord) {
+    // Generate unique AP password from chip ID
+    uint64_t chipId = ESP.getEfuseMac();
+    uint32_t id = (uint32_t)(chipId & 0xFFFFFFFF);
+    char passwordBuf[15];
+    snprintf(passwordBuf, sizeof(passwordBuf), "Boat%08X", id);
+    apPassword = String(passwordBuf);
+    
     // Initialize calibration preferences
     loadCalibration();
     // Initialize emergency settings
@@ -36,7 +43,7 @@ void ConfigServer::startSetupMode() {
     WiFi.mode(WIFI_AP_STA);
     
     // Step 2: Start AP (Access Point)
-    WiFi.softAP(AP_SSID, AP_PASSWORD);
+    WiFi.softAP(AP_SSID, apPassword.c_str());
     
     // Get AP IP address (usually 192.168.4.1)
     IPAddress apIP = WiFi.softAPIP();
@@ -45,7 +52,7 @@ void ConfigServer::startSetupMode() {
     Serial.print("Connect to SSID: ");
     Serial.println(AP_SSID);
     Serial.print("Password: ");
-    Serial.println(AP_PASSWORD);
+    Serial.println(apPassword);
     
     // Step 3: Start DNS server for captive portal
     dnsServer = new DNSServer();

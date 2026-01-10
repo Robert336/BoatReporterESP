@@ -98,6 +98,15 @@ void setup() {
     // This ensures saved calibration is applied before first sensor reading
     configServer = new ConfigServer(&waterSensor, &sms, &discord);
     Serial.println("[SETUP] ConfigServer initialized - calibration loaded from NVS");
+    
+    // Print unique device AP password for easy access
+    Serial.println("========================================");
+    Serial.println("Device Configuration Access Point:");
+    Serial.print("  SSID: ESP32-BoatMonitor-Setup");
+    Serial.println();
+    Serial.print("  Password: ");
+    Serial.println(configServer->getAPPassword());
+    Serial.println("========================================");
 
     pinMode(ALERT_PIN, OUTPUT);
     pinMode(BUTTON_PIN, INPUT_PULLUP);
