@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include "Logger.h"
 #include "TimeManagement.h"
 #include "WiFiManager.h"
 #include "ConfigServer.h"
@@ -48,6 +49,7 @@ static constexpr int BUTTON_PIN = 23; // GPIO
 static constexpr int ALERT_PIN = 19; // GPIO
 static constexpr int SENSOR_PIN = 32; // Water sensor analog pin ADC1 because wifi is required
 static constexpr bool USE_MOCK = false; // For mocking sensor readings
+static constexpr int LIGHT_PIN = LED_BUILTIN;
 
 // Emergency timeout before transitioning to EMERGENCY state
 static constexpr int EMERGENCY_TIMEOUT_MS = 1000;
@@ -59,7 +61,7 @@ volatile bool buttonCurrentlyPressed = false;
 
 // Create easier references to the singleton objects
 ConfigServer* configServer = nullptr;
-LightCode light(LED_BUILTIN);
+LightCode light(LIGHT_PIN);
 TimeManagement& rtc = TimeManagement::getInstance(); 
 WiFiManager& wifiMgr = WiFiManager::getInstance();
 WaterPressureSensor waterSensor(USE_MOCK); // false = use real sensor, not mock data
@@ -97,16 +99,14 @@ void setup() {
     // Initialize ConfigServer early to load calibration from NVS
     // This ensures saved calibration is applied before first sensor reading
     configServer = new ConfigServer(&waterSensor, &sms, &discord);
-    Serial.println("[SETUP] ConfigServer initialized - calibration loaded from NVS");
+    LOG_SETUP("[SETUP] ConfigServer initialized - calibration loaded from NVS");
     
     // Print unique device AP password for easy access
-    Serial.println("========================================");
-    Serial.println("Device Configuration Access Point:");
-    Serial.print("  SSID: ESP32-BoatMonitor-Setup");
-    Serial.println();
-    Serial.print("  Password: ");
-    Serial.println(configServer->getAPPassword());
-    Serial.println("========================================");
+    LOG_SETUP("========================================");
+    LOG_SETUP("Device Configuration Access Point:");
+    LOG_SETUP("  SSID: ESP32-BoatMonitor-Setup");
+    LOG_SETUP("  Password: %s", configServer->getAPPassword());
+    LOG_SETUP("========================================");
 
     pinMode(ALERT_PIN, OUTPUT);
     pinMode(BUTTON_PIN, INPUT_PULLUP);
@@ -121,18 +121,17 @@ void setup() {
 
     if (ssids.empty()) {
         systemState.currentState = CONFIG;
-        Serial.printf("[STATE] Initial state: %s (no WiFi credentials found)\n", stateToString(systemState.currentState));
+        LOG_STATE("[STATE] Initial state: %s (no WiFi credentials found)", stateToString(systemState.currentState));
         light.setPattern(PATTERN_SLOW_BLINK); // CONFIG state pattern
     } else {
         systemState.currentState = NORMAL;
-        Serial.printf("[STATE] Initial state: %s\n", stateToString(systemState.currentState));
+        LOG_STATE("[STATE] Initial state: %s", stateToString(systemState.currentState));
         light.setPattern(PATTERN_OFF); // NORMAL state pattern
-        Serial.println("WiFi credentials found, connecting...");
+        LOG_SETUP("WiFi credentials found, connecting...");
         delay(2000);
         
         if (wifiMgr.isConnected()) {
-            Serial.print("IP address: ");
-            Serial.println(WiFi.localIP());
+            LOG_SETUP("IP address: %s", WiFi.localIP().toString().c_str());
         }
     }
 }
@@ -142,11 +141,22 @@ void loop() {
     rtc.sync();
     light.update();
 
+    // Monitor WiFi connection status for critical events
+    static bool wasWiFiConnected = false;
+    bool isWiFiConnected = wifiMgr.isConnected();
+    
+    if (wasWiFiConnected && !isWiFiConnected) {
+        LOG_EVENT("[WIFI] Connection lost - internet disconnected");
+    } else if (!wasWiFiConnected && isWiFiConnected) {
+        LOG_EVENT("[WIFI] Connection restored - internet connected");
+    }
+    wasWiFiConnected = isWiFiConnected;
+
     // Track state before processing to detect changes
     State previousState = systemState.currentState;
 
     SensorReading currentReading = waterSensor.readLevel();
-    Serial.printf("SensorReading: valid=%d, level_cm=%.2f, millivolts=%.2f, timestamp={isNTPSynced=%d, unixTime=%ld, timeSinceBoot=%u}\n",
+    LOG_SENSOR("SensorReading: valid=%d, level_cm=%.2f, millivolts=%.2f, timestamp={isNTPSynced=%d, unixTime=%ld, timeSinceBoot=%u}",
                   currentReading.valid, currentReading.level_cm, currentReading.millivolts,
                   currentReading.timestamp.isNTPSynced, static_cast<long>(currentReading.timestamp.unixTime), currentReading.timestamp.timeSinceBoot);
 
@@ -155,14 +165,14 @@ void loop() {
     systemState.sensorError = !currentReading.valid;
     
     if (systemState.sensorError && !previousSensorError) {
-        Serial.println("[EVENT] Sensor error detected!");
+        LOG_EVENT("[EVENT] Sensor error detected!");
     } else if (!systemState.sensorError && previousSensorError) {
-        Serial.println("[EVENT] Sensor error cleared");
+        LOG_EVENT("[EVENT] Sensor error cleared");
     }
 
     static bool lastConfigCommandReceived = false;
     if (systemState.configCommandReceived && !lastConfigCommandReceived) {
-        Serial.println("[EVENT] Button pressed - config command received");
+        LOG_EVENT("[EVENT] Button pressed - config command received");
     }
     lastConfigCommandReceived = systemState.configCommandReceived;
 
@@ -177,18 +187,18 @@ void loop() {
                 silenceToggleHandled = true;
                 
                 if (systemState.notificationsSilenced) {
-                    Serial.println("[EVENT] Emergency notifications SILENCED by button hold");
+                    LOG_EVENT("[EVENT] Emergency notifications SILENCED by button hold");
                     
                     // Send confirmation notification
                     const char* silenceMessage = "Boat Monitor: Emergency alerts have been temporarily silenced";
                     if (!sms.send(silenceMessage)) {
-                        Serial.println("[SMS] Failed to send silence confirmation SMS");
+                        LOG_EVENT("[SMS] Failed to send silence confirmation SMS");
                     }
                     if (!discord.send(silenceMessage)) {
-                        Serial.println("[Discord] Failed to send silence confirmation to Discord");
+                        LOG_EVENT("[Discord] Failed to send silence confirmation to Discord");
                     }
                 } else {
-                    Serial.println("[EVENT] Emergency notifications RE-ENABLED by button hold");
+                    LOG_EVENT("[EVENT] Emergency notifications RE-ENABLED by button hold");
                 }
             }
             // Reset flag when button is released
@@ -205,14 +215,14 @@ void loop() {
         systemState.emergencyConditions = true;
         if (!previousEmergencyConditions) {
             systemState.emergencyConditionsTrueTime = millis(); // Update timer when conditions START
-            Serial.printf("[EVENT] Tier 1 Emergency conditions detected! level=%.2f cm (threshold=%.2f cm)\n",
+            LOG_EVENT("[EVENT] Tier 1 Emergency conditions detected! level=%.2f cm (threshold=%.2f cm)",
                           currentReading.level_cm, emergencyThreshold);
         }
     } else {
         systemState.emergencyConditions = false;
         if (previousEmergencyConditions) {
             systemState.emergencyConditionsFalseTime = millis(); // Update timer when conditions CLEAR
-            Serial.printf("[EVENT] Tier 1 Emergency conditions cleared. level=%.2f cm\n", currentReading.level_cm);
+            LOG_EVENT("[EVENT] Tier 1 Emergency conditions cleared. level=%.2f cm", currentReading.level_cm);
         }
     }
     
@@ -222,13 +232,13 @@ void loop() {
     if (currentReading.level_cm >= urgentEmergencyThreshold) {
         systemState.urgentEmergencyConditions = true;
         if (!previousUrgentEmergencyConditions) {
-            Serial.printf("[EVENT] Tier 2 URGENT Emergency conditions detected! level=%.2f cm (threshold=%.2f cm)\n",
+            LOG_EVENT("[EVENT] Tier 2 URGENT Emergency conditions detected! level=%.2f cm (threshold=%.2f cm)",
                           currentReading.level_cm, urgentEmergencyThreshold);
         }
     } else {
         systemState.urgentEmergencyConditions = false;
         if (previousUrgentEmergencyConditions) {
-            Serial.printf("[EVENT] Tier 2 URGENT Emergency conditions cleared. level=%.2f cm\n", currentReading.level_cm);
+            LOG_EVENT("[EVENT] Tier 2 URGENT Emergency conditions cleared. level=%.2f cm", currentReading.level_cm);
         }
     }
 
@@ -238,12 +248,12 @@ void loop() {
     switch (systemState.currentState) {
         case ERROR:
             if (systemState.sensorError == false) {
-                Serial.printf("[STATE] Transitioning from %s to NORMAL (sensor recovered)\n", stateToString(systemState.currentState));
+                LOG_STATE("[STATE] Transitioning from %s to NORMAL (sensor recovered)", stateToString(systemState.currentState));
                 systemState.currentState = NORMAL;
                 systemState.lastStateChangeTime = millis();
             }
             else if (systemState.configCommandReceived) {
-                Serial.printf("[STATE] Transitioning from %s to CONFIG (button pressed)\n", stateToString(systemState.currentState));
+                LOG_STATE("[STATE] Transitioning from %s to CONFIG (button pressed)", stateToString(systemState.currentState));
                 systemState.currentState = CONFIG;
                 systemState.lastStateChangeTime = millis();
             }
@@ -252,19 +262,19 @@ void loop() {
             break;
         case NORMAL:
             if (systemState.sensorError == true) {
-                Serial.printf("[STATE] Transitioning from %s to ERROR (sensor error detected)\n", stateToString(systemState.currentState));
+                LOG_EVENT("[STATE] Transitioning from %s to ERROR (sensor error detected)", stateToString(systemState.currentState));
                 systemState.currentState = ERROR;
                 systemState.lastStateChangeTime = millis();
             }
             else if (systemState.emergencyConditions && 
                 (millis() - systemState.emergencyConditionsTrueTime) >= EMERGENCY_TIMEOUT_MS) {
-                Serial.printf("[STATE] Transitioning from %s to EMERGENCY (water level=%.2f cm)\n", 
+                LOG_EVENT("[STATE] Transitioning from %s to EMERGENCY (water level=%.2f cm)", 
                               stateToString(systemState.currentState), currentReading.level_cm);
                 systemState.currentState = EMERGENCY;
                 systemState.lastStateChangeTime = millis();
             }
             else if (systemState.configCommandReceived) {
-                Serial.printf("[STATE] Transitioning from %s to CONFIG (button pressed)\n", stateToString(systemState.currentState));
+                LOG_STATE("[STATE] Transitioning from %s to CONFIG (button pressed)", stateToString(systemState.currentState));
                 systemState.currentState = CONFIG;
                 systemState.lastStateChangeTime = millis();
             } 
@@ -272,7 +282,7 @@ void loop() {
         case CONFIG:
             if (!configServer->isSetupModeActive()) {
                 // Start setup mode (configServer already exists from setup())
-                Serial.println("[STATE] Starting configuration server mode");
+                LOG_STATE("[STATE] Starting configuration server mode");
                 configServer->startSetupMode();
             }
             else {
@@ -280,7 +290,7 @@ void loop() {
                 
                 // Check if setup mode has ended (timeout or manual stop)
                 if (!configServer->isSetupModeActive()) {
-                    Serial.printf("[STATE] Transitioning from %s to NORMAL (config completed)\n", stateToString(systemState.currentState));
+                    LOG_STATE("[STATE] Transitioning from %s to NORMAL (config completed)", stateToString(systemState.currentState));
                     systemState.currentState = NORMAL;
                     systemState.configCommandReceived = false;
                     systemState.lastStateChangeTime = millis();
@@ -290,7 +300,7 @@ void loop() {
         case EMERGENCY:
             
             if (systemState.emergencyConditions == false && (millis() - systemState.emergencyConditionsFalseTime) >= EMERGENCY_TIMEOUT_MS) {
-                Serial.printf("[STATE] Transitioning from %s to NORMAL (emergency cleared)\n", stateToString(systemState.currentState));
+                LOG_EVENT("[STATE] Transitioning from %s to NORMAL (emergency cleared)", stateToString(systemState.currentState));
                 systemState.currentState = NORMAL;
                 systemState.lastStateChangeTime = millis();
                 // Ensure horn is OFF when exiting EMERGENCY state
@@ -298,7 +308,7 @@ void loop() {
                 systemState.hornCurrentlyOn = false;
                 // Auto-clear silence flag when emergency ends (safety feature)
                 if (systemState.notificationsSilenced) {
-                    Serial.println("[STATE] Auto-clearing notification silence (emergency cleared)");
+                    LOG_EVENT("[STATE] Auto-clearing notification silence (emergency cleared)");
                     systemState.notificationsSilenced = false;
                 }
             } else {
@@ -317,17 +327,17 @@ void loop() {
                         } else {
                             snprintf(emergMessageBuf, sizeof(emergMessageBuf), "Boat Monitor Alert: Emergency Level %.2f cm", currentReading.level_cm);
                         }
-                        Serial.printf("[STATE] EMERGENCY: Sending alert message: %s\n", emergMessageBuf);
+                        LOG_EVENT("[STATE] EMERGENCY: Sending alert message: %s", emergMessageBuf);
 
                         if (!sms.send(emergMessageBuf)){
-                            Serial.println("[SMS] Emergency SMS failed to send");
+                            LOG_EVENT("[SMS] Emergency SMS failed to send");
                         }
 
                         if (!discord.send(emergMessageBuf)){
-                            Serial.println("[Discord] Emergency Discord webhook failed to send");
+                            LOG_EVENT("[Discord] Emergency Discord webhook failed to send");
                         }
                     } else {
-                        Serial.println("[STATE] EMERGENCY: Notifications silenced, skipping alert message");
+                        LOG_INFO("[STATE] EMERGENCY: Notifications silenced, skipping alert message");
                     }
                 }
                 
@@ -341,7 +351,7 @@ void loop() {
                         systemState.hornCurrentlyOn = !systemState.hornCurrentlyOn;
                         digitalWrite(ALERT_PIN, systemState.hornCurrentlyOn ? HIGH : LOW);
                         systemState.lastHornToggleTime = millis();
-                        Serial.printf("[HORN] Horn %s\n", systemState.hornCurrentlyOn ? "ON" : "OFF");
+                        LOG_DEBUG("[HORN] Horn %s", systemState.hornCurrentlyOn ? "ON" : "OFF");
                     }
                 } else {
                     // Not urgent emergency or notifications silenced - ensure horn is OFF
@@ -349,9 +359,9 @@ void loop() {
                         digitalWrite(ALERT_PIN, LOW);
                         systemState.hornCurrentlyOn = false;
                         if (systemState.notificationsSilenced) {
-                            Serial.println("[HORN] Horn deactivated (notifications silenced)");
+                            LOG_EVENT("[HORN] Horn deactivated (notifications silenced)");
                         } else {
-                            Serial.println("[HORN] Horn deactivated (Tier 2 conditions cleared)");
+                            LOG_EVENT("[HORN] Horn deactivated (Tier 2 conditions cleared)");
                         }
                     }
                 }
@@ -379,7 +389,7 @@ void loop() {
 
     // Periodic status logging
     if (millis() - lastStatusLogTime >= STATUS_LOG_INTERVAL_MS) {
-        Serial.printf("[STATUS] State=%s, WaterLevel=%.2f cm, SensorError=%d, EmergencyConditions=%d\n",
+        LOG_STATUS("[STATUS] State=%s, WaterLevel=%.2f cm, SensorError=%d, EmergencyConditions=%d",
                       stateToString(systemState.currentState),
                       currentReading.level_cm,
                       systemState.sensorError,

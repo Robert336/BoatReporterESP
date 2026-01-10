@@ -1,4 +1,5 @@
 #include "SendDiscord.h"
+#include "Logger.h"
 
 // Namespace for NVS storage
 static constexpr const char* DISCORD_PREFS_NAMESPACE = "discord";
@@ -26,7 +27,7 @@ bool SendDiscord::send(const char* message) {
 
     // Open preferences for reading
     if (!preferences.begin(DISCORD_PREFS_NAMESPACE, true)) {
-        Serial.println("[Discord] Failed to open preferences for reading");
+        LOG_CRITICAL("[Discord] Failed to open preferences for reading");
         return false;
     }
 
@@ -68,7 +69,7 @@ bool SendDiscord::send(const char* message) {
     int httpResponseCode = http.POST(jsonPayload);
 
     if (httpResponseCode < 0) {
-        Serial.printf("[Discord] HTTP error: %s\n", http.errorToString(httpResponseCode).c_str());
+        LOG_DEBUG("[Discord] HTTP error: %s", http.errorToString(httpResponseCode).c_str());
     }
 
     // Free allocated memory
@@ -89,7 +90,7 @@ void SendDiscord::updateWebhookUrl(const char* newWebhookUrl) {
     
     // Open preferences for writing
     if (!preferences.begin(DISCORD_PREFS_NAMESPACE, false)) {
-        Serial.println("[Discord] Failed to open preferences for writing");
+        LOG_CRITICAL("[Discord] Failed to open preferences for writing");
         return;
     }
     
@@ -97,9 +98,9 @@ void SendDiscord::updateWebhookUrl(const char* newWebhookUrl) {
     preferences.end();
     
     if (bytesWritten == 0) {
-        Serial.println("[Discord] Failed to store webhook URL in preferences!");
+        LOG_CRITICAL("[Discord] Failed to store webhook URL in preferences!");
     } else {
-        Serial.printf("[Discord] Webhook URL saved successfully (%d bytes)\n", bytesWritten);
+        LOG_INFO("[Discord] Webhook URL saved successfully (%d bytes)", bytesWritten);
     }
 }
 
@@ -111,7 +112,7 @@ int SendDiscord::getWebhookUrl(char* outBuf, size_t bufferSize) {
     
     // Open preferences for reading
     if (!preferences.begin(DISCORD_PREFS_NAMESPACE, true)) {
-        Serial.println("[Discord] Failed to open preferences for reading");
+        LOG_CRITICAL("[Discord] Failed to open preferences for reading");
         return -1;
     }
     
