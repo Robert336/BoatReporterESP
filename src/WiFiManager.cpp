@@ -1,4 +1,5 @@
 #include "WiFiManager.h"
+#include "Logger.h"
 
 
 // Singleton instance getter
@@ -20,7 +21,7 @@ WiFiManager::~WiFiManager() {
     }
     storedNetworks.clear(); // Clear the vector (redundant but explicit)
     
-    Serial.println("WiFiManager: Memory cleaned up");
+    LOG_DEBUG("WiFiManager: Memory cleaned up");
 }
 
 void WiFiManager::begin() {
@@ -34,7 +35,7 @@ void WiFiManager::begin() {
 
 void WiFiManager::loadCredentials() {
     if (!preferences.begin(WIFI_PREFERENCES_NAMESPACE, true)) {
-        Serial.println("WiFiManager: Failed to open preferences for reading!");
+        LOG_CRITICAL("WiFiManager: Failed to open preferences for reading!");
         return;
     }
     // Clear existing networks
@@ -59,8 +60,7 @@ void WiFiManager::loadCredentials() {
             strcpy(cred.password, password.c_str());
             storedNetworks.push_back(cred);
             
-            Serial.print("Loaded network: ");
-            Serial.println(cred.ssid);
+            LOG_INFO("Loaded network: %s", cred.ssid);
         }
     }
     preferences.end();
@@ -68,7 +68,7 @@ void WiFiManager::loadCredentials() {
 
 void WiFiManager::saveCredentials() {
     if (!preferences.begin(WIFI_PREFERENCES_NAMESPACE, false)) {
-        Serial.println("WiFiManager: Failed to open preferences for writing!");
+        LOG_CRITICAL("WiFiManager: Failed to open preferences for writing!");
         return;
     }
     // Clear old data
@@ -86,8 +86,7 @@ void WiFiManager::saveCredentials() {
         preferences.putString(key_ssid, storedNetworks[i].ssid);
         preferences.putString(key_pass, storedNetworks[i].password);
         
-        Serial.print("Saved network: ");
-        Serial.println(storedNetworks[i].ssid);
+        LOG_INFO("Saved network: %s", storedNetworks[i].ssid);
     }
     preferences.end();
 }
@@ -96,7 +95,7 @@ void WiFiManager::addNetwork(const char* ssid, const char* password) {
     // Check if network already exists
     for (auto& cred : storedNetworks) {
         if (strcmp(cred.ssid, ssid) == 0) {
-            Serial.println("Network already exists, updating password...");
+            LOG_INFO("Network already exists, updating password...");
             delete[] cred.password;
             // Allocate new buffer with correct size for the new password
             cred.password = new char[strlen(password) + 1];
@@ -116,10 +115,9 @@ void WiFiManager::addNetwork(const char* ssid, const char* password) {
         storedNetworks.push_back(cred);
         
         saveCredentials();
-        Serial.print("Added network: ");
-        Serial.println(ssid);
+        LOG_INFO("Added network: %s", ssid);
     } else {
-        Serial.println("Max networks reached!");
+        LOG_INFO("Max networks reached!");
     }
 }
 
@@ -130,21 +128,20 @@ void WiFiManager::removeNetwork(const char* ssid) {
             delete[] it->password;
             storedNetworks.erase(it);
             saveCredentials();
-            Serial.print("Removed network: ");
-            Serial.println(ssid);
+            LOG_INFO("Removed network: %s", ssid);
             return;
         }
     }
-    Serial.println("Network not found!");
+    LOG_INFO("Network not found!");
 }
 
 void WiFiManager::connectToBestNetwork() {
     if (storedNetworks.empty()) {
-        Serial.println("No stored networks available!");
+        LOG_INFO("No stored networks available!");
         return;
     }
     
-    Serial.println("Scanning for available networks...");
+    LOG_INFO("Scanning for available networks...");
     int numNetworks = WiFi.scanNetworks();
     
     int bestNetwork = -1;
@@ -167,11 +164,8 @@ void WiFiManager::connectToBestNetwork() {
     }
     
     if (bestNetwork != -1) {
-        Serial.print("Connecting to: ");
-        Serial.println(storedNetworks[bestNetwork].ssid);
-        Serial.print("Signal strength: ");
-        Serial.print(bestRSSI);
-        Serial.println(" dBm");
+        LOG_INFO("Connecting to: %s", storedNetworks[bestNetwork].ssid);
+        LOG_DEBUG("Signal strength: %d dBm", bestRSSI);
         
         WiFi.begin(storedNetworks[bestNetwork].ssid, storedNetworks[bestNetwork].password);
         
@@ -179,21 +173,18 @@ void WiFiManager::connectToBestNetwork() {
         unsigned long startTime = millis();
         while (WiFi.status() != WL_CONNECTED && (millis() - startTime) < CONNECT_TIMEOUT_MS) {
             delay(500);
-            Serial.print(".");
+            LOG_DEBUG(".");
         }
-        Serial.println();
         
         if (WiFi.status() == WL_CONNECTED) {
             isWiFiConnected = true;
-            Serial.println("✓ Connected!");
-            Serial.print("IP address: ");
-            Serial.println(WiFi.localIP());
+            LOG_INFO("Connected! IP address: %s", WiFi.localIP().toString().c_str());
         } else {
             isWiFiConnected = false;
-            Serial.println("✗ Connection failed");
+            LOG_INFO("Connection failed");
         }
     } else {
-        Serial.println("No stored networks found in scan results!");
+        LOG_INFO("No stored networks found in scan results!");
     }
     
     WiFi.scanDelete();
@@ -214,5 +205,5 @@ bool WiFiManager::isConnected() {
 void WiFiManager::disconnect() {
     WiFi.disconnect(true); // true = turn off WiFi radio
     isWiFiConnected = false;
-    Serial.println("WiFi disconnected");
+    LOG_INFO("WiFi disconnected");
 }

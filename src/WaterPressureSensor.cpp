@@ -1,4 +1,5 @@
 #include "WaterPressureSensor.h"
+#include "Logger.h"
 #include <Arduino.h>
 #include <algorithm>
 
@@ -123,9 +124,9 @@ SensorReading WaterPressureSensor::readLevel() {
         
         int16_t rawADC = ads.readADC_SingleEnded(CHANNEL);
         reading.millivolts = ads.computeVolts(rawADC) * 1000;
-        Serial.printf("WaterPressureSensor: millivolts reading = %.2f mV\n", reading.millivolts);
+        LOG_DEBUG("WaterPressureSensor: millivolts reading = %.2f mV", reading.millivolts);
         float computedVolts = ads.computeVolts(rawADC);
-        Serial.printf("WaterPressureSensor: raw ADC = %d, computedVolts = %.5f V\n", rawADC, computedVolts);
+        LOG_DEBUG("WaterPressureSensor: raw ADC = %d, computedVolts = %.5f V", rawADC, computedVolts);
         // Use voltage-based conversion for accurate readings
         reading.level_cm = voltageToCentimeters(reading.millivolts);
         

@@ -1,4 +1,5 @@
 #include "ConfigServer.h"
+#include "Logger.h"
 
 // ============================================================================
 // CORE LIFECYCLE METHODS
@@ -32,10 +33,10 @@ ConfigServer::~ConfigServer() {
 }
 
 void ConfigServer::startSetupMode() {
-    Serial.println("\n=== Starting WiFi Setup Mode ===");
+    LOG_INFO("\n=== Starting WiFi Setup Mode ===");
 
     if (setupModeActive) {
-        Serial.println("...Already in setup mode");
+        LOG_INFO("...Already in setup mode");
         return;
     }
     
@@ -47,18 +48,15 @@ void ConfigServer::startSetupMode() {
     
     // Get AP IP address (usually 192.168.4.1)
     IPAddress apIP = WiFi.softAPIP();
-    Serial.print("AP IP address: ");
-    Serial.println(apIP);
-    Serial.print("Connect to SSID: ");
-    Serial.println(AP_SSID);
-    Serial.print("Password: ");
-    Serial.println(apPassword);
+    LOG_INFO("AP IP address: %s", apIP.toString().c_str());
+    LOG_INFO("Connect to SSID: %s", AP_SSID);
+    LOG_INFO("Password: %s", apPassword.c_str());
     
     // Step 3: Start DNS server for captive portal
     dnsServer = new DNSServer();
     dnsServer->start(DNS_PORT, "*", apIP);
-    Serial.println("Captive portal started - users will be automatically redirected");
-    Serial.println("All DNS requests will redirect to config server");
+    LOG_INFO("Captive portal started - users will be automatically redirected");
+    LOG_INFO("All DNS requests will redirect to config server");
     
     // Step 4: Create and start web server on port 80
     server = new WebServer(80);
@@ -141,8 +139,8 @@ void ConfigServer::startSetupMode() {
     setupModeActive = true;
     serverStartTime = millis();
     
-    Serial.println("Setup mode started. Open browser and navigate to 192.168.4.1");
-    Serial.println("Or simply open any website - captive portal will redirect you!");
+    LOG_INFO("Setup mode started. Open browser and navigate to 192.168.4.1");
+    LOG_INFO("Or simply open any website - captive portal will redirect you!");
 }
 
 void ConfigServer::stopSetupMode() {
@@ -157,14 +155,14 @@ void ConfigServer::stopSetupMode() {
         dnsServer->stop();
         delete dnsServer;
         dnsServer = nullptr;
-        Serial.println("Captive portal stopped");
+        LOG_INFO("Captive portal stopped");
     }
     
     // Stop AP, keep STA mode
     WiFi.mode(WIFI_STA);
     setupModeActive = false;
 
-    Serial.println("\n=== Setup mode stopped, resuming normal WiFi ===");
+    LOG_INFO("\n=== Setup mode stopped, resuming normal WiFi ===");
 }
 
 bool ConfigServer::isSetupModeActive() {
@@ -217,11 +215,9 @@ void ConfigServer::handleSubmit() {
         String ssid = server->arg("ssid");
         String password = server->arg("password");
         
-        Serial.println("\nConfiguration received!");
-        Serial.print("SSID: ");
-        Serial.println(ssid);
-        Serial.print("Password: ");
-        Serial.println(password);
+        LOG_INFO("\nConfiguration received!");
+        LOG_INFO("SSID: %s", ssid.c_str());
+        LOG_INFO("Password: %s", password.c_str());
         
         // Save to NVS via WiFiManager
         WiFiManager& wifiMgr = WiFiManager::getInstance();
@@ -397,25 +393,25 @@ void ConfigServer::loadCalibration() {
     if (!waterSensor) return;
 
     if (!calibrationPrefs.begin(SENSOR_CALIBRATION_NAMESPACE, true)) {
-        Serial.print("Failed to load the calibration NVS storage in read mode");
+        LOG_CRITICAL("Failed to load the calibration NVS storage in read mode");
     }
     
     int zero_mv = calibrationPrefs.getInt("zero_mv", -1);
     if (zero_mv >= 0) {
         waterSensor->setCalibrationPoint(0, zero_mv, 0.0f);
-        Serial.printf("[CALIBRATION] Loaded zero point from NVS: %d mV\n", zero_mv);
+        LOG_INFO("[CALIBRATION] Loaded zero point from NVS: %d mV", zero_mv);
     } else {
-        Serial.println("[CALIBRATION] No zero point calibration found in NVS, using default");
+        LOG_INFO("[CALIBRATION] No zero point calibration found in NVS, using default");
     }
     
     int point2_mv = calibrationPrefs.getInt("point2_mv", -1);
     float point2_cm = calibrationPrefs.getFloat("point2_cm", -1.0f);
     if (point2_mv >= 0 && point2_cm >= 0) {
         waterSensor->setCalibrationPoint(1, point2_mv, point2_cm);
-        Serial.printf("[CALIBRATION] Loaded second point from NVS: %d mV = %.2f cm (2-point calibration active)\n", 
+        LOG_INFO("[CALIBRATION] Loaded second point from NVS: %d mV = %.2f cm (2-point calibration active)", 
                       point2_mv, point2_cm);
     } else {
-        Serial.println("[CALIBRATION] No second calibration point found in NVS");
+        LOG_INFO("[CALIBRATION] No second calibration point found in NVS");
     }
 
     calibrationPrefs.end();
@@ -425,24 +421,24 @@ void ConfigServer::saveCalibration() {
     if (!waterSensor) return;
 
     if (!calibrationPrefs.begin(SENSOR_CALIBRATION_NAMESPACE, false)) {
-        Serial.print("Failed to load the calibration NVS storage in write mode");
+        LOG_CRITICAL("Failed to load the calibration NVS storage in write mode");
     }
     
     int zero_mv = waterSensor->getZeroPointMilliVolts();
     calibrationPrefs.putInt("zero_mv", zero_mv);
-    Serial.printf("[CALIBRATION] Saved zero point to NVS: %d mV\n", zero_mv);
+    LOG_INFO("[CALIBRATION] Saved zero point to NVS: %d mV", zero_mv);
     
     if (waterSensor->hasTwoPointCalibration()) {
         int point2_mv = waterSensor->getSecondPointMilliVolts();
         float point2_cm = waterSensor->getSecondPointLevelCm();
         calibrationPrefs.putInt("point2_mv", point2_mv);
         calibrationPrefs.putFloat("point2_cm", point2_cm);
-        Serial.printf("[CALIBRATION] Saved second point to NVS: %d mV = %.2f cm (2-point calibration)\n", 
+        LOG_INFO("[CALIBRATION] Saved second point to NVS: %d mV = %.2f cm (2-point calibration)", 
                       point2_mv, point2_cm);
     } else {
         calibrationPrefs.remove("point2_mv");
         calibrationPrefs.remove("point2_cm");
-        Serial.println("[CALIBRATION] Removed second calibration point from NVS (single-point mode)");
+        LOG_INFO("[CALIBRATION] Removed second calibration point from NVS (single-point mode)");
     }
 
     calibrationPrefs.end();
@@ -485,7 +481,7 @@ void ConfigServer::handleSetEmergencyLevel() {
         json += "}";
         
         server->send(200, "application/json", json);
-        Serial.printf("[CONFIG] Emergency water level (Tier 1) updated: %.2f cm\n", level_cm);
+        LOG_INFO("[CONFIG] Emergency water level (Tier 1) updated: %.2f cm", level_cm);
     } else {
         server->send(400, "application/json", "{\"error\":\"Missing level_cm parameter\"}");
     }
@@ -517,7 +513,7 @@ void ConfigServer::handleSetEmergencyNotifFreq() {
         json += "}";
         
         server->send(200, "application/json", json);
-        Serial.printf("[CONFIG] Emergency notification frequency updated: %d ms (%d seconds)\n", freq_ms, freq_ms / 1000);
+        LOG_INFO("[CONFIG] Emergency notification frequency updated: %d ms (%d seconds)", freq_ms, freq_ms / 1000);
     } else {
         server->send(400, "application/json", "{\"error\":\"Missing freq_ms parameter\"}");
     }
@@ -556,7 +552,7 @@ void ConfigServer::handleSetUrgentEmergencyLevel() {
         json += "}";
         
         server->send(200, "application/json", json);
-        Serial.printf("[CONFIG] Urgent emergency water level (Tier 2) updated: %.2f cm\n", level_cm);
+        LOG_INFO("[CONFIG] Urgent emergency water level (Tier 2) updated: %.2f cm", level_cm);
     } else {
         server->send(400, "application/json", "{\"error\":\"Missing level_cm parameter\"}");
     }
@@ -565,17 +561,17 @@ void ConfigServer::handleSetUrgentEmergencyLevel() {
 void ConfigServer::handleTestEmergencyPin() {
     serverStartTime = millis();
     
-    Serial.println("[TEST] Testing emergency pin output...");
+    LOG_INFO("[TEST] Testing emergency pin output...");
     
     // Set the pin HIGH for 2 seconds to test the connected device
     const int ALERT_PIN = 19; // GPIO 19 as defined in main.cpp
     digitalWrite(ALERT_PIN, HIGH);
-    Serial.println("[TEST] Emergency pin set HIGH");
+    LOG_INFO("[TEST] Emergency pin set HIGH");
     
     delay(2000); // 2 second test pulse
     
     digitalWrite(ALERT_PIN, LOW);
-    Serial.println("[TEST] Emergency pin set LOW - test complete");
+    LOG_INFO("[TEST] Emergency pin set LOW - test complete");
     
     String json = "{";
     json += "\"success\":true,";
@@ -594,50 +590,50 @@ void ConfigServer::loadEmergencySettings() {
     hornOffDuration_ms = DEFAULT_HORN_OFF_DURATION_MS;
     
     if (!emergencyPrefs.begin(EMERGENCY_SETTINGS_NAMESPACE, true)) {
-        Serial.println("[EMERGENCY] Failed to load emergency settings NVS storage in read mode");
+        LOG_CRITICAL("[EMERGENCY] Failed to load emergency settings NVS storage in read mode");
         return;
     }
     
     float saved_level = emergencyPrefs.getFloat("level_cm", -1.0f);
     if (saved_level >= 0) {
         emergencyWaterLevel_cm = saved_level;
-        Serial.printf("[EMERGENCY] Loaded emergency water level (Tier 1) from NVS: %.2f cm\n", emergencyWaterLevel_cm);
+        LOG_INFO("[EMERGENCY] Loaded emergency water level (Tier 1) from NVS: %.2f cm", emergencyWaterLevel_cm);
     } else {
-        Serial.printf("[EMERGENCY] No saved emergency water level found, using default: %.2f cm\n", emergencyWaterLevel_cm);
+        LOG_INFO("[EMERGENCY] No saved emergency water level found, using default: %.2f cm", emergencyWaterLevel_cm);
     }
     
     int saved_freq = emergencyPrefs.getInt("notif_freq_ms", -1);
     if (saved_freq >= 0) {
         emergencyNotifFreq_ms = saved_freq;
-        Serial.printf("[EMERGENCY] Loaded emergency notification frequency from NVS: %d ms (%d seconds)\n", 
+        LOG_INFO("[EMERGENCY] Loaded emergency notification frequency from NVS: %d ms (%d seconds)", 
                       emergencyNotifFreq_ms, emergencyNotifFreq_ms / 1000);
     } else {
-        Serial.printf("[EMERGENCY] No saved notification frequency found, using default: %d ms (%d seconds)\n",
+        LOG_INFO("[EMERGENCY] No saved notification frequency found, using default: %d ms (%d seconds)",
                       emergencyNotifFreq_ms, emergencyNotifFreq_ms / 1000);
     }
     
     float saved_urgent_level = emergencyPrefs.getFloat("urgent_level_cm", -1.0f);
     if (saved_urgent_level >= 0) {
         urgentEmergencyWaterLevel_cm = saved_urgent_level;
-        Serial.printf("[EMERGENCY] Loaded urgent emergency water level (Tier 2) from NVS: %.2f cm\n", urgentEmergencyWaterLevel_cm);
+        LOG_INFO("[EMERGENCY] Loaded urgent emergency water level (Tier 2) from NVS: %.2f cm", urgentEmergencyWaterLevel_cm);
     } else {
-        Serial.printf("[EMERGENCY] No saved urgent emergency water level found, using default: %.2f cm\n", urgentEmergencyWaterLevel_cm);
+        LOG_INFO("[EMERGENCY] No saved urgent emergency water level found, using default: %.2f cm", urgentEmergencyWaterLevel_cm);
     }
     
     int saved_horn_on = emergencyPrefs.getInt("horn_on_ms", -1);
     if (saved_horn_on >= 0) {
         hornOnDuration_ms = saved_horn_on;
-        Serial.printf("[EMERGENCY] Loaded horn ON duration from NVS: %d ms\n", hornOnDuration_ms);
+        LOG_INFO("[EMERGENCY] Loaded horn ON duration from NVS: %d ms", hornOnDuration_ms);
     } else {
-        Serial.printf("[EMERGENCY] No saved horn ON duration found, using default: %d ms\n", hornOnDuration_ms);
+        LOG_INFO("[EMERGENCY] No saved horn ON duration found, using default: %d ms", hornOnDuration_ms);
     }
     
     int saved_horn_off = emergencyPrefs.getInt("horn_off_ms", -1);
     if (saved_horn_off >= 0) {
         hornOffDuration_ms = saved_horn_off;
-        Serial.printf("[EMERGENCY] Loaded horn OFF duration from NVS: %d ms\n", hornOffDuration_ms);
+        LOG_INFO("[EMERGENCY] Loaded horn OFF duration from NVS: %d ms", hornOffDuration_ms);
     } else {
-        Serial.printf("[EMERGENCY] No saved horn OFF duration found, using default: %d ms\n", hornOffDuration_ms);
+        LOG_INFO("[EMERGENCY] No saved horn OFF duration found, using default: %d ms", hornOffDuration_ms);
     }
     
     emergencyPrefs.end();
@@ -645,7 +641,7 @@ void ConfigServer::loadEmergencySettings() {
 
 void ConfigServer::saveEmergencySettings() {
     if (!emergencyPrefs.begin(EMERGENCY_SETTINGS_NAMESPACE, false)) {
-        Serial.println("[EMERGENCY] Failed to load emergency settings NVS storage in write mode");
+        LOG_CRITICAL("[EMERGENCY] Failed to load emergency settings NVS storage in write mode");
         return;
     }
     
@@ -655,7 +651,7 @@ void ConfigServer::saveEmergencySettings() {
     emergencyPrefs.putInt("horn_on_ms", hornOnDuration_ms);
     emergencyPrefs.putInt("horn_off_ms", hornOffDuration_ms);
     
-    Serial.printf("[EMERGENCY] Saved emergency settings to NVS: Tier1=%.2f cm, Tier2=%.2f cm, freq=%d ms, horn=%d/%d ms\n", 
+    LOG_INFO("[EMERGENCY] Saved emergency settings to NVS: Tier1=%.2f cm, Tier2=%.2f cm, freq=%d ms, horn=%d/%d ms", 
                   emergencyWaterLevel_cm, urgentEmergencyWaterLevel_cm, emergencyNotifFreq_ms, hornOnDuration_ms, hornOffDuration_ms);
     
     emergencyPrefs.end();
@@ -714,7 +710,7 @@ void ConfigServer::handleSetPhoneNumber() {
         
         String json = "{\"success\":true,\"message\":\"Phone number updated\",\"phoneNumber\":\"" + phone + "\"}";
         server->send(200, "application/json", json);
-        Serial.printf("[CONFIG] Phone number updated: %s\n", phone.c_str());
+        LOG_INFO("[CONFIG] Phone number updated: %s", phone.c_str());
     } else {
         server->send(400, "application/json", "{\"error\":\"Missing phone parameter\"}");
     }
@@ -734,7 +730,7 @@ void ConfigServer::handleSetDiscordWebhook() {
         
         String json = "{\"success\":true,\"message\":\"Discord webhook updated\"}";
         server->send(200, "application/json", json);
-        Serial.printf("[CONFIG] Discord webhook updated: %s\n", webhook.c_str());
+        LOG_INFO("[CONFIG] Discord webhook updated: %s", webhook.c_str());
     } else {
         server->send(400, "application/json", "{\"error\":\"Missing webhook parameter\"}");
     }
@@ -758,14 +754,14 @@ void ConfigServer::handleTestSMS() {
         return;
     }
     
-    Serial.println("[TEST] Sending test SMS...");
+    LOG_INFO("[TEST] Sending test SMS...");
     bool success = smsService->send("Boat Monitor Test: This is a test message from your ESP32 boat monitor.");
     
     if (success) {
-        Serial.println("[TEST] Test SMS sent successfully!");
+        LOG_INFO("[TEST] Test SMS sent successfully!");
         server->send(200, "application/json", "{\"success\":true,\"message\":\"Test SMS sent successfully!\"}");
     } else {
-        Serial.println("[TEST] Test SMS failed to send");
+        LOG_INFO("[TEST] Test SMS failed to send");
         server->send(500, "application/json", "{\"success\":false,\"error\":\"Failed to send test SMS. Check serial log for details.\"}");
     }
 }
@@ -788,14 +784,14 @@ void ConfigServer::handleTestDiscord() {
         return;
     }
     
-    Serial.println("[TEST] Sending test Discord message...");
+    LOG_INFO("[TEST] Sending test Discord message...");
     bool success = discordService->send("🚤 **Boat Monitor Test** - This is a test message from your ESP32 boat monitor.");
     
     if (success) {
-        Serial.println("[TEST] Test Discord message sent successfully!");
+        LOG_INFO("[TEST] Test Discord message sent successfully!");
         server->send(200, "application/json", "{\"success\":true,\"message\":\"Test Discord message sent successfully!\"}");
     } else {
-        Serial.println("[TEST] Test Discord message failed to send");
+        LOG_INFO("[TEST] Test Discord message failed to send");
         server->send(500, "application/json", "{\"success\":false,\"error\":\"Failed to send test Discord message. Check serial log for details.\"}");
     }
 }

@@ -1,4 +1,5 @@
 #include "SendSMS.h"
+#include "Logger.h"
 #include <Preferences.h>
 
 // Namespace for NVS storage
@@ -28,7 +29,7 @@ bool SendSMS::send(const char* message) {
 
     // Open preferences for reading
     if (!preferences.begin(SMS_PREFS_NAMESPACE, true)) {
-        Serial.println("[SMS] Failed to open preferences for reading");
+        LOG_CRITICAL("[SMS] Failed to open preferences for reading");
         return false;
     }
 
@@ -78,7 +79,7 @@ bool SendSMS::send(const char* message) {
     int httpResponseCode = http.POST(postData);
 
     if (httpResponseCode < 0) {
-        Serial.printf("[SMS] HTTP error: %s\n", http.errorToString(httpResponseCode).c_str());
+        LOG_DEBUG("[SMS] HTTP error: %s", http.errorToString(httpResponseCode).c_str());
     }
 
     // Free allocated memory
@@ -102,7 +103,7 @@ void SendSMS::updatePhoneNumber(const char* newPhoneNumber) {
     
     // Open preferences for writing
     if (!preferences.begin(SMS_PREFS_NAMESPACE, false)) {
-        Serial.println("[SMS] Failed to open preferences for writing");
+        LOG_CRITICAL("[SMS] Failed to open preferences for writing");
         return;
     }
     
@@ -110,9 +111,9 @@ void SendSMS::updatePhoneNumber(const char* newPhoneNumber) {
     preferences.end();
     
     if (bytesWritten == 0) {
-        Serial.println("[SMS] Failed to store phone number in preferences!");
+        LOG_CRITICAL("[SMS] Failed to store phone number in preferences!");
     } else {
-        Serial.printf("[SMS] Phone number saved successfully (%d bytes)\n", bytesWritten);
+        LOG_INFO("[SMS] Phone number saved successfully (%d bytes)", bytesWritten);
     }
 }
 
@@ -124,7 +125,7 @@ int SendSMS::getPhoneNumber(char* outBuf, size_t bufferSize) {
     
     // Open preferences for reading
     if (!preferences.begin(SMS_PREFS_NAMESPACE, true)) {
-        Serial.println("[SMS] Failed to open preferences for reading");
+        LOG_CRITICAL("[SMS] Failed to open preferences for reading");
         return -1;
     }
     
