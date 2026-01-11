@@ -18,38 +18,24 @@ SendSMS::~SendSMS() {
 bool SendSMS::send(const char* message) {
     // Validate inputs
     if (!message) {
-        // #region agent log
-        Serial.printf("[DEBUG-H6-SMS] send() called with null message\n");
-        // #endregion
         return false;
     }
     
     // Check for active wifi connection first
     // Send message and wait for response
     if (!WiFi.isConnected()) {
-        // #region agent log
-        Serial.printf("[DEBUG-H5-SMS] WiFi not connected in send()\n");
-        // #endregion
         return false;
     }
 
     // Open preferences for reading
     if (!preferences.begin(SMS_PREFS_NAMESPACE, true)) {
         LOG_CRITICAL("[SMS] Failed to open preferences for reading");
-        // #region agent log
-        Serial.printf("[DEBUG-H6-SMS] Failed to open preferences\n");
-        // #endregion
         return false;
     }
 
     // Retrieve phone number from preferences
     String toPhoneNumber = preferences.getString("phone-number", "");
     preferences.end();
-    
-    // #region agent log
-    Serial.printf("[DEBUG-H6-SMS] Phone number from prefs: length=%d, empty=%d\n", 
-        toPhoneNumber.length(), (toPhoneNumber.length()==0)?1:0);
-    // #endregion
     
     if (toPhoneNumber.length() == 0) {
         // No phone number stored
