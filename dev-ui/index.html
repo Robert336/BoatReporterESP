@@ -29,16 +29,36 @@ fetch('/read').then(r=>r.json()).then(d=>{
 document.getElementById('water_level').textContent=(d.sensorAvailable&&d.valid)?d.level_cm.toFixed(1):'--';
 }).catch(e=>console.error(e));
 fetch('/emergency-settings').then(r=>r.json()).then(d=>{
-document.getElementById('tier1').textContent=d.emergencyWaterLevel_cm.toFixed(1)+' cm';
-document.getElementById('tier2').textContent=d.urgentEmergencyWaterLevel_cm.toFixed(1)+' cm';
+document.getElementById('tier1').value=d.emergencyWaterLevel_cm.toFixed(1);
+document.getElementById('tier2').value=d.urgentEmergencyWaterLevel_cm.toFixed(1);
 }).catch(e=>console.error(e));
 }
-setInterval(load,3000);
+
 window.onload=load;
+function updateThresholds(){
+var tier1=parseFloat(document.getElementById('tier1').value);
+var tier2=parseFloat(document.getElementById('tier2').value);
+var status=document.getElementById('threshold-status');
+if(isNaN(tier1)||isNaN(tier2)){status.textContent='⚠️ Please enter valid numbers';status.style.color='red';return;}
+if(tier1>=tier2){status.textContent='⚠️ Tier 1 must be less than Tier 2';status.style.color='red';return;}
+if(tier1<5||tier1>100||tier2<5||tier2>100){status.textContent='⚠️ Values must be between 5 and 100 cm';status.style.color='red';return;}
+status.textContent='⏳ Updating...';status.style.color='#666';
+Promise.all([
+fetch('/calibration/emergency-level',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'level_cm='+tier1}),
+fetch('/emergency/urgent-level',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'level_cm='+tier2})
+]).then(responses=>Promise.all(responses.map(r=>r.json()))).then(results=>{
+if(results[0].success&&results[1].success){
+status.textContent='✓ Thresholds updated successfully';status.style.color='green';
+setTimeout(()=>{status.textContent='';},3000);
+}else{
+status.textContent='⚠️ Update failed: '+(results[0].error||results[1].error||'Unknown error');status.style.color='red';
+}
+}).catch(e=>{status.textContent='⚠️ Error: '+e.message;status.style.color='red';console.error(e);});
+}
 </script>
 </head>
 <body>
-<h1>Boat Monitor</h1>
+<h1>Bilge Buddy</h1>
 
 <div class="card">
 <h2>WiFi Connection</h2>
@@ -48,22 +68,24 @@ window.onload=load;
 </div>
 
 <div class="card">
-<h2>Water Level</h2>
+<h2>Current Water Level</h2>
 <div class="level"><span id="water_level">--</span> cm</div>
 </div>
 
 <div class="card">
 <h2>Emergency Thresholds</h2>
 <div class="thresh">
-<div><span class="label">TIER 1</span><span id="tier1">--</span></div>
-<div><span class="label">TIER 2</span><span id="tier2">--</span></div>
+<div><span class="label">TIER 1</span><input type="number" id="tier1" step="0.1" min="5" max="100" style="width:100%;padding:5px;margin-top:5px;box-sizing:border-box;"> cm</div>
+<div><span class="label">TIER 2</span><input type="number" id="tier2" step="0.1" min="5" max="100" style="width:100%;padding:5px;margin-top:5px;box-sizing:border-box;"> cm</div>
 </div>
+<button onclick="updateThresholds()" style="margin-top:10px;">Update Thresholds</button>
+<div id="threshold-status" style="text-align:center;margin-top:10px;font-size:0.9em;"></div>
 </div>
 
-<button onclick="location.href='debug.html'">Debug & Calibration</button>
 <button onclick="location.href='notifications.html'">Notification Settings</button>
 <button onclick="location.href='wifi-config.html'">WiFi Networks</button>
+<button onclick="location.href='debug.html'">Advanced Debug & Calibration</button>
 
-<p style="text-align:center;font-size:0.9em;color:#666;margin-top:15px;">Auto-refresh: 3s</p>
+
 </body>
 </html>

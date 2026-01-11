@@ -15,6 +15,8 @@ button{padding:10px 15px;margin:5px 5px 5px 0;border:1px solid #333;background:#
 button:active{background:#eee;}
 .row{display:flex;justify-content:space-between;padding:5px 0;}
 .badge{display:inline-block;padding:4px 8px;border:1px solid #666;font-size:0.85em;margin-top:5px;}
+.badge.active{background:#4CAF50;color:#fff;border-color:#4CAF50;}
+.badge.inactive{background:#333;color:#fff;border-color:#333;}
 .help{font-size:0.85em;color:#666;margin-top:3px;}
 .info{border:1px solid #ccc;padding:10px;margin-top:10px;}
 </style>
@@ -24,9 +26,13 @@ try{
 const r=await fetch('/notifications');
 const d=await r.json();
 document.getElementById('phone').value=d.phoneNumber||'';
-document.getElementById('sms_status').textContent=d.hasPhoneNumber?'SMS: Configured':'SMS: Not Configured';
+const smsEl=document.getElementById('sms_status');
+smsEl.textContent=d.hasPhoneNumber?'SMS: Configured':'SMS: Not Configured';
+smsEl.className=d.hasPhoneNumber?'badge active':'badge inactive';
 document.getElementById('webhook').value=d.discordWebhook||'';
-document.getElementById('disc_status').textContent=d.hasDiscordWebhook?'Discord: Configured':'Discord: Not Configured';
+const discEl=document.getElementById('disc_status');
+discEl.textContent=d.hasDiscordWebhook?'Discord: Configured':'Discord: Not Configured';
+discEl.className=d.hasDiscordWebhook?'badge active':'badge inactive';
 }catch(e){console.error(e);}
 }
 async function loadEmerg(){
@@ -123,7 +129,7 @@ window.onload=function(){loadNotif();loadEmerg();};
 </script>
 </head>
 <body>
-<a href="index.html" style="text-decoration:none;color:#000;">‹ Back</a>
+<a href="index.html" style="text-decoration:none;color:#000;">< Back</a>
 <h1>Notification Settings</h1>
 
 <div class="card">
