@@ -18,24 +18,38 @@ SendSMS::~SendSMS() {
 bool SendSMS::send(const char* message) {
     // Validate inputs
     if (!message) {
+        // #region agent log
+        Serial.printf("[DEBUG-H6-SMS] send() called with null message\n");
+        // #endregion
         return false;
     }
     
     // Check for active wifi connection first
     // Send message and wait for response
     if (!WiFi.isConnected()) {
+        // #region agent log
+        Serial.printf("[DEBUG-H5-SMS] WiFi not connected in send()\n");
+        // #endregion
         return false;
     }
 
     // Open preferences for reading
     if (!preferences.begin(SMS_PREFS_NAMESPACE, true)) {
         LOG_CRITICAL("[SMS] Failed to open preferences for reading");
+        // #region agent log
+        Serial.printf("[DEBUG-H6-SMS] Failed to open preferences\n");
+        // #endregion
         return false;
     }
 
     // Retrieve phone number from preferences
     String toPhoneNumber = preferences.getString("phone-number", "");
     preferences.end();
+    
+    // #region agent log
+    Serial.printf("[DEBUG-H6-SMS] Phone number from prefs: length=%d, empty=%d\n", 
+        toPhoneNumber.length(), (toPhoneNumber.length()==0)?1:0);
+    // #endregion
     
     if (toPhoneNumber.length() == 0) {
         // No phone number stored
@@ -46,16 +60,16 @@ bool SendSMS::send(const char* message) {
 
     // Calculate maximum size needed for encoded strings (worst case: every char becomes %XX = 3x)
     // Plus space for "To=", "&MessagingServiceSid=", "&Body=" and null terminator
-    size_t maxEncodedSize = (strlen(toPhoneNumber.c_str()) + strlen(TWILIO_ACCOUNT_SID) + strlen(message)) * 3 + 100;
+    size_t maxEncodedSize = (strlen(toPhoneNumber.c_str()) + strlen(TWILIO_MESSAGING_SERVICE_SID) + strlen(message)) * 3 + 100;
     char* encodedTo = (char*)malloc(maxEncodedSize);
-    char* encodedSid = (char*)malloc(maxEncodedSize);
+    char* encodedMessagingServiceSid = (char*)malloc(maxEncodedSize);
     char* encodedBody = (char*)malloc(maxEncodedSize);
     char* postData = (char*)malloc(maxEncodedSize * 2);
 
-    if (!encodedTo || !encodedSid || !encodedBody || !postData) {
+    if (!encodedTo || !encodedMessagingServiceSid || !encodedBody || !postData) {
         // Memory allocation failed
         free(encodedTo);
-        free(encodedSid);
+        free(encodedMessagingServiceSid);
         free(encodedBody);
         free(postData);
         return false;
@@ -63,12 +77,12 @@ bool SendSMS::send(const char* message) {
 
     // URL encode each parameter
     urlEncode(toPhoneNumber.c_str(), encodedTo, maxEncodedSize);
-    urlEncode(TWILIO_ACCOUNT_SID, encodedSid, maxEncodedSize);
+    urlEncode(TWILIO_MESSAGING_SERVICE_SID, encodedMessagingServiceSid, maxEncodedSize);
     urlEncode(message, encodedBody, maxEncodedSize);
 
     // Build POST data string
     snprintf(postData, maxEncodedSize * 2, "To=%s&MessagingServiceSid=%s&Body=%s",
-             encodedTo, encodedSid, encodedBody);
+             encodedTo, encodedMessagingServiceSid, encodedBody);
 
     String endpoint = getEndpointUrl();
     http.begin(endpoint);
@@ -84,7 +98,7 @@ bool SendSMS::send(const char* message) {
 
     // Free allocated memory
     free(encodedTo);
-    free(encodedSid);
+    free(encodedMessagingServiceSid);
     free(encodedBody);
     free(postData);
 
