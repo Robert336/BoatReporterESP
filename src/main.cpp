@@ -8,6 +8,8 @@
 #include "WaterPressureSensor.h"
 #include "SendSMS.h"
 #include "SendDiscord.h"
+#include "OTAManager.h"
+#include "Version.h"
 
 // System States
 enum State {
@@ -61,6 +63,7 @@ volatile bool buttonCurrentlyPressed = false;
 
 // Create easier references to the singleton objects
 ConfigServer* configServer = nullptr;
+OTAManager* otaManager = nullptr;
 LightCode light(LIGHT_PIN);
 TimeManagement& rtc = TimeManagement::getInstance(); 
 WiFiManager& wifiMgr = WiFiManager::getInstance();
@@ -96,9 +99,14 @@ void setup() {
     systemState.hornCurrentlyOn = false;
     systemState.notificationsSilenced = false;
     
+    // Initialize OTAManager early to check for rollback/first boot after update
+    otaManager = new OTAManager(&sms, &discord);
+    otaManager->begin();
+    LOG_SETUP("[SETUP] OTAManager initialized - version %s", FIRMWARE_VERSION);
+    
     // Initialize ConfigServer early to load calibration from NVS
     // This ensures saved calibration is applied before first sensor reading
-    configServer = new ConfigServer(&waterSensor, &sms, &discord);
+    configServer = new ConfigServer(&waterSensor, &sms, &discord, otaManager);
     LOG_SETUP("[SETUP] ConfigServer initialized - calibration loaded from NVS");
     
     // Print unique device AP password for easy access
@@ -106,6 +114,7 @@ void setup() {
     LOG_SETUP("Device Configuration Access Point:");
     LOG_SETUP("  SSID: ESP32-BoatMonitor-Setup");
     LOG_SETUP("  Password: %s", configServer->getAPPassword());
+    LOG_SETUP("  Firmware: v%s", FIRMWARE_VERSION);
     LOG_SETUP("========================================");
 
     pinMode(ALERT_PIN, OUTPUT);
@@ -140,6 +149,11 @@ void loop() {
     
     rtc.sync();
     light.update();
+    
+    // Run OTA update checks (only when not in CONFIG or EMERGENCY states)
+    if (otaManager && systemState.currentState != CONFIG && systemState.currentState != EMERGENCY) {
+        otaManager->loop();
+    }
 
     // Monitor WiFi connection status for critical events
     static bool wasWiFiConnected = false;
@@ -147,8 +161,18 @@ void loop() {
     
     if (wasWiFiConnected && !isWiFiConnected) {
         LOG_EVENT("[WIFI] Connection lost - internet disconnected");
+        // Update LED if in NORMAL state to show WiFi disconnection
+        if (systemState.currentState == NORMAL) {
+            light.setPattern(PATTERN_DOUBLE_BLINK);
+            LOG_DEBUG("[LIGHT] WiFi disconnected - switching to double blink pattern");
+        }
     } else if (!wasWiFiConnected && isWiFiConnected) {
         LOG_EVENT("[WIFI] Connection restored - internet connected");
+        // Update LED if in NORMAL state to show WiFi reconnection
+        if (systemState.currentState == NORMAL) {
+            light.setPattern(PATTERN_OFF);
+            LOG_DEBUG("[LIGHT] WiFi reconnected - switching to off pattern");
+        }
     }
     wasWiFiConnected = isWiFiConnected;
 
@@ -376,7 +400,13 @@ void loop() {
     if (systemState.currentState != previousState) {
         switch (systemState.currentState) {
             case NORMAL:
-                light.setPattern(PATTERN_OFF);
+                // Check WiFi status when entering NORMAL state
+                if (wifiMgr.isConnected()) {
+                    light.setPattern(PATTERN_OFF);
+                } else {
+                    light.setPattern(PATTERN_DOUBLE_BLINK);
+                    LOG_DEBUG("[LIGHT] Entering NORMAL state with WiFi disconnected - using double blink");
+                }
                 break;
             case CONFIG:
                 light.setPattern(PATTERN_SLOW_BLINK);

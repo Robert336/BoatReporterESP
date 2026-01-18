@@ -8,6 +8,7 @@
 #include "WaterPressureSensor.h"
 #include "SendSMS.h"
 #include "SendDiscord.h"
+#include "OTAManager.h"
 
 /**
  * ConfigServer - Web-based configuration server for ESP32 boat monitoring system
@@ -53,6 +54,7 @@ private:
     WaterPressureSensor* waterSensor;
     SendSMS* smsService;
     SendDiscord* discordService;
+    OTAManager* otaManager;
     Preferences calibrationPrefs;           // NVS storage for calibration data
     Preferences emergencyPrefs;             // NVS storage for emergency settings
     unsigned long serverStartTime;
@@ -103,8 +105,16 @@ private:
     void handleGetReading();                // Return current sensor reading as JSON
     String getDebugPage();                  // Generate HTML for debug/calibration page
     
+    // === OTA Update Handlers ===
+    void handleOTAPage();                   // Serve OTA settings page
+    void handleOTAStatus();                 // GET: Return OTA status JSON
+    void handleOTACheck();                  // GET: Manually trigger update check
+    void handleOTAUpdate();                 // POST: Start firmware update
+    void handleOTASettings();               // POST: Configure OTA settings
+    String getOTAPage();                    // Generate HTML for OTA page
+    
 public:
-    ConfigServer(WaterPressureSensor* sensor = nullptr, SendSMS* sms = nullptr, SendDiscord* discord = nullptr);
+    ConfigServer(WaterPressureSensor* sensor = nullptr, SendSMS* sms = nullptr, SendDiscord* discord = nullptr, OTAManager* ota = nullptr);
     ~ConfigServer();
     
     // Start AP + Web server
@@ -128,6 +138,9 @@ public:
     
     // === AP Password Getter ===
     String getAPPassword() const { return apPassword; }
+    
+    // === OTA Manager Setter ===
+    void setOTAManager(OTAManager* ota) { otaManager = ota; }
 };
 
 
