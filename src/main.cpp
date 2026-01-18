@@ -54,7 +54,7 @@ static constexpr bool USE_MOCK = false; // For mocking sensor readings
 static constexpr int LIGHT_PIN = 12;
 
 // Emergency timeout before transitioning to EMERGENCY state
-static constexpr int EMERGENCY_TIMEOUT_MS = 1000;
+static constexpr int EMERGENCY_TIMEOUT_MS = 5000;
 
 volatile bool buttonPressed = false;
 volatile unsigned long lastButtonPress = 0;
