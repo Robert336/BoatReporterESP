@@ -125,8 +125,8 @@ void OTAManager::loadConfig() {
         return;
     }
     
-    config.githubOwner = preferences.getString("gh_owner", "");
-    config.githubRepo = preferences.getString("gh_repo", "");
+    config.githubOwner = preferences.getString("gh_owner", "Robert336");
+    config.githubRepo = preferences.getString("gh_repo", "BoatReporterESP");
     config.githubToken = preferences.getString("gh_token", "");
     config.updatePassword = preferences.getString("password", "");
     config.autoCheckEnabled = preferences.getBool("auto_check", true);
