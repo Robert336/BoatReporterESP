@@ -48,7 +48,7 @@ uint32_t lastStatusLogTime = 0;
 static constexpr int BUTTON_PIN = 23; // GPIO
 static constexpr int ALERT_PIN = 19; // GPIO
 static constexpr int SENSOR_PIN = 32; // Water sensor analog pin ADC1 because wifi is required
-static constexpr bool USE_MOCK = true; // For mocking sensor readings
+static constexpr bool USE_MOCK = false; // For mocking sensor readings
 static constexpr int LIGHT_PIN = 12;
 
 // Emergency timeout before transitioning to EMERGENCY state
@@ -213,10 +213,6 @@ void loop() {
     // Check Tier 1 emergency conditions (message notifications)
     bool previousEmergencyConditions = systemState.emergencyConditions;
     float emergencyThreshold = configServer->getEmergencyWaterLevel();
-    // #region agent log
-    Serial.printf("[DEBUG-H7] Emergency condition check: level=%.2f, threshold=%.2f, meetsCondition=%d\n", 
-        currentReading.level_cm, emergencyThreshold, (currentReading.level_cm >= emergencyThreshold)?1:0);
-    // #endregion
     if (currentReading.level_cm >= emergencyThreshold) {
         systemState.emergencyConditions = true;
         if (!previousEmergencyConditions) {
@@ -274,10 +270,6 @@ void loop() {
             }
             else if (systemState.emergencyConditions && 
                 (millis() - systemState.emergencyConditionsTrueTime) >= EMERGENCY_TIMEOUT_MS) {
-                // #region agent log
-                Serial.printf("[DEBUG-H4] Transitioning to EMERGENCY: emergencyConditions=%d, timeoutMet=%d, waterLevel=%.2f\n", 
-                    systemState.emergencyConditions?1:0, 1, currentReading.level_cm);
-                // #endregion
                 LOG_EVENT("[STATE] Transitioning from %s to EMERGENCY (water level=%.2f cm)", 
                               stateToString(systemState.currentState), currentReading.level_cm);
                 systemState.currentState = EMERGENCY;
@@ -308,11 +300,6 @@ void loop() {
             }
             break;
         case EMERGENCY:
-            // #region agent log
-            Serial.printf("[DEBUG-H4] In EMERGENCY state: emergencyConditions=%d, notificationsSilenced=%d, currentTime=%lu\n", 
-                systemState.emergencyConditions?1:0, systemState.notificationsSilenced?1:0, millis());
-            // #endregion
-            
             if (systemState.emergencyConditions == false && (millis() - systemState.emergencyConditionsFalseTime) >= EMERGENCY_TIMEOUT_MS) {
                 LOG_EVENT("[STATE] Transitioning from %s to NORMAL (emergency cleared)", stateToString(systemState.currentState));
                 systemState.currentState = NORMAL;
@@ -329,61 +316,32 @@ void loop() {
                 // TIER 1: Send emergency message notifications (always in EMERGENCY state)
                 int emergencyFreq = configServer->getEmergencyNotifFreq();
                 
-                // #region agent log
-                Serial.printf("[DEBUG-H1,H3] Emergency freq check: emergencyFreq=%d, currentTime=%lu, lastEmergencyMessageTime=%lu, timeSinceLastMsg=%lu, willSend=%d\n", 
-                    emergencyFreq, millis(), systemState.lastEmergencyMessageTime, (millis()-systemState.lastEmergencyMessageTime), 
-                    ((millis()-systemState.lastEmergencyMessageTime)>=emergencyFreq)?1:0);
-                // #endregion
-                
                 if (millis() - systemState.lastEmergencyMessageTime >= emergencyFreq) {
                     // Update timer even when silenced to prevent message burst when un-silenced
                     systemState.lastEmergencyMessageTime = millis();
-                    
-                    // #region agent log
-                    Serial.printf("[DEBUG-H2,H5] Before silence check: notificationsSilenced=%d, wifiConnected=%d\n", 
-                        systemState.notificationsSilenced?1:0, WiFi.isConnected()?1:0);
-                    // #endregion
                     
                     // Only send notifications if not silenced
                     if (!systemState.notificationsSilenced) {
                         char emergMessageBuf[120];
                         if (systemState.urgentEmergencyConditions) {
-                            snprintf(emergMessageBuf, sizeof(emergMessageBuf), "Boat Monitor URGENT Alert: Critical Level %.2f cm - HORN ACTIVATED!", currentReading.level_cm);
+                            snprintf(emergMessageBuf, sizeof(emergMessageBuf), "Boat Monitor URGENT Alert: Tier 2 Emergency Level Reached - Critical Level %.2f cm", currentReading.level_cm);
                         } else {
                             snprintf(emergMessageBuf, sizeof(emergMessageBuf), "Boat Monitor Alert: Emergency Level %.2f cm", currentReading.level_cm);
                         }
                         LOG_EVENT("[STATE] EMERGENCY: Sending alert message: %s", emergMessageBuf);
 
                         bool smsResult = sms.send(emergMessageBuf);
-                        // #region agent log
-                        Serial.printf("[DEBUG-H5,H6] SMS send result: success=%d, wifiConnected=%d\n", 
-                            smsResult?1:0, WiFi.isConnected()?1:0);
-                        // #endregion
-                        
                         if (!smsResult){
                             LOG_EVENT("[SMS] Emergency SMS failed to send");
                         }
 
                         bool discordResult = discord.send(emergMessageBuf);
-                        // #region agent log
-                        Serial.printf("[DEBUG-H5,H6] Discord send result: success=%d, wifiConnected=%d\n", 
-                            discordResult?1:0, WiFi.isConnected()?1:0);
-                        // #endregion
-                        
                         if (!discordResult){
                             LOG_EVENT("[Discord] Emergency Discord webhook failed to send");
                         }
                     } else {
-                        // #region agent log
-                        Serial.printf("[DEBUG-H2] Notifications SILENCED - skipping alert\n");
-                        // #endregion
                         LOG_INFO("[STATE] EMERGENCY: Notifications silenced, skipping alert message");
                     }
-                } else {
-                    // #region agent log
-                    Serial.printf("[DEBUG-H1] Notification timing not met yet: timeSinceLastMsg=%lu < emergencyFreq=%d\n", 
-                        (millis()-systemState.lastEmergencyMessageTime), emergencyFreq);
-                    // #endregion
                 }
                 
                 // TIER 2: Horn alarm pulsing (only if urgent emergency conditions met and not silenced)
