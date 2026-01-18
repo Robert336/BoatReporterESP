@@ -9,7 +9,8 @@ enum BlinkPattern {
     PATTERN_OFF,
     PATTERN_SOLID,
     PATTERN_SLOW_BLINK,
-    PATTERN_FAST_BLINK
+    PATTERN_FAST_BLINK,
+    PATTERN_DOUBLE_BLINK  // For WiFi disconnection
 };
 
 class LightCode {
@@ -18,6 +19,7 @@ class LightCode {
         BlinkPattern pattern;
         unsigned long lastToggleTime;
         bool ledState; // True = ON
+        int doubleBinkPhase; // Tracks phase in double blink pattern (0-3)
 
     public:
         LightCode(int ledPin);

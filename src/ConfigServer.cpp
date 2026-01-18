@@ -5,8 +5,8 @@
 // CORE LIFECYCLE METHODS
 // ============================================================================
 
-ConfigServer::ConfigServer(WaterPressureSensor* sensor, SendSMS* sms, SendDiscord* discord) 
-    : server(nullptr), waterSensor(sensor), smsService(sms), discordService(discord) {
+ConfigServer::ConfigServer(WaterPressureSensor* sensor, SendSMS* sms, SendDiscord* discord, OTAManager* ota) 
+    : server(nullptr), waterSensor(sensor), smsService(sms), discordService(discord), otaManager(ota) {
     // Generate unique AP password from chip ID
     uint64_t chipId = ESP.getEfuseMac();
     uint32_t id = (uint32_t)(chipId & 0xFFFFFFFF);
@@ -131,6 +131,21 @@ void ConfigServer::startSetupMode() {
     
     // Route: POST /notifications/test/discord → send test Discord message
     server->on("/notifications/test/discord", HTTP_POST, [this]() { handleTestDiscord(); });
+    
+    // Route: GET /ota-settings → serve OTA settings page
+    server->on("/ota-settings", HTTP_GET, [this]() { handleOTAPage(); });
+    
+    // Route: GET /ota/status → return OTA status JSON
+    server->on("/ota/status", HTTP_GET, [this]() { handleOTAStatus(); });
+    
+    // Route: GET /ota/check → manually trigger update check
+    server->on("/ota/check", HTTP_GET, [this]() { handleOTACheck(); });
+    
+    // Route: POST /ota/update → start firmware update
+    server->on("/ota/update", HTTP_POST, [this]() { handleOTAUpdate(); });
+    
+    // Route: POST /ota/settings → configure OTA settings
+    server->on("/ota/settings", HTTP_POST, [this]() { handleOTASettings(); });
     
     // Handle 404 and captive portal detection
     // Redirect all unknown paths to root for better captive portal detection
@@ -330,6 +345,7 @@ status.textContent='⚠️ Update failed: '+(results[0].error||results[1].error|
 </div>
 <button onclick="location.href='/notifications-page'">Notification Settings</button>
 <button onclick="location.href='/wifi-config'">WiFi Networks</button>
+<button onclick="location.href='/ota-settings'">Firmware Updates (OTA)</button>
 <button onclick="location.href='/debug'">Advanced Debug & Calibration</button>
 </body></html>)HTML";
     return html;
@@ -1455,10 +1471,362 @@ String ConfigServer::getDebugPage() {
                 <a href="/read">JSON Reading</a>
                 <a href="/calibration">Calibration JSON</a>
                 <a href="/notifications">Notifications JSON</a>
+                <a href="/ota-settings">OTA Updates</a>
             </div>
         </body>
         </html>
     )HTML";
+    return html;
+}
+
+// ============================================================================
+// OTA UPDATE HANDLERS
+// ============================================================================
+
+void ConfigServer::handleOTAPage() {
+    serverStartTime = millis();
+    String html = getOTAPage();
+    server->send(200, "text/html", html);
+}
+
+void ConfigServer::handleOTAStatus() {
+    serverStartTime = millis();
+    
+    if (!otaManager) {
+        server->send(503, "application/json", "{\"error\":\"OTA manager not available\"}");
+        return;
+    }
+    
+    String json = "{";
+    json += "\"currentVersion\":\"" + otaManager->getCurrentVersion() + "\",";
+    json += "\"availableVersion\":\"" + otaManager->getAvailableVersion() + "\",";
+    json += "\"updateAvailable\":" + String(otaManager->isUpdateAvailable() ? "true" : "false") + ",";
+    json += "\"state\":\"";
+    
+    switch(otaManager->getState()) {
+        case OTAState::IDLE: json += "idle"; break;
+        case OTAState::CHECKING: json += "checking"; break;
+        case OTAState::UPDATE_AVAILABLE: json += "update_available"; break;
+        case OTAState::DOWNLOADING: json += "downloading"; break;
+        case OTAState::INSTALLING: json += "installing"; break;
+        case OTAState::SUCCESS: json += "success"; break;
+        case OTAState::FAILED: json += "failed"; break;
+    }
+    
+    json += "\",";
+    json += "\"lastError\":\"" + otaManager->getLastError() + "\",";
+    json += "\"autoCheckEnabled\":" + String(otaManager->isAutoCheckEnabled() ? "true" : "false") + ",";
+    json += "\"autoInstallEnabled\":" + String(otaManager->isAutoInstallEnabled() ? "true" : "false") + ",";
+    json += "\"notificationsEnabled\":" + String(otaManager->areNotificationsEnabled() ? "true" : "false") + ",";
+    json += "\"githubRepo\":\"" + otaManager->getGitHubRepo() + "\",";
+    json += "\"checkIntervalHours\":" + String(otaManager->getCheckIntervalMs() / 3600000) + ",";
+    json += "\"timeSinceLastCheckHours\":" + String(otaManager->getTimeSinceLastCheck() / 3600000, 1);
+    json += "}";
+    
+    server->send(200, "application/json", json);
+}
+
+void ConfigServer::handleOTACheck() {
+    serverStartTime = millis();
+    
+    if (!otaManager) {
+        server->send(503, "application/json", "{\"error\":\"OTA manager not available\"}");
+        return;
+    }
+    
+    bool updateFound = otaManager->manualCheckForUpdates();
+    
+    String json = "{";
+    json += "\"success\":true,";
+    json += "\"updateAvailable\":" + String(updateFound ? "true" : "false");
+    if (updateFound) {
+        json += ",\"version\":\"" + otaManager->getAvailableVersion() + "\"";
+    }
+    json += "}";
+    
+    server->send(200, "application/json", json);
+}
+
+void ConfigServer::handleOTAUpdate() {
+    serverStartTime = millis();
+    
+    if (!otaManager) {
+        server->send(503, "application/json", "{\"error\":\"OTA manager not available\"}");
+        return;
+    }
+    
+    // Get optional password from POST data
+    const char* password = nullptr;
+    if (server->hasArg("password")) {
+        password = server->arg("password").c_str();
+    }
+    
+    bool success = otaManager->startUpdate(password);
+    
+    if (!success) {
+        String json = "{\"success\":false,\"error\":\"" + otaManager->getLastError() + "\"}";
+        server->send(400, "application/json", json);
+    } else {
+        // This will likely not be received as ESP32 will reboot
+        server->send(200, "application/json", "{\"success\":true,\"message\":\"Update started, device will reboot\"}");
+    }
+}
+
+void ConfigServer::handleOTASettings() {
+    serverStartTime = millis();
+    
+    if (!otaManager) {
+        server->send(503, "application/json", "{\"error\":\"OTA manager not available\"}");
+        return;
+    }
+    
+    bool updated = false;
+    
+    // GitHub repository
+    if (server->hasArg("github_owner") && server->hasArg("github_repo")) {
+        String owner = server->arg("github_owner");
+        String repo = server->arg("github_repo");
+        otaManager->setGitHubRepo(owner.c_str(), repo.c_str());
+        updated = true;
+    }
+    
+    // GitHub token (for private repos)
+    if (server->hasArg("github_token")) {
+        String token = server->arg("github_token");
+        otaManager->setGitHubToken(token.c_str());
+        updated = true;
+    }
+    
+    // Update password
+    if (server->hasArg("update_password")) {
+        String password = server->arg("update_password");
+        otaManager->setUpdatePassword(password.c_str());
+        updated = true;
+    }
+    
+    // Auto-check settings
+    if (server->hasArg("auto_check")) {
+        bool enabled = server->arg("auto_check") == "true";
+        unsigned long intervalMs = DEFAULT_CHECK_INTERVAL_MS;
+        
+        if (server->hasArg("check_interval_hours")) {
+            int hours = server->arg("check_interval_hours").toInt();
+            if (hours > 0 && hours <= 168) { // Max 1 week
+                intervalMs = hours * 3600000UL;
+            }
+        }
+        
+        otaManager->setAutoCheck(enabled, intervalMs);
+        updated = true;
+    }
+    
+    // Auto-install setting
+    if (server->hasArg("auto_install")) {
+        bool enabled = server->arg("auto_install") == "true";
+        otaManager->setAutoInstall(enabled);
+        updated = true;
+    }
+    
+    // Notifications enabled
+    if (server->hasArg("notifications_enabled")) {
+        bool enabled = server->arg("notifications_enabled") == "true";
+        otaManager->setNotificationsEnabled(enabled);
+        updated = true;
+    }
+    
+    if (updated) {
+        server->send(200, "application/json", "{\"success\":true,\"message\":\"OTA settings updated\"}");
+    } else {
+        server->send(400, "application/json", "{\"error\":\"No valid settings provided\"}");
+    }
+}
+
+String ConfigServer::getOTAPage() {
+    String html = R"HTML(<!DOCTYPE html>
+<html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>OTA Updates</title>
+<style>
+body{font-family:Arial,sans-serif;margin:0;padding:10px;max-width:700px;margin:0 auto;}
+h1{font-size:1.5em;margin:10px 0;}
+.card{border:1px solid #ccc;padding:15px;margin:10px 0;}
+.card h2{font-size:1.1em;margin:0 0 10px 0;border-bottom:1px solid #ddd;padding-bottom:5px;}
+.row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #eee;}
+.row:last-child{border-bottom:none;}
+.label{font-weight:bold;}
+label{display:block;margin:10px 0 5px;font-weight:bold;}
+input,select{width:100%;padding:8px;border:1px solid #ccc;font-size:1em;box-sizing:border-box;}
+button{padding:10px 15px;margin:5px 5px 5px 0;border:1px solid #333;background:#fff;font-size:0.95em;cursor:pointer;}
+button:active{background:#eee;}
+button:disabled{opacity:0.5;cursor:not-allowed;}
+.primary{background:#4CAF50;color:#fff;border-color:#4CAF50;}
+.danger{background:#f44336;color:#fff;border-color:#f44336;}
+.help{font-size:0.85em;color:#666;margin-top:3px;}
+.status{padding:10px;margin:10px 0;border:1px solid #ccc;text-align:center;}
+.status.success{background:#d4edda;border-color:#c3e6cb;color:#155724;}
+.status.error{background:#f8d7da;border-color:#f5c6cb;color:#721c24;}
+.status.warning{background:#fff3cd;border-color:#ffeaa7;color:#856404;}
+.version{font-size:1.5em;text-align:center;margin:10px 0;}
+</style>
+<script>
+let checking=false;
+let updating=false;
+async function loadStatus(){
+try{
+const r=await fetch('/ota/status');
+const d=await r.json();
+document.getElementById('cur_ver').textContent=d.currentVersion;
+document.getElementById('gh_repo').value=d.githubRepo;
+document.getElementById('auto_check').checked=d.autoCheckEnabled;
+document.getElementById('auto_install').checked=d.autoInstallEnabled;
+document.getElementById('check_interval').value=d.checkIntervalHours;
+document.getElementById('notify').checked=d.notificationsEnabled;
+document.getElementById('last_check').textContent=d.timeSinceLastCheckHours.toFixed(1)+' hours ago';
+const updateDiv=document.getElementById('update_status');
+if(d.updateAvailable){
+updateDiv.className='status success';
+updateDiv.innerHTML='<strong>Update Available!</strong><br>Version '+d.availableVersion+' is ready to install';
+document.getElementById('install_btn').disabled=false;
+}else if(d.state==='checking'){
+updateDiv.className='status warning';
+updateDiv.textContent='Checking for updates...';
+}else if(d.state==='failed'){
+updateDiv.className='status error';
+updateDiv.textContent='Error: '+d.lastError;
+}else{
+updateDiv.className='status';
+updateDiv.textContent='No updates available. Current version: '+d.currentVersion;
+document.getElementById('install_btn').disabled=true;
+}
+}catch(e){console.error(e);}
+}
+async function checkUpdates(){
+if(checking)return;
+checking=true;
+const btn=document.getElementById('check_btn');
+btn.disabled=true;
+btn.textContent='Checking...';
+const statusDiv=document.getElementById('update_status');
+statusDiv.className='status warning';
+statusDiv.textContent='Checking GitHub for updates...';
+try{
+const r=await fetch('/ota/check');
+const d=await r.json();
+await new Promise(res=>setTimeout(res,1000));
+await loadStatus();
+}catch(e){
+statusDiv.className='status error';
+statusDiv.textContent='Error checking for updates: '+e.message;
+}finally{
+checking=false;
+btn.disabled=false;
+btn.textContent='Check for Updates';
+}
+}
+async function installUpdate(){
+if(updating)return;
+const pwd=document.getElementById('update_pwd').value;
+if(!confirm('Install firmware update? Device will reboot.'))return;
+updating=true;
+const btn=document.getElementById('install_btn');
+btn.disabled=true;
+btn.textContent='Installing...';
+const statusDiv=document.getElementById('update_status');
+statusDiv.className='status warning';
+statusDiv.textContent='Downloading and installing update... Device will reboot shortly.';
+try{
+const formData=new URLSearchParams();
+if(pwd)formData.append('password',pwd);
+const r=await fetch('/ota/update',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:formData});
+const d=await r.json();
+if(d.success){
+statusDiv.className='status success';
+statusDiv.textContent='Update started! Device is rebooting...';
+}else{
+statusDiv.className='status error';
+statusDiv.textContent='Update failed: '+(d.error||'Unknown error');
+updating=false;
+btn.disabled=false;
+btn.textContent='Install Update';
+}
+}catch(e){
+statusDiv.className='status warning';
+statusDiv.textContent='Update may be in progress (device rebooting)...';
+}
+}
+async function saveSettings(){
+const owner=document.getElementById('gh_repo').value.split('/')[0]||'';
+const repo=document.getElementById('gh_repo').value.split('/')[1]||'';
+const token=document.getElementById('gh_token').value;
+const pwd=document.getElementById('ota_pwd').value;
+const autoCheck=document.getElementById('auto_check').checked;
+const autoInstall=document.getElementById('auto_install').checked;
+const interval=document.getElementById('check_interval').value;
+const notify=document.getElementById('notify').checked;
+if(!owner||!repo){alert('Enter GitHub repository (owner/repo)');return;}
+try{
+const formData=new URLSearchParams();
+formData.append('github_owner',owner);
+formData.append('github_repo',repo);
+if(token)formData.append('github_token',token);
+if(pwd)formData.append('update_password',pwd);
+formData.append('auto_check',autoCheck);
+formData.append('auto_install',autoInstall);
+formData.append('check_interval_hours',interval);
+formData.append('notifications_enabled',notify);
+const r=await fetch('/ota/settings',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:formData});
+const d=await r.json();
+alert(d.success?'Settings saved!':d.error);
+if(d.success)loadStatus();
+}catch(e){alert('Error: '+e.message);}
+}
+window.onload=loadStatus;
+</script>
+</head><body>
+<a href="/" style="text-decoration:none;color:#000;">< Back</a>
+<h1>Firmware Updates (OTA)</h1>
+<div class="card"><h2>Current Version</h2>
+<div class="version"><span id="cur_ver">--</span></div>
+<div class="help">Last checked: <span id="last_check">--</span></div>
+</div>
+<div class="card"><h2>Update Status</h2>
+<div id="update_status" class="status">Loading...</div>
+<button id="check_btn" onclick="checkUpdates()">Check for Updates</button>
+<div style="margin-top:15px;">
+<label>Update Password (if set)</label>
+<input type="password" id="update_pwd" placeholder="Leave blank if no password">
+<button id="install_btn" class="primary" onclick="installUpdate()" disabled>Install Update</button>
+</div>
+</div>
+<div class="card"><h2>OTA Settings</h2>
+<label>GitHub Repository</label>
+<input type="text" id="gh_repo" placeholder="owner/repository">
+<div class="help">Enter the GitHub repository where firmware releases are published</div>
+<label>GitHub Token (optional, for private repos)</label>
+<input type="password" id="gh_token" placeholder="Leave blank for public repos">
+<div class="help">Personal access token for private repositories</div>
+<label>Update Password (optional)</label>
+<input type="password" id="ota_pwd" placeholder="Leave blank for no password">
+<div class="help">Require password to install updates</div>
+<h3 style="margin-top:20px;">Automatic Updates</h3>
+<div style="display:flex;align-items:center;margin:10px 0;">
+<input type="checkbox" id="auto_check" style="width:auto;margin-right:10px;">
+<label for="auto_check" style="margin:0;">Enable automatic update checks</label>
+</div>
+<label>Check interval (hours)</label>
+<input type="number" id="check_interval" min="1" max="168" value="24">
+<div class="help">How often to check for updates (1-168 hours)</div>
+<div style="display:flex;align-items:center;margin:10px 0;">
+<input type="checkbox" id="auto_install" style="width:auto;margin-right:10px;">
+<label for="auto_install" style="margin:0;">Enable automatic update installation</label>
+</div>
+<div class="help" style="color:#d84315;">⚠️ When enabled, updates will install automatically without user confirmation. Device will reboot.</div>
+<div style="display:flex;align-items:center;margin:10px 0;">
+<input type="checkbox" id="notify" style="width:auto;margin-right:10px;">
+<label for="notify" style="margin:0;">Enable OTA notifications</label>
+</div>
+<div class="help">Send SMS/Discord notifications about update status</div>
+<button onclick="saveSettings()">Save Settings</button>
+</div>
+</body></html>)HTML";
     return html;
 }
 
