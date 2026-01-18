@@ -82,6 +82,8 @@ const char* stateToString(State state) {
     }
 }
 
+#ifndef UNIT_TESTING
+// Exclude setup() and loop() when building unit tests to avoid conflicts with test harness
 void setup() {
     Serial.begin(115200);
     waterSensor.init();
@@ -430,6 +432,7 @@ void loop() {
         lastStatusLogTime = millis();
     }
 }
+#endif // UNIT_TESTING
 
 
 /*

@@ -35,6 +35,9 @@ public:
     int getZeroPointMilliVolts(); // Get zero point voltage
     int getSecondPointMilliVolts(); // Get second point voltage
     float getSecondPointLevelCm(); // Get second point level
+    
+    // Made public for unit testing - convert voltage to water level
+    float voltageToCentimeters(int voltage_mv);
 
 private:
     Adafruit_ADS1115 ads;
@@ -55,7 +58,6 @@ private:
     void* adcCalHandle;  // Opaque handle for ADC calibration (void* for Arduino compatibility)
     bool calibrationInitialized;
     
-    float voltageToCentimeters(int voltage_mv); // Convert calibrated voltage to centimeters
     void bufferPush(SensorReading newReading);
     float calculateMedianFromBuffer(); // Calculate rolling median of buffer
 };
