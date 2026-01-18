@@ -9,17 +9,18 @@
 pio run -e prod --target upload
 ```
 
-### 2. Configure OTA Settings
+### 2. Configure OTA Settings (Optional)
 
-**Note:** Automatic updates are **enabled by default**!
+**Note:** Automatic updates are **enabled by default** and pre-configured to check `Robert336/BoatReporterESP`!
+
+The device is ready to receive updates out of the box. Optionally, you can verify settings:
 
 1. Connect to ESP32 (via web browser)
 2. Go to **"Firmware Updates (OTA)"** page
-3. Enter your GitHub repository: `your-username/your-repo`
+3. Verify GitHub repository is set to: `Robert336/BoatReporterESP` ✅ (default)
 4. Verify automatic checks are enabled ✅ (default: ON, 24 hour interval)
 5. Verify automatic installation is enabled ✅ (default: ON)
 6. Verify OTA notifications are enabled ✅ (default: ON)
-7. Click **"Save Settings"**
 
 ### 3. Create Your First Release (v1.1.0)
 

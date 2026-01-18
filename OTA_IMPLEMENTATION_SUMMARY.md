@@ -4,13 +4,15 @@
 
 Remote Over-The-Air (OTA) firmware update capability has been successfully implemented for your ESP32 Boat Monitor. The system allows you to push firmware updates remotely via GitHub Releases with full notification support.
 
-> **🚀 NEW: Automatic Updates Enabled by Default!**
+> **🚀 NEW: Automatic Updates Enabled by Default & Pre-Configured!**
 > 
-> The system now defaults to **automatic update checking and installation**. Once you configure your GitHub repository, your device will automatically:
-> - Check for updates every 24 hours
+> The system defaults to **automatic update checking and installation** with the GitHub repository **pre-configured** to `Robert336/BoatReporterESP`. Your device will automatically:
+> - Check for updates every 24 hours from the official repository
 > - Download and install new firmware
 > - Reboot with the latest version
 > - Send you notifications throughout the process
+> 
+> **Zero configuration required** - just flash the firmware and your boat monitor stays up-to-date!
 > 
 > Perfect for remote boat monitoring where physical access is limited!
 
@@ -191,11 +193,11 @@ graph TD
    - Check web interface accessibility
    - Navigate to "Firmware Updates (OTA)" page
 
-3. **Configure GitHub Repository**
-   - Create a GitHub repository for your project (if not exists)
-   - In OTA settings page, enter: `your-username/your-repo`
-   - Save settings
-   - **Note:** Auto-check and auto-install are ENABLED BY DEFAULT
+3. **Verify OTA Configuration (Pre-configured)**
+   - OTA system is pre-configured to check `Robert336/BoatReporterESP`
+   - Auto-check and auto-install are ENABLED BY DEFAULT
+   - No configuration needed - device will automatically check for updates
+   - Optionally verify settings in OTA page of web interface
 
 4. **Create First Test Release**
    - Follow steps in `OTA_TESTING_GUIDE.md`

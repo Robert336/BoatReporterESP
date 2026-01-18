@@ -21,17 +21,19 @@ When automatic installation is enabled:
 
 ## Configuration
 
-### Step 1: Configure GitHub Repository
+### Step 1: Verify Configuration (Pre-configured)
 
-**Note:** Automatic updates are **enabled by default**. You just need to configure your GitHub repository.
+**Note:** Automatic updates are **enabled by default** and the GitHub repository is **pre-configured** to `Robert336/BoatReporterESP`.
+
+Your device is ready to receive updates out of the box! To verify or modify settings:
 
 1. Open your ESP32 web interface
 2. Navigate to **"Firmware Updates (OTA)"**
-3. Enter your GitHub repository: `your-username/your-repo`
+3. Verify GitHub repository shows: `Robert336/BoatReporterESP` ✅ (pre-configured)
 4. (Optional) Verify **"Enable automatic update checks"** is checked ✅ (default: ON)
 5. (Optional) Verify **"Enable automatic update installation"** is checked ✅ (default: ON)
 6. (Optional) Adjust check interval (default: 24 hours)
-7. Click **"Save Settings"**
+7. Click **"Save Settings"** only if you made changes
 
 ### Step 2: Configure Notifications
 
