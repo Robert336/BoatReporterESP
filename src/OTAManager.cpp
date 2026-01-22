@@ -1,6 +1,7 @@
 #include "OTAManager.h"
 #include "Logger.h"
 #include "Version.h"
+#include <WiFi.h>
 #include <esp_ota_ops.h>
 
 OTAManager::OTAManager(SendSMS* sms, SendDiscord* discord)
@@ -17,6 +18,22 @@ OTAManager::~OTAManager() {
 void OTAManager::begin() {
     LOG_INFO("[OTA] Initializing OTA Manager v%s", versionInfo.currentVersion.c_str());
     
+    // Recover from any interrupted update state (device rebooted during update)
+    // This ensures the state machine starts fresh after a reboot
+    if (currentState == OTAState::DOWNLOADING || 
+        currentState == OTAState::INSTALLING ||
+        currentState == OTAState::CHECKING) {
+        LOG_INFO("[OTA] Recovering from interrupted update state");
+        currentState = OTAState::IDLE;
+        lastError = "Update interrupted by reboot";
+    }
+    
+    // Also recover from FAILED state on fresh boot - allow retry
+    if (currentState == OTAState::FAILED) {
+        LOG_INFO("[OTA] Clearing previous FAILED state on boot");
+        currentState = OTAState::IDLE;
+    }
+    
     // Load configuration from NVS
     loadConfig();
     
@@ -26,7 +43,7 @@ void OTAManager::begin() {
     LOG_INFO("[OTA] GitHub Repo: %s/%s", config.githubOwner.c_str(), config.githubRepo.c_str());
     LOG_INFO("[OTA] Auto-check: %s (interval: %lu hours)", 
              config.autoCheckEnabled ? "enabled" : "disabled",
-             config.checkIntervalMs / 3600000);
+             config.checkIntervalMs / MS_PER_HOUR);
     LOG_INFO("[OTA] Auto-install: %s", config.autoInstallEnabled ? "enabled" : "disabled");
 }
 
@@ -34,6 +51,22 @@ void OTAManager::loop() {
     // Don't do anything if currently updating
     if (currentState == OTAState::DOWNLOADING || currentState == OTAState::INSTALLING) {
         return;
+    }
+    
+    // Auto-recover from FAILED state after some time to allow retry
+    // This prevents getting stuck in FAILED state permanently
+    static unsigned long failedStateTime = 0;
+    if (currentState == OTAState::FAILED) {
+        if (failedStateTime == 0) {
+            failedStateTime = millis();
+        } else if (millis() - failedStateTime > FAILED_STATE_RECOVERY_MS) {
+            LOG_INFO("[OTA] Auto-recovering from FAILED state");
+            currentState = OTAState::IDLE;
+            failedStateTime = 0;
+        }
+        return; // Don't process further while in FAILED state
+    } else {
+        failedStateTime = 0; // Reset when not in FAILED state
     }
     
     // Check if auto-check is enabled and it's time to check
@@ -79,7 +112,7 @@ void OTAManager::checkFirstBoot() {
     
     // Send notifications if needed
     if (firstBootAfterUpdate && !previousVersion.isEmpty()) {
-        char msg[150];
+        char msg[NOTIFICATION_MESSAGE_BUFFER_SIZE];
         snprintf(msg, sizeof(msg), 
                  "Boat Monitor: Firmware updated successfully! v%s → v%s. System online.",
                  previousVersion.c_str(), versionInfo.currentVersion.c_str());
@@ -87,7 +120,7 @@ void OTAManager::checkFirstBoot() {
         LOG_INFO("[OTA] %s", msg);
         clearFirstBootFlag();
     } else if (rollbackOccurred && !previousVersion.isEmpty()) {
-        char msg[150];
+        char msg[NOTIFICATION_MESSAGE_BUFFER_SIZE];
         snprintf(msg, sizeof(msg),
                  "Boat Monitor: New firmware v%s failed to boot. Rolled back to v%s. System stable.",
                  previousVersion.c_str(), versionInfo.currentVersion.c_str());
@@ -133,7 +166,10 @@ void OTAManager::loadConfig() {
     config.autoInstallEnabled = preferences.getBool("auto_install", true);
     config.checkIntervalMs = preferences.getULong("check_interval", DEFAULT_CHECK_INTERVAL_MS);
     config.notificationsEnabled = preferences.getBool("notify", true);
-    lastCheckTime = preferences.getULong("last_check", 0);
+    // Note: We intentionally don't restore lastCheckTime from NVS here because
+    // millis() resets to 0 on reboot. Using stored value would cause underflow.
+    // Instead, reset to current millis() to start fresh check interval.
+    lastCheckTime = millis();
     
     preferences.end();
 }
@@ -187,6 +223,13 @@ bool OTAManager::manualCheckForUpdates() {
 }
 
 bool OTAManager::checkForUpdates() {
+    // Check WiFi connectivity first
+    if (!WiFi.isConnected()) {
+        lastError = "No WiFi connection";
+        LOG_INFO("[OTA] %s", lastError.c_str());
+        return false;
+    }
+    
     if (config.githubOwner.isEmpty() || config.githubRepo.isEmpty()) {
         lastError = "GitHub repository not configured";
         LOG_INFO("[OTA] %s", lastError.c_str());
@@ -212,14 +255,24 @@ bool OTAManager::checkForUpdates() {
     
     HTTPClient http;
     http.begin(url);
+    http.setTimeout(API_TIMEOUT_MS);
     http.addHeader("User-Agent", "ESP32-BoatMonitor");
     
-    // Add authorization if token is provided
+    // Add authorization if token is provided (use Bearer format per GitHub spec)
     if (!config.githubToken.isEmpty()) {
-        http.addHeader("Authorization", "token " + config.githubToken);
+        http.addHeader("Authorization", "Bearer " + config.githubToken);
     }
     
     int httpCode = http.GET();
+    
+    // Handle rate limiting
+    if (httpCode == HTTP_FORBIDDEN || httpCode == HTTP_TOO_MANY_REQUESTS) {
+        lastError = "GitHub API rate limited - try again later";
+        LOG_INFO("[OTA] %s", lastError.c_str());
+        http.end();
+        currentState = OTAState::FAILED;
+        return false;
+    }
     
     if (httpCode != HTTP_CODE_OK) {
         lastError = "GitHub API request failed: " + String(httpCode);
@@ -229,12 +282,11 @@ bool OTAManager::checkForUpdates() {
         return false;
     }
     
-    String payload = http.getString();
-    http.end();
-    
-    // Parse JSON response
-    StaticJsonDocument<2048> doc;
-    DeserializationError error = deserializeJson(doc, payload);
+    // Use streaming JSON parser to reduce memory fragmentation
+    // Use DynamicJsonDocument with larger buffer for GitHub API responses
+    DynamicJsonDocument doc(JSON_DOCUMENT_SIZE);
+    DeserializationError error = deserializeJson(doc, *http.getStreamPtr());
+    http.end(); // Close connection after reading stream
     
     if (error) {
         lastError = "Failed to parse GitHub API response";
@@ -287,7 +339,7 @@ bool OTAManager::checkForUpdates() {
     if (compareVersions(latestVersion, versionInfo.currentVersion)) {
         currentState = OTAState::UPDATE_AVAILABLE;
         
-        char msg[120];
+        char msg[SHORT_MESSAGE_BUFFER_SIZE];
         snprintf(msg, sizeof(msg), 
                  "Boat Monitor: Firmware update available v%s → v%s",
                  versionInfo.currentVersion.c_str(), latestVersion.c_str());
@@ -356,7 +408,7 @@ bool OTAManager::startUpdate(const char* password) {
         }
     }
     
-    char msg[150];
+    char msg[NOTIFICATION_MESSAGE_BUFFER_SIZE];
     snprintf(msg, sizeof(msg),
              "Boat Monitor: Starting firmware update from v%s to v%s. Device may be offline for 1-2 minutes.",
              versionInfo.currentVersion.c_str(), versionInfo.availableVersion.c_str());
@@ -372,7 +424,7 @@ bool OTAManager::startUpdate(const char* password) {
         
         currentState = OTAState::SUCCESS;
         LOG_INFO("[OTA] Update successful! Rebooting in 3 seconds...");
-        delay(3000);
+        delay(REBOOT_DELAY_MS);
         ESP.restart();
     } else {
         currentState = OTAState::FAILED;
@@ -388,14 +440,22 @@ bool OTAManager::startUpdate(const char* password) {
 }
 
 bool OTAManager::downloadAndInstall(const String& url, size_t expectedSize) {
+    // Check WiFi connectivity first
+    if (!WiFi.isConnected()) {
+        lastError = "No WiFi connection";
+        LOG_CRITICAL("[OTA] %s", lastError.c_str());
+        return false;
+    }
+    
     currentState = OTAState::DOWNLOADING;
     
     HTTPClient http;
     http.begin(url);
+    http.setTimeout(FIRMWARE_DOWNLOAD_TIMEOUT_MS);
     
-    // Add GitHub token if available (for private repos)
+    // Add GitHub token if available (for private repos) - use Bearer format
     if (!config.githubToken.isEmpty()) {
-        http.addHeader("Authorization", "token " + config.githubToken);
+        http.addHeader("Authorization", "Bearer " + config.githubToken);
     }
     
     int httpCode = http.GET();
@@ -435,10 +495,24 @@ bool OTAManager::downloadAndInstall(const String& url, size_t expectedSize) {
     size_t written = 0;
     size_t lastProgress = 0;
     
+    // Watchdog timeout for download loop
+    unsigned long downloadStart = millis();
+    unsigned long lastDataTime = millis();
+    
     while (http.connected() && written < contentLength) {
+        // Check overall download timeout
+        if (millis() - downloadStart > DOWNLOAD_TIMEOUT_MS) {
+            lastError = "Download timeout - exceeded 5 minutes";
+            LOG_CRITICAL("[OTA] %s", lastError.c_str());
+            Update.abort();
+            http.end();
+            return false;
+        }
+        
         size_t available = stream->available();
         
         if (available) {
+            lastDataTime = millis(); // Reset stall timer on data received
             size_t bytesToRead = (available > sizeof(buffer)) ? sizeof(buffer) : available;
             size_t bytesRead = stream->readBytes(buffer, bytesToRead);
             
@@ -455,13 +529,22 @@ bool OTAManager::downloadAndInstall(const String& url, size_t expectedSize) {
             
             // Log progress every 10%
             size_t progress = (written * 100) / contentLength;
-            if (progress >= lastProgress + 10) {
+            if (progress >= lastProgress + PROGRESS_LOG_INTERVAL_PERCENT) {
                 LOG_INFO("[OTA] Progress: %u%%", progress);
                 lastProgress = progress;
             }
+        } else {
+            // No data available - check for stall
+            if (millis() - lastDataTime > STALL_TIMEOUT_MS) {
+                lastError = "Download stalled - no data for 30 seconds";
+                LOG_CRITICAL("[OTA] %s", lastError.c_str());
+                Update.abort();
+                http.end();
+                return false;
+            }
         }
         
-        delay(1);
+        delay(DOWNLOAD_LOOP_DELAY_MS);
     }
     
     http.end();
@@ -518,7 +601,7 @@ void OTAManager::setAutoCheck(bool enabled, unsigned long intervalMs) {
     config.checkIntervalMs = intervalMs;
     saveConfig();
     LOG_INFO("[OTA] Auto-check %s, interval: %lu hours", 
-             enabled ? "enabled" : "disabled", intervalMs / 3600000);
+             enabled ? "enabled" : "disabled", intervalMs / MS_PER_HOUR);
 }
 
 void OTAManager::setAutoInstall(bool enabled) {

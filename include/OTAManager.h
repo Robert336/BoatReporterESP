@@ -12,6 +12,28 @@ constexpr const char OTA_PREFERENCES_NAMESPACE[] = "ota_config";
 constexpr unsigned long DEFAULT_CHECK_INTERVAL_MS = 86400000; // 24 hours
 constexpr int OTA_BUFFER_SIZE = 1024; // Download buffer size
 
+// Time constants
+constexpr unsigned long MS_PER_HOUR = 3600000; // Milliseconds in one hour
+constexpr unsigned long FAILED_STATE_RECOVERY_MS = 300000; // 5 minutes
+constexpr unsigned long API_TIMEOUT_MS = 30000; // 30 seconds
+constexpr unsigned long FIRMWARE_DOWNLOAD_TIMEOUT_MS = 120000; // 2 minutes
+constexpr unsigned long DOWNLOAD_TIMEOUT_MS = 300000; // 5 minutes
+constexpr unsigned long STALL_TIMEOUT_MS = 30000; // 30 seconds without data
+constexpr unsigned long REBOOT_DELAY_MS = 3000; // 3 seconds
+
+// Buffer sizes
+constexpr size_t NOTIFICATION_MESSAGE_BUFFER_SIZE = 150;
+constexpr size_t SHORT_MESSAGE_BUFFER_SIZE = 120;
+constexpr size_t JSON_DOCUMENT_SIZE = 4096;
+
+// HTTP status codes
+constexpr int HTTP_FORBIDDEN = 403;
+constexpr int HTTP_TOO_MANY_REQUESTS = 429;
+
+// Progress reporting
+constexpr size_t PROGRESS_LOG_INTERVAL_PERCENT = 10;
+constexpr unsigned long DOWNLOAD_LOOP_DELAY_MS = 1;
+
 enum class OTAState {
     IDLE,
     CHECKING,
