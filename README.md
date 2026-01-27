@@ -1,6 +1,7 @@
 # BoatReporterESP
-
 An ESP32-based water level monitoring and alert system for boats. Automatically detects rising water levels in your boat's bilge and sends emergency notifications via SMS and webhooks.
+
+<img width="500" alt="hero image" src="https://github.com/user-attachments/assets/67ef94db-ea68-4508-ad74-67d70f768ae9" />
 
 ## Features
 
@@ -13,7 +14,13 @@ An ESP32-based water level monitoring and alert system for boats. Automatically 
 - **Persistent Storage** - WiFi credentials, calibration, and notification settings saved to NVS (Non-Volatile Storage)
 - **Mock Mode** - Test the system without physical sensors
 
+### Web Configuration Interface Pages
+<img width="700" alt="Web-config-pages" src="https://github.com/user-attachments/assets/bb7b6dad-d5b2-42a6-acda-cb48fb81073b" />
+
 ## Hardware Requirements
+
+<img width="700" alt="unit diagram with callouts for different components" src="https://github.com/user-attachments/assets/d19359c8-c228-4b33-92cd-703549a533da" />
+
 
 - **[ESP32 Development Board](https://www.amazon.ca/IoTCrazy-ESP32-WROOM-32U-Dual-Core-Development-Type-C/dp/B0FP6DQJQ1/ref=sr_1_8?crid=16WJN03UW3DAD&dib=eyJ2IjoiMSJ9.PHlKJLpL4TOrBTLvcHTBBlmX3FU6JsrCFgCe6Pp3BjffMkVXoccEvFqSYgI6cc9wH9d27de3_Q8YGifJo4egzfuhAVmLgOzuwNZ8jvzjREtCzmcvg7WVBfd71b1CP8I4Y7BXn4JzNONwgtaRffXAT-FtZXy4_nh2ywMpMUWVm0FeeHGbnuloKms7rsFmrVSi90wgWv3tneh6liW4cr5fkD0ChVsYGVx3t_wzFpZAqCSJLuUwRVZ4IND9tr-yPjpT24Ppc3XJ8UYIsaMyJtT8Tl8Agw3b0P4mAnmAHbX3Wm0.VDqu0XPVxtCuBmyRBPAnfFJXXzSDc54qEx4mPAB3JC8&dib_tag=se&keywords=esp32+wifi&qid=1766944208&sprefix=esp32+wif%2Caps%2C161&sr=8-8)** - UPESY WROOM (or compatible ESP32 board). We used one that came with an attachable WiFi attenna to extend the range as the boat's slip may be far from the marina's WiFi access point.
 - **[ADS1115 16-bit ADC Module](https://www.amazon.ca/Converter-Programmable-Amplifier-Precision-Development/dp/B0F1D3KGG2/ref=sr_1_5?crid=U8P407WRJNM3&dib=eyJ2IjoiMSJ9.rZWdBIexwv2SkokjtBZYw_iUg9nI20SKVyEqh6RABOrXre7K6FFxEMJOXRaQ1VXlEWf6_bUXKrY52bJ-RhY7C_zeznMVtbGE0gENTlWBiCwdSzXcLPX4qjiWrk_rn5DYe6sN_DtTGGBAU6pDCw5S6fHpEqPYoJvUobUYBw_puDKaTsLReN5Jc1qCGtBLEBAx1paKkGW-s2O_eUk-_seND5gmxZNX-WZBIlFvYGIbBzFI2RIFlzQAPvOVe1rWwVPm0aLsohqg3Rdxv910k6Z2wOHljqDgKqXl1eM6-N5ziYs.6Ic-12Cph37ljZNDkbXOviQ6BSGDjXZQ5i7Ezwa41c8&dib_tag=se&keywords=ads1115+16-bit+adc+module&qid=1766943878&sprefix=ads1115%2Caps%2C128&sr=8-5)** - For precise analog-to-digital conversion with minimal signal noise as the one onboard the ESP32 is too noisy for this application.
@@ -246,35 +253,6 @@ When in EMERGENCY state:
 - Alerts repeat every 30 seconds (configurable in code: `EMERGENCY_MESSAGE_TIMEOUT_MS`)
 - Serial monitor logs all events
 
-## Project Structure
-
-```
-BoatReporterESP/
-├── include/                  # Header files
-│   ├── ConfigServer.h        # Web configuration interface and HTML pages
-│   ├── LightCode.h           # LED pattern control (blink patterns)
-│   ├── SendDiscord.h         # Discord webhook integration
-│   ├── SendSMS.h             # SMS notification via Twilio
-│   ├── TimeManagement.h      # NTP time synchronization
-│   ├── WaterPressureSensor.h # Sensor reading, calibration, median filtering
-│   ├── WiFiManager.h         # WiFi credential storage and connection
-│   ├── secrets.h.example     # Template for API credentials
-│   └── secrets.h             # Your actual credentials (not in git)
-├── src/                      # Implementation files
-│   ├── main.cpp              # Main application and state machine
-│   ├── ConfigServer.cpp      # Web server implementation
-│   ├── LightCode.cpp         # LED pattern logic
-│   ├── SendDiscord.cpp       # Discord webhook HTTP client
-│   ├── SendSMS.cpp           # Twilio SMS HTTP client
-│   ├── TimeManagement.cpp    # NTP sync implementation
-│   ├── WaterPressureSensor.cpp # Sensor interface and calibration math
-│   └── WiFiManager.cpp       # WiFi persistence and connection logic
-├── lib/                      # Custom libraries (currently empty)
-├── test/                     # Test files
-├── platformio.ini            # PlatformIO build configuration
-└── README.md                 # This file
-```
-
 ## Customization
 
 ### Adjustable Parameters (in `main.cpp`)
@@ -417,7 +395,6 @@ The codebase is modular. Key areas:
 
 - ESP32 and electronics must be in waterproof enclosure
 - Use marine-grade connectors for external wiring
-- **[TODO - ADD INFO]** Describe the enclosure you used and how you sealed cable entry points. Include product links if possible.
 
 ## Contributing
 
