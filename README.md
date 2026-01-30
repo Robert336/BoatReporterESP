@@ -1,8 +1,12 @@
 # BoatReporterESP
+
 An ESP32-based water level monitoring and alert system for boats. Automatically detects rising water levels in your boat's bilge and sends emergency notifications via SMS and webhooks.
+
+
 
 <img width="500" alt="hero image" src="https://github.com/user-attachments/assets/67ef94db-ea68-4508-ad74-67d70f768ae9" />
 
+Project by: Robert Mazza and David Miller
 ## Features
 
 - **Real-time Water Level Monitoring** - Uses a pressure sensor with ADS1115 16-bit ADC for accurate readings
