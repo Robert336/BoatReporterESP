@@ -7,3 +7,6 @@
 # Secrets file - contains sensitive credentials
 include/secrets.h
 secrets.h
+
+# Test logs (ignore large log files, keep summaries)
+test-logs/*.log

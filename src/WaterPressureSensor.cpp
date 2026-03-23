@@ -118,8 +118,14 @@ SensorReading WaterPressureSensor::readLevel() {
     reading.valid = true; // Assume valid until proven otherwise
     
     if (useMockData) {
-        mockWaterLevel = random(4, 20);
+        // Slow sine wave: 1-hour period, range 0-60cm
+        // Crosses Tier 1 (30cm) and Tier 2 (50cm) thresholds each cycle
+        uint32_t t = millis();
+        float base = 30.0f + 30.0f * sin(2.0f * 3.14159f * t / 3600000.0f);
+        mockWaterLevel = base + (float)(random(-200, 200)) / 100.0f;
+        if (mockWaterLevel < 0.0f) mockWaterLevel = 0.0f;
         reading.level_cm = mockWaterLevel;
+        reading.millivolts = 590.0f + (mockWaterLevel / 100.0f) * (4096.0f - 590.0f);
     } else {
         
         int16_t rawADC = ads.readADC_SingleEnded(CHANNEL);
