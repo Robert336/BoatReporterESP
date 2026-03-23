@@ -50,7 +50,11 @@ uint32_t lastStatusLogTime = 0;
 static constexpr int BUTTON_PIN = 23; // GPIO
 static constexpr int ALERT_PIN = 19; // GPIO
 static constexpr int SENSOR_PIN = 32; // Water sensor analog pin ADC1 because wifi is required
-static constexpr bool USE_MOCK = false; // For mocking sensor readings
+#ifdef ENABLE_MOCK_MODE
+static constexpr bool USE_MOCK = true;
+#else
+static constexpr bool USE_MOCK = false;
+#endif
 static constexpr int LIGHT_PIN = 12;
 
 // Emergency timeout before transitioning to EMERGENCY state
@@ -223,12 +227,14 @@ void loop() {
                 LOG_EVENT("[EVENT] Emergency notifications SILENCED by button hold");
                 
                 // Send confirmation notification
-                const char* silenceMessage = "Boat Monitor: Emergency alerts have been temporarily silenced";
-                if (!sms.send(silenceMessage)) {
-                    LOG_EVENT("[SMS] Failed to send silence confirmation SMS");
-                }
-                if (!discord.send(silenceMessage)) {
-                    LOG_EVENT("[Discord] Failed to send silence confirmation to Discord");
+                if (!USE_MOCK) {
+                    const char* silenceMessage = "Boat Monitor: Emergency alerts have been temporarily silenced";
+                    if (!sms.send(silenceMessage)) {
+                        LOG_EVENT("[SMS] Failed to send silence confirmation SMS");
+                    }
+                    if (!discord.send(silenceMessage)) {
+                        LOG_EVENT("[Discord] Failed to send silence confirmation to Discord");
+                    }
                 }
             } else {
                 LOG_EVENT("[EVENT] Emergency notifications RE-ENABLED by button hold");
@@ -356,14 +362,18 @@ void loop() {
                         }
                         LOG_EVENT("[STATE] EMERGENCY: Sending alert message: %s", emergMessageBuf);
 
-                        bool smsResult = sms.send(emergMessageBuf);
-                        if (!smsResult){
-                            LOG_EVENT("[SMS] Emergency SMS failed to send");
-                        }
+                        if (!USE_MOCK) {
+                            bool smsResult = sms.send(emergMessageBuf);
+                            if (!smsResult){
+                                LOG_EVENT("[SMS] Emergency SMS failed to send");
+                            }
 
-                        bool discordResult = discord.send(emergMessageBuf);
-                        if (!discordResult){
-                            LOG_EVENT("[Discord] Emergency Discord webhook failed to send");
+                            bool discordResult = discord.send(emergMessageBuf);
+                            if (!discordResult){
+                                LOG_EVENT("[Discord] Emergency Discord webhook failed to send");
+                            }
+                        } else {
+                            LOG_EVENT("[MOCK] Skipping SMS/Discord send");
                         }
                     } else {
                         LOG_INFO("[STATE] EMERGENCY: Notifications silenced, skipping alert message");
@@ -429,6 +439,8 @@ void loop() {
                       currentReading.level_cm,
                       systemState.sensorError,
                       systemState.emergencyConditions);
+        LOG_STATUS("[HEAP] Free=%u, MinFree=%u, MaxBlock=%u",
+                      ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
         lastStatusLogTime = millis();
     }
 }
