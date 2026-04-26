@@ -60,6 +60,7 @@ struct VersionInfo {
     String availableVersion;
     String downloadUrl;
     size_t firmwareSize;
+    String firmwareHash;        // Optional SHA256 hash for verification
 };
 
 /**
@@ -93,7 +94,7 @@ private:
     // Helper methods
     void loadConfig();
     void saveConfig();
-    void sendNotification(const char* message);
+    bool sendNotification(const char* message);  // Returns true if at least one notification succeeded
     bool checkForUpdates();
     bool compareVersions(const String& v1, const String& v2);
     bool downloadAndInstall(const String& url, size_t expectedSize);
@@ -101,6 +102,11 @@ private:
     void setFirstBootFlag();
     void clearFirstBootFlag();
     int parseVersionComponent(const String& version, int component);
+    
+    // Pre-flight validation methods
+    bool validateFirmwareSize(size_t size);
+    bool checkFlashSpace(size_t requiredSize);
+    bool checkHeapAvailable(size_t requiredSize);
     
 public:
     OTAManager(SendSMS* sms = nullptr, SendDiscord* discord = nullptr);
