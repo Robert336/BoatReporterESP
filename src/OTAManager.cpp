@@ -451,7 +451,7 @@ bool OTAManager::downloadAndInstall(const String& url, size_t expectedSize) {
     
     HTTPClient http;
     http.begin(url);
-    http.setTimeout(FIRMWARE_DOWNLOAD_TIMEOUT_MS);
+    http.setTimeout((uint16_t)120);  // 120 seconds max (setTimeout uses uint16_t)
     
     // Add GitHub token if available (for private repos) - use Bearer format
     if (!config.githubToken.isEmpty()) {
