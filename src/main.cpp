@@ -75,6 +75,9 @@ WaterPressureSensor waterSensor(USE_MOCK); // false = use real sensor, not mock 
 SendSMS sms;
 SendDiscord discord;
 
+// Global pointer for Logger to access Discord instance
+SendDiscord* g_discord = &discord;
+
 // Helper function to convert state enum to string
 const char* stateToString(State state) {
     switch (state) {
