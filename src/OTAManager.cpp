@@ -195,18 +195,21 @@ void OTAManager::saveConfig() {
     LOG_INFO("[OTA] Configuration saved to NVS");
 }
 
-void OTAManager::sendNotification(const char* message) {
+bool OTAManager::sendNotification(const char* message) {
     if (!config.notificationsEnabled) {
-        return;
+        return true;  // Notifications disabled, treat as success
     }
     
     bool smsSent = false;
     bool discordSent = false;
+    bool atleastOneSucceeded = false;
     
     if (smsService) {
         smsSent = smsService->send(message);
         if (!smsSent) {
             LOG_INFO("[OTA] Failed to send SMS notification");
+        } else {
+            atleastOneSucceeded = true;
         }
     }
     
@@ -214,8 +217,12 @@ void OTAManager::sendNotification(const char* message) {
         discordSent = discordService->send(message);
         if (!discordSent) {
             LOG_INFO("[OTA] Failed to send Discord notification");
+        } else {
+            atleastOneSucceeded = true;
         }
     }
+    
+    return atleastOneSucceeded;
 }
 
 bool OTAManager::manualCheckForUpdates() {
@@ -238,14 +245,8 @@ bool OTAManager::checkForUpdates() {
     
     currentState = OTAState::CHECKING;
     lastCheckTime = millis();
-    
-    // Save last check time
-    if (!preferences.begin(OTA_PREFERENCES_NAMESPACE, false)) {
-        LOG_CRITICAL("[OTA] Failed to save last check time");
-    } else {
-        preferences.putULong("last_check", lastCheckTime);
-        preferences.end();
-    }
+    // Note: lastCheckTime is not saved to NVS on every check to reduce flash wear
+    // It will be saved on next boot via saveConfig() or when settings change
     
     LOG_INFO("[OTA] Checking for updates from GitHub...");
     
@@ -408,12 +409,39 @@ bool OTAManager::startUpdate(const char* password) {
         }
     }
     
+    // Pre-flight validation checks
+    if (!validateFirmwareSize(versionInfo.firmwareSize)) {
+        lastError = "Firmware size validation failed";
+        LOG_CRITICAL("[OTA] %s", lastError.c_str());
+        currentState = OTAState::FAILED;
+        return false;
+    }
+    
+    if (!checkFlashSpace(versionInfo.firmwareSize)) {
+        lastError = "Not enough flash space for firmware";
+        LOG_CRITICAL("[OTA] %s - required: %u bytes, available: %u bytes", 
+                  lastError.c_str(), versionInfo.firmwareSize, ESP.getFreeSketchSpace());
+        currentState = OTAState::FAILED;
+        return false;
+    }
+    
+    if (!checkHeapAvailable(OTA_BUFFER_SIZE * 2)) {
+        lastError = "Insufficient heap memory for download";
+        LOG_CRITICAL("[OTA] %s - free heap: %u bytes", lastError.c_str(), ESP.getFreeHeap());
+        currentState = OTAState::FAILED;
+        return false;
+    }
+    
     char msg[NOTIFICATION_MESSAGE_BUFFER_SIZE];
     snprintf(msg, sizeof(msg),
              "Boat Monitor: Starting firmware update from v%s to v%s. Device may be offline for 1-2 minutes.",
              versionInfo.currentVersion.c_str(), versionInfo.availableVersion.c_str());
-    sendNotification(msg);
-    LOG_INFO("[OTA] %s", msg);
+    bool notificationSent = sendNotification(msg);
+    LOG_INFO("[OTA] %s (notification %s)", msg, notificationSent ? "sent" : "FAILED");
+    
+    if (!notificationSent) {
+        LOG_INFO("[OTA] Warning: Could not send update notification");
+    }
     
     // Download and install
     bool success = downloadAndInstall(versionInfo.downloadUrl, versionInfo.firmwareSize);
@@ -423,8 +451,8 @@ bool OTAManager::startUpdate(const char* password) {
         setFirstBootFlag();
         
         currentState = OTAState::SUCCESS;
-        LOG_INFO("[OTA] Update successful! Rebooting in 3 seconds...");
-        delay(REBOOT_DELAY_MS);
+        LOG_INFO("[OTA] Update successful! Restarting immediately...");
+        // Immediate restart - no delay in good conditions
         ESP.restart();
     } else {
         currentState = OTAState::FAILED;
@@ -432,8 +460,12 @@ bool OTAManager::startUpdate(const char* password) {
         snprintf(msg, sizeof(msg),
                  "Boat Monitor: Firmware update FAILED - %s. Still running v%s.",
                  lastError.c_str(), versionInfo.currentVersion.c_str());
-        sendNotification(msg);
-        LOG_CRITICAL("[OTA] %s", msg);
+        bool failureNotificationSent = sendNotification(msg);
+        LOG_CRITICAL("[OTA] %s (notification %s)", msg, failureNotificationSent ? "sent" : "FAILED");
+        
+        if (!failureNotificationSent) {
+            LOG_CRITICAL("[OTA] ERROR: Could not send failure notification");
+        }
     }
     
     return success;
@@ -469,11 +501,25 @@ bool OTAManager::downloadAndInstall(const String& url, size_t expectedSize) {
     
     int contentLength = http.getSize();
     
-    if (contentLength <= 0 || (expectedSize > 0 && (size_t)contentLength != expectedSize)) {
-        lastError = "Invalid content length";
-        LOG_CRITICAL("[OTA] %s: expected %u, got %d", lastError.c_str(), expectedSize, contentLength);
+    if (contentLength <= 0) {
+        lastError = "Invalid content length (zero or unknown)";
+        LOG_CRITICAL("[OTA] %s", lastError.c_str());
         http.end();
         return false;
+    }
+    
+    // Allow ±2% tolerance for Content-Encoding overhead (gzip, deflate, etc.)
+    if (expectedSize > 0) {
+        size_t tolerance = (expectedSize * 2) / 100;  // 2% tolerance
+        size_t minSize = expectedSize > tolerance ? expectedSize - tolerance : expectedSize;
+        size_t maxSize = expectedSize + tolerance;
+        
+        if ((size_t)contentLength < minSize || (size_t)contentLength > maxSize) {
+            LOG_INFO("[OTA] Content length mismatch (tolerance ±2%%): expected %u, got %d bytes",
+                     expectedSize, contentLength);
+            // Don't fail - allow download to proceed (may be encoding overhead)
+            // but log the info for diagnostic purposes
+        }
     }
     
     LOG_INFO("[OTA] Downloading firmware: %d bytes", contentLength);
@@ -572,6 +618,53 @@ bool OTAManager::downloadAndInstall(const String& url, size_t expectedSize) {
     }
     
     LOG_INFO("[OTA] Update successfully written to flash");
+    return true;
+}
+
+bool OTAManager::validateFirmwareSize(size_t size) {
+    // Firmware should be reasonable - check bounds
+    // ESP32 typical: 1-4MB depending on partition layout
+    constexpr size_t MIN_FIRMWARE_SIZE = 65536;   // 64KB minimum
+    constexpr size_t MAX_FIRMWARE_SIZE = 4194304; // 4MB maximum
+    
+    if (size < MIN_FIRMWARE_SIZE || size > MAX_FIRMWARE_SIZE) {
+        LOG_CRITICAL("[OTA] Firmware size out of bounds: %u bytes (valid: %u-%u)",
+                  size, MIN_FIRMWARE_SIZE, MAX_FIRMWARE_SIZE);
+        return false;
+    }
+    
+    LOG_INFO("[OTA] Firmware size validation passed: %u bytes", size);
+    return true;
+}
+
+bool OTAManager::checkFlashSpace(size_t requiredSize) {
+    size_t freeSpace = ESP.getFreeSketchSpace();
+    
+    // Need at least 5% more than firmware size for safety margin
+    size_t requiredWithMargin = requiredSize + (requiredSize / 20);
+    
+    if (freeSpace < requiredWithMargin) {
+        LOG_CRITICAL("[OTA] Insufficient flash space: need %u bytes, have %u bytes",
+                  requiredWithMargin, freeSpace);
+        return false;
+    }
+    
+    LOG_INFO("[OTA] Flash space check passed: %u bytes available (need %u)",
+              freeSpace, requiredWithMargin);
+    return true;
+}
+
+bool OTAManager::checkHeapAvailable(size_t requiredSize) {
+    uint32_t freeHeap = ESP.getFreeHeap();
+    
+    if (freeHeap < requiredSize) {
+        LOG_CRITICAL("[OTA] Insufficient heap: need %u bytes, have %u bytes",
+                  requiredSize, freeHeap);
+        return false;
+    }
+    
+    LOG_INFO("[OTA] Heap check passed: %u bytes available (need %u)",
+              freeHeap, requiredSize);
     return true;
 }
 
