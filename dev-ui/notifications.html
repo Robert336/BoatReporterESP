@@ -33,6 +33,19 @@ document.getElementById('webhook').value=d.discordWebhook||'';
 const discEl=document.getElementById('disc_status');
 discEl.textContent=d.hasDiscordWebhook?'Discord: Configured':'Discord: Not Configured';
 discEl.className=d.hasDiscordWebhook?'badge active':'badge inactive';
+// MQTT
+document.getElementById('mqtt_host').value=d.mqttHost||'';
+document.getElementById('mqtt_port').value=d.mqttPort||1883;
+document.getElementById('mqtt_user').value=d.mqttUser||'';
+document.getElementById('mqtt_topic').value=d.mqttBaseTopic||'';
+const mqttEl=document.getElementById('mqtt_status');
+if(d.mqttConfigured&&d.mqttConnected){
+  mqttEl.textContent='MQTT: Connected';mqttEl.className='badge active';
+}else if(d.mqttConfigured){
+  mqttEl.textContent='MQTT: Configured (disconnected)';mqttEl.className='badge inactive';
+}else{
+  mqttEl.textContent='MQTT: Not Configured';mqttEl.className='badge inactive';
+}
 }catch(e){console.error(e);}
 }
 async function loadEmerg(){
@@ -95,6 +108,37 @@ btn.disabled=false;
 btn.textContent='Test';
 }
 }
+async function saveMqtt(){
+const host=document.getElementById('mqtt_host').value;
+if(!host){alert('Enter broker host');return;}
+const port=document.getElementById('mqtt_port').value||'1883';
+const user=document.getElementById('mqtt_user').value;
+const pass=document.getElementById('mqtt_pass').value;
+const topic=document.getElementById('mqtt_topic').value;
+try{
+const body='host='+encodeURIComponent(host)+'&port='+encodeURIComponent(port)
+  +'&user='+encodeURIComponent(user)+'&pass='+encodeURIComponent(pass)
+  +'&topic='+encodeURIComponent(topic);
+const r=await fetch('/notifications/mqtt',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
+const d=await r.json();
+alert(d.success?'Saved!':d.error);
+if(d.success)loadNotif();
+}catch(e){alert('Error: '+e.message);}
+}
+async function testMqtt(){
+if(!confirm('Publish test MQTT message?'))return;
+const btn=document.getElementById('test_mqtt');
+btn.disabled=true;
+btn.textContent='Sending...';
+try{
+const r=await fetch('/notifications/test/mqtt',{method:'POST'});
+const d=await r.json();
+alert(d.success?d.message:d.error);
+}catch(e){alert('Error: '+e.message);}finally{
+btn.disabled=false;
+btn.textContent='Test';
+}
+}
 async function saveTier1(){
 const lv=document.getElementById('tier1_lv').value;
 if(!lv){alert('Enter level');return;}
@@ -150,6 +194,24 @@ window.onload=function(){loadNotif();loadEmerg();};
 <div class="help">From Discord: Server Settings → Integrations → Webhooks</div>
 <button onclick="saveWebhook()">Save</button>
 <button id="test_disc" onclick="testDisc()">Test</button>
+</div>
+
+<div class="card">
+<h2>MQTT Broker (Logging &amp; Home Assistant)</h2>
+<span id="mqtt_status" class="badge">Loading...</span>
+<label>Broker Host</label>
+<input type="text" id="mqtt_host" placeholder="192.168.1.50">
+<label>Port</label>
+<input type="number" id="mqtt_port" placeholder="1883" min="1" max="65535">
+<label>Username <span style="font-weight:normal">(optional)</span></label>
+<input type="text" id="mqtt_user" placeholder="leave empty for anonymous">
+<label>Password <span style="font-weight:normal">(optional, write-only)</span></label>
+<input type="password" id="mqtt_pass" placeholder="leave empty for anonymous">
+<label>Base Topic <span style="font-weight:normal">(optional)</span></label>
+<input type="text" id="mqtt_topic" placeholder="boat/aabbcc (auto-derived from MAC if empty)">
+<div class="help">Logs publish to &lt;baseTopic&gt;/log. Availability: &lt;baseTopic&gt;/availability.</div>
+<button onclick="saveMqtt()">Save</button>
+<button id="test_mqtt" onclick="testMqtt()">Test</button>
 </div>
 
 <div class="card">
