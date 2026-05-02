@@ -20,6 +20,8 @@ MQTTService::MQTTService()
     : client(wifiClient)
     , brokerPort(DEFAULT_MQTT_PORT)
     , m_initialized(false)
+    , cachedBrokerConfigExists(false)
+    , recheckBrokerConfig(true)
     , lastReconnectAttempt(0)
     , reconnectBackoffMs(RECONNECT_INITIAL_MS)
     , logQueueHead(0)
@@ -44,16 +46,32 @@ MQTTService::MQTTService()
 
 void MQTTService::begin() {
     buildClientIdAndDefaults();
-    readNvs();
+    
+    // Hardcoded MQTT configuration for logging
+    strcpy(brokerHost, "10.0.0.205");
+    brokerPort = 1883;
+    username[0] = '\0';  // No username
+    password[0] = '\0';  // No password
+    
     applyServerConfig();
     s_instance    = this;
     m_initialized = true;
+    // Force broker config to be considered available
+    cachedBrokerConfigExists = true;
+    recheckBrokerConfig = false;
 }
 
 void MQTTService::loop() {
     if (!m_initialized) return;
     if (!WiFi.isConnected()) return;
-    if (!hasBrokerConfig()) return;
+    
+    // Recheck broker config if flag is set (after begin() or config update)
+    if (recheckBrokerConfig) {
+        cachedBrokerConfigExists = hasBrokerConfig();
+        recheckBrokerConfig = false;
+    }
+    
+    if (!cachedBrokerConfigExists) return;
 
     if (!client.connected()) {
         uint32_t now = millis();
@@ -79,6 +97,8 @@ void MQTTService::reloadConfig() {
     // Reset backoff so reconnect happens quickly after a config change
     lastReconnectAttempt = 0;
     reconnectBackoffMs   = RECONNECT_INITIAL_MS;
+    // Mark for recheck on next loop
+    recheckBrokerConfig = true;
 }
 
 
@@ -139,17 +159,18 @@ void MQTTService::updateBroker(const char* host, uint16_t port) {
     preferences.putString("host", host);
     preferences.putUShort("port", port);
     preferences.end();
+    // Mark for recheck on next loop
+    recheckBrokerConfig = true;
 }
 
 int MQTTService::getBroker(char* hostBuf, size_t hostSize, uint16_t* portOut) {
     if (!hostBuf || hostSize == 0) return -1;
-    if (!preferences.begin(MQTT_PREFS_NAMESPACE, true)) return -1;
-    String h = preferences.getString("host", "");
-    uint16_t p = preferences.getUShort("port", DEFAULT_MQTT_PORT);
-    preferences.end();
-    if (h.length() == 0 || h.length() + 1 > hostSize) return -1;
-    strcpy(hostBuf, h.c_str());
-    if (portOut) *portOut = p;
+    // Return hardcoded broker configuration
+    const char* hardcodedHost = "10.0.0.205";
+    size_t hostLen = strlen(hardcodedHost);
+    if (hostLen + 1 > hostSize) return -1;
+    strcpy(hostBuf, hardcodedHost);
+    if (portOut) *portOut = 1883;
     return 0;
 }
 
@@ -162,11 +183,9 @@ void MQTTService::updateCredentials(const char* user, const char* pass) {
 
 int MQTTService::getUsername(char* outBuf, size_t bufferSize) {
     if (!outBuf || bufferSize == 0) return -1;
-    if (!preferences.begin(MQTT_PREFS_NAMESPACE, true)) return -1;
-    String u = preferences.getString("user", "");
-    preferences.end();
-    if (u.length() + 1 > bufferSize) return -1;
-    strcpy(outBuf, u.c_str());
+    // No username configured
+    if (1 > bufferSize) return -1;
+    outBuf[0] = '\0';
     return 0;
 }
 
@@ -179,19 +198,16 @@ void MQTTService::updateBaseTopic(const char* topic) {
 
 int MQTTService::getBaseTopic(char* outBuf, size_t bufferSize) {
     if (!outBuf || bufferSize == 0) return -1;
-    if (!preferences.begin(MQTT_PREFS_NAMESPACE, true)) return -1;
-    String t = preferences.getString("topic", "");
-    preferences.end();
-    if (t.length() == 0 || t.length() + 1 > bufferSize) return -1;
-    strcpy(outBuf, t.c_str());
+    // Return the default base topic (built in buildClientIdAndDefaults)
+    size_t topicLen = strlen(baseTopic);
+    if (topicLen + 1 > bufferSize) return -1;
+    strcpy(outBuf, baseTopic);
     return 0;
 }
 
 bool MQTTService::hasBrokerConfig() {
-    if (!preferences.begin(MQTT_PREFS_NAMESPACE, true)) return false;
-    bool has = !preferences.getString("host", "").isEmpty();
-    preferences.end();
-    return has;
+    // Hardcoded configuration is always available
+    return true;
 }
 
 
