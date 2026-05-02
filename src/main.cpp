@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include "Logger.h"
+#include "MQTTService.h"
 #include "TimeManagement.h"
 #include "WiFiManager.h"
 #include "ConfigServer.h"
@@ -69,13 +70,14 @@ volatile bool buttonCurrentlyPressed = false;
 ConfigServer* configServer = nullptr;
 OTAManager* otaManager = nullptr;
 LightCode light(LIGHT_PIN);
-TimeManagement& rtc = TimeManagement::getInstance(); 
+TimeManagement& rtc = TimeManagement::getInstance();
 WiFiManager& wifiMgr = WiFiManager::getInstance();
 WaterPressureSensor waterSensor(USE_MOCK); // false = use real sensor, not mock data
 SendSMS sms;
 SendDiscord discord;
+MQTTService mqtt;
 
-// Global pointer for Logger to access Discord instance
+// Logger publishes logs via MQTT; Discord kept for OTA / direct emergency sends
 SendDiscord* g_discord = &discord;
 
 // Helper function to convert state enum to string
@@ -108,6 +110,11 @@ void setup() {
     systemState.hornCurrentlyOn = false;
     systemState.notificationsSilenced = false;
     
+    // Initialize MQTT early so all subsequent LOG_* calls can be queued for delivery
+    g_mqtt = &mqtt;
+    mqtt.begin();
+    LOG_SETUP("[SETUP] MQTTService initialized");
+
     // Initialize OTAManager early to check for rollback/first boot after update
     otaManager = new OTAManager(&sms, &discord);
     otaManager->begin();
@@ -115,7 +122,7 @@ void setup() {
     
     // Initialize ConfigServer early to load calibration from NVS
     // This ensures saved calibration is applied before first sensor reading
-    configServer = new ConfigServer(&waterSensor, &sms, &discord, otaManager);
+    configServer = new ConfigServer(&waterSensor, &sms, &discord, otaManager, &mqtt);
     LOG_SETUP("[SETUP] ConfigServer initialized - calibration loaded from NVS");
     
     // Print unique device AP password for easy access
@@ -155,10 +162,11 @@ void setup() {
 }
 
 void loop() {
-    
+
+    mqtt.loop();
     rtc.sync();
     light.update();
-    
+
     // Run OTA update checks (only when not in CONFIG or EMERGENCY states)
     if (otaManager && systemState.currentState != CONFIG && systemState.currentState != EMERGENCY) {
         otaManager->loop();
