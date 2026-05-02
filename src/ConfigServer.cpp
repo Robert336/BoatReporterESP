@@ -5,8 +5,8 @@
 // CORE LIFECYCLE METHODS
 // ============================================================================
 
-ConfigServer::ConfigServer(WaterPressureSensor* sensor, SendSMS* sms, SendDiscord* discord, OTAManager* ota) 
-    : server(nullptr), waterSensor(sensor), smsService(sms), discordService(discord), otaManager(ota) {
+ConfigServer::ConfigServer(WaterPressureSensor* sensor, SendSMS* sms, SendDiscord* discord, OTAManager* ota, MQTTService* mqtt)
+    : server(nullptr), waterSensor(sensor), smsService(sms), discordService(discord), otaManager(ota), mqttService(mqtt) {
     // Generate unique AP password from chip ID
     uint64_t chipId = ESP.getEfuseMac();
     uint32_t id = (uint32_t)(chipId & 0xFFFFFFFF);
@@ -131,7 +131,13 @@ void ConfigServer::startSetupMode() {
     
     // Route: POST /notifications/test/discord → send test Discord message
     server->on("/notifications/test/discord", HTTP_POST, [this]() { handleTestDiscord(); });
-    
+
+    // Route: POST /notifications/mqtt → configure MQTT broker
+    server->on("/notifications/mqtt", HTTP_POST, [this]() { handleSetMqttConfig(); });
+
+    // Route: POST /notifications/test/mqtt → send test MQTT message
+    server->on("/notifications/test/mqtt", HTTP_POST, [this]() { handleTestMqtt(); });
+
     // Route: GET /ota-settings → serve OTA settings page
     server->on("/ota-settings", HTTP_GET, [this]() { handleOTAPage(); });
     
@@ -735,7 +741,28 @@ void ConfigServer::handleGetNotifications() {
     } else {
         json += "false";
     }
-    
+
+    // MQTT broker
+    json += ",\"mqttConfigured\":";
+    if (mqttService && mqttService->hasBrokerConfig()) {
+        char hostBuf[64];
+        uint16_t port = 1883;
+        char userBuf[32];
+        char topicBuf[64];
+        mqttService->getBroker(hostBuf, sizeof(hostBuf), &port);
+        mqttService->getUsername(userBuf, sizeof(userBuf));
+        mqttService->getBaseTopic(topicBuf, sizeof(topicBuf));
+        json += "true";
+        json += ",\"mqttConnected\":" + String(mqttService->isConnected() ? "true" : "false");
+        json += ",\"mqttHost\":\"" + String(hostBuf) + "\"";
+        json += ",\"mqttPort\":" + String(port);
+        json += ",\"mqttUser\":\"" + String(userBuf) + "\"";
+        json += ",\"mqttBaseTopic\":\"" + String(topicBuf) + "\"";
+    } else {
+        json += "false";
+        json += ",\"mqttConnected\":false";
+    }
+
     json += "}";
     server->send(200, "application/json", json);
 }
@@ -837,6 +864,90 @@ void ConfigServer::handleTestDiscord() {
     } else {
         LOG_INFO("[TEST] Test Discord message failed to send");
         server->send(500, "application/json", "{\"success\":false,\"error\":\"Failed to send test Discord message. Check serial log for details.\"}");
+    }
+}
+
+void ConfigServer::handleSetMqttConfig() {
+    serverStartTime = millis();
+
+    if (!mqttService) {
+        server->send(503, "application/json", "{\"error\":\"MQTT service not available\"}");
+        return;
+    }
+
+    bool changed = false;
+
+    if (server->hasArg("host") && server->hasArg("port")) {
+        String host = server->arg("host");
+        uint16_t port = (uint16_t)server->arg("port").toInt();
+        if (port == 0) port = 1883;
+        mqttService->updateBroker(host.c_str(), port);
+        LOG_INFO("[CONFIG] MQTT broker updated: %s:%d", host.c_str(), port);
+        changed = true;
+    }
+
+    if (server->hasArg("user") || server->hasArg("pass")) {
+        String user = server->arg("user");
+        String pass = server->arg("pass");
+        mqttService->updateCredentials(user.c_str(), pass.c_str());
+        LOG_INFO("[CONFIG] MQTT credentials updated");
+        changed = true;
+    }
+
+    if (server->hasArg("topic")) {
+        String topic = server->arg("topic");
+        if (topic.length() > 0) {
+            mqttService->updateBaseTopic(topic.c_str());
+            LOG_INFO("[CONFIG] MQTT base topic updated: %s", topic.c_str());
+            changed = true;
+        }
+    }
+
+    if (changed) {
+        mqttService->reloadConfig();
+        server->send(200, "application/json", "{\"success\":true,\"message\":\"MQTT configuration updated\"}");
+    } else {
+        server->send(400, "application/json", "{\"error\":\"No valid parameters provided\"}");
+    }
+}
+
+void ConfigServer::handleTestMqtt() {
+    serverStartTime = millis();
+
+    if (!mqttService) {
+        server->send(503, "application/json", "{\"error\":\"MQTT service not available\"}");
+        return;
+    }
+
+    if (!mqttService->hasBrokerConfig()) {
+        server->send(400, "application/json", "{\"error\":\"No MQTT broker configured. Please save broker settings first.\"}");
+        return;
+    }
+
+    if (!WiFi.isConnected()) {
+        server->send(503, "application/json", "{\"error\":\"WiFi not connected. Cannot reach MQTT broker.\"}");
+        return;
+    }
+
+    if (!mqttService->isConnected()) {
+        server->send(503, "application/json", "{\"error\":\"MQTT broker not connected. Check host/port and broker status.\"}");
+        return;
+    }
+
+    char testTopic[96];
+    char topicBuf[64];
+    mqttService->getBaseTopic(topicBuf, sizeof(topicBuf));
+    snprintf(testTopic, sizeof(testTopic), "%s/test", topicBuf);
+
+    LOG_INFO("[TEST] Publishing test MQTT message to %s ...", testTopic);
+    bool success = mqttService->publish(testTopic, "Boat Monitor Test: This is a test message from your ESP32 boat monitor.", false);
+
+    if (success) {
+        LOG_INFO("[TEST] Test MQTT message published successfully!");
+        server->send(200, "application/json", "{\"success\":true,\"message\":\"Test MQTT message published successfully!\"}");
+    } else {
+        LOG_INFO("[TEST] Test MQTT message failed to publish");
+        server->send(500, "application/json", "{\"success\":false,\"error\":\"Failed to publish test MQTT message.\"}");
     }
 }
 

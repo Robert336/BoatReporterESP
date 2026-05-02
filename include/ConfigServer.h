@@ -9,6 +9,7 @@
 #include "SendSMS.h"
 #include "SendDiscord.h"
 #include "OTAManager.h"
+#include "MQTTService.h"
 
 /**
  * ConfigServer - Web-based configuration server for ESP32 boat monitoring system
@@ -55,6 +56,7 @@ private:
     SendSMS* smsService;
     SendDiscord* discordService;
     OTAManager* otaManager;
+    MQTTService* mqttService;
     Preferences calibrationPrefs;           // NVS storage for calibration data
     Preferences emergencyPrefs;             // NVS storage for emergency settings
     unsigned long serverStartTime;
@@ -99,6 +101,8 @@ private:
     void handleSetDiscordWebhook();         // POST: Set Discord webhook URL
     void handleTestSMS();                   // POST: Send a test SMS message
     void handleTestDiscord();               // POST: Send a test Discord message
+    void handleSetMqttConfig();             // POST: Configure MQTT broker
+    void handleTestMqtt();                  // POST: Send a test MQTT message
     
     // === Debug and Monitoring Handlers ===
     void handleDebug();                     // Serve debug page with detailed sensor information
@@ -114,7 +118,7 @@ private:
     String getOTAPage();                    // Generate HTML for OTA page
     
 public:
-    ConfigServer(WaterPressureSensor* sensor = nullptr, SendSMS* sms = nullptr, SendDiscord* discord = nullptr, OTAManager* ota = nullptr);
+    ConfigServer(WaterPressureSensor* sensor = nullptr, SendSMS* sms = nullptr, SendDiscord* discord = nullptr, OTAManager* ota = nullptr, MQTTService* mqtt = nullptr);
     ~ConfigServer();
     
     // Start AP + Web server
