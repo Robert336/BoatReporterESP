@@ -104,6 +104,8 @@ private:
     char     availabilityTopic[80];  // baseTopic + "/availability" (LWT)
 
     bool m_initialized;
+    bool cachedBrokerConfigExists;   // Cached result to avoid NVS check every loop
+    bool recheckBrokerConfig;        // Flag to recheck after config changes
 
     // Non-blocking reconnect state
     uint32_t lastReconnectAttempt;

@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <nvs_flash.h>
 #include "Logger.h"
 #include "MQTTService.h"
 #include "TimeManagement.h"
@@ -95,6 +96,16 @@ const char* stateToString(State state) {
 // Exclude setup() and loop() when building unit tests to avoid conflicts with test harness
 void setup() {
     Serial.begin(115200);
+    
+    // Initialize NVS FIRST (before any Preferences usage)
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        // Erase corrupted NVS and reinitialize
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
+    
     waterSensor.init();
     
     // Initialize system state timers
