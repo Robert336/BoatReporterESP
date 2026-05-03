@@ -10,3 +10,4 @@ secrets.h
 
 # Test logs (ignore large log files, keep summaries)
 test-logs/*.log
+test-logs/*.txt
