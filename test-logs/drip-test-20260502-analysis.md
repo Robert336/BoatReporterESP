@@ -50,8 +50,19 @@ Red shading shows the two `EMERGENCY` state windows. Tier 2 events (red triangle
 
 ---
 
+## Tier 1 Oscillation — Zoomed View
+
+The ~2 min window around 18:07 shows rapid Tier 1 oscillation as the level hovered on the 20 cm boundary during drain. The zoomed plot below isolates that window and shows the oscillation cluster, the EMERGENCY_TIMEOUT_MS delay before the actual state transition, and a proposed hysteresis clear threshold.
+
+![Tier 1 Oscillation Zoom](plot_tier1_zoom.png)
+
+- **3× detected / 3× cleared in < 2 s** (18:07:39–41) — all at 19.99 ↔ 20.01 cm with no ADC noise, just the level sitting on the boundary.
+- **State did not bounce** — `EMERGENCY_TIMEOUT_MS = 5 s` held the state in EMERGENCY until 18:07:46, exactly 5 s after the final Tier 1 clear. The timeout provided state hysteresis but had no effect on the tier-flag chatter or the log/horn noise it causes.
+- **Proposed fix** — a level-based hysteresis band (e.g. −1.5 cm, shown as dotted line at 18.5 cm) on the tier-flag clear condition would have prevented the oscillation entirely without changing state-machine behavior.
+
+---
+
 ## Notes
 
-- The ~2 min window around 18:07 shows rapid Tier 1 oscillation (3 detected / 3 cleared in ~2 s) as the level hovered exactly on the 20 cm boundary during drain. May warrant a small hysteresis band.
 - Total of 1,440 horn ON/OFF cycles fired during the emergency window — consistent with the defined alert cadence.
 - No sensor errors or WiFi drops were logged for the entire 3.5 h run.

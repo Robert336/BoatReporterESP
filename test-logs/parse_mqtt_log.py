@@ -193,6 +193,126 @@ plt.close()
 print("saved plot_events.png")
 
 
+# ── Figure 5: Zoom — Tier 1 oscillation near end of drain ───────────────────
+# Window: 18:05 – 18:10 to show lead-up, oscillation cluster, and NORMAL aftermath
+ZOOM_START = datetime(2026, 5, 2, 18, 5, 0)
+ZOOM_END   = datetime(2026, 5, 2, 18, 10, 0)
+TIER1_THRESHOLD = 20.0
+TIER1_HYSTERESIS = 1.5  # illustrative only — not yet in firmware
+
+# Tier 1 events in window
+t1_detected = [ts for ts, d in events if "Tier 1 Emergency conditions detected" in d and ZOOM_START <= ts <= ZOOM_END]
+t1_cleared  = [ts for ts, d in events if "Tier 1 Emergency conditions cleared"  in d and ZOOM_START <= ts <= ZOOM_END]
+
+# State transitions in window
+state_in_window = [(ts, frm, to) for ts, frm, to in state_changes if ZOOM_START <= ts <= ZOOM_END]
+
+# Water level from STATUS in window
+zoom_status = status_df[(status_df.index >= ZOOM_START) & (status_df.index <= ZOOM_END)]
+
+fig, ax = plt.subplots(figsize=(13, 5))
+
+# EMERGENCY state shading
+in_emergency = any(
+    s == "EMERGENCY" for _, s, _, _, _ in status_rows
+    if datetime.fromisoformat("2026-05-02 18:05:00") > datetime.fromisoformat("2026-05-02 16:17:00")
+)
+# Reconstruct state at ZOOM_START from full state_changes list
+current_state = "NORMAL"
+emerg_start = None
+for ts, frm, to in state_changes:
+    if ts <= ZOOM_START:
+        current_state = to
+        if to == "EMERGENCY":
+            emerg_start = ts
+        elif to == "NORMAL":
+            emerg_start = None
+
+if current_state == "EMERGENCY" and emerg_start:
+    # shade from window start until a NORMAL transition or window end
+    emerg_end = ZOOM_END
+    for ts, frm, to in state_in_window:
+        if to == "NORMAL":
+            emerg_end = ts
+            break
+    ax.axvspan(ZOOM_START, emerg_end, color="#f85149", alpha=0.10, zorder=0, label="EMERGENCY state")
+
+# Water level trace
+ax.plot(zoom_status.index, zoom_status["water_level"],
+        color="#58a6ff", linewidth=1.4, label="Water level", zorder=3)
+
+# Tier 1 set threshold
+ax.axhline(TIER1_THRESHOLD, color="#ffa657", linewidth=1.2, linestyle="--",
+           label=f"Tier 1 set threshold ({TIER1_THRESHOLD} cm)", zorder=2)
+
+# Illustrative hysteresis clear threshold
+ax.axhline(TIER1_THRESHOLD - TIER1_HYSTERESIS, color="#ffa657", linewidth=0.9,
+           linestyle=":", alpha=0.6,
+           label=f"Proposed clear threshold (−{TIER1_HYSTERESIS} cm hysteresis)", zorder=2)
+ax.fill_between([ZOOM_START, ZOOM_END],
+                TIER1_THRESHOLD - TIER1_HYSTERESIS, TIER1_THRESHOLD,
+                color="#ffa657", alpha=0.04, zorder=1)
+
+# Tier 1 event markers
+for ts in t1_detected:
+    ax.scatter(ts, TIER1_THRESHOLD + 0.25, color="#ffa657", marker="^", s=70, zorder=6)
+for ts in t1_cleared:
+    ax.scatter(ts, TIER1_THRESHOLD - 0.25, color="#ffa657", marker="v", s=70, zorder=6)
+
+# State transition lines and annotation
+for ts, frm, to in state_in_window:
+    color = "#3fb950" if to == "NORMAL" else "#f85149"
+    ax.axvline(ts, color=color, linewidth=1.5, linestyle="-", alpha=0.9, zorder=5)
+    ax.text(ts, ax.get_ylim()[0] if ax.get_ylim()[0] > 0 else 18.5,
+            f" → {to}", color=color, fontsize=7.5, va="bottom", rotation=90, zorder=6)
+
+# Annotate the oscillation cluster
+if t1_cleared:
+    cluster_ts = t1_cleared[-1]  # last clear before state transition
+    ax.annotate("3× oscillation\n~19.99↔20.01 cm\nin < 2 s",
+                xy=(cluster_ts, TIER1_THRESHOLD),
+                xytext=(25, 30), textcoords="offset points",
+                color="#ffa657", fontsize=8,
+                arrowprops=dict(arrowstyle="->", color="#ffa657", lw=0.9),
+                bbox=dict(boxstyle="round,pad=0.3", facecolor="#161b22", edgecolor="#ffa657", alpha=0.85))
+
+# Annotate EMERGENCY_TIMEOUT_MS bracket (last Tier 1 clear → state transition)
+if t1_cleared and state_in_window:
+    last_clear_ts = t1_cleared[-1]
+    state_ts = state_in_window[0][0]
+    y_bracket = TIER1_THRESHOLD - 1.0
+    ax.annotate("", xy=(state_ts, y_bracket), xytext=(last_clear_ts, y_bracket),
+                arrowprops=dict(arrowstyle="<->", color="#8b949e", lw=1.1))
+    mid_ts = last_clear_ts + (state_ts - last_clear_ts) / 2
+    ax.text(mid_ts, y_bracket - 0.15, "EMERGENCY_TIMEOUT_MS\n(5 s)", color="#8b949e",
+            fontsize=7.5, ha="center", va="top")
+
+ax.set_xlim(ZOOM_START, ZOOM_END)
+ax.set_ylim(18.0, 21.5)
+ax.set_title("Zoom: Tier 1 Oscillation at End of Drain (~18:07)", fontsize=13, fontweight="bold", pad=10)
+ax.set_ylabel("Water Level (cm)")
+ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
+ax.xaxis.set_major_locator(mdates.MinuteLocator(interval=1))
+ax.grid(True, axis="both")
+
+legend_handles_zoom = [
+    mpatches.Patch(color="#f85149", alpha=0.3, label="EMERGENCY state"),
+    plt.Line2D([0], [0], color="#58a6ff", linewidth=1.4, label="Water level"),
+    plt.Line2D([0], [0], color="#ffa657", linestyle="--", label=f"Tier 1 set threshold ({TIER1_THRESHOLD} cm)"),
+    plt.Line2D([0], [0], color="#ffa657", linestyle=":", alpha=0.7,
+               label=f"Proposed clear threshold (−{TIER1_HYSTERESIS} cm)"),
+    plt.Line2D([0], [0], color="#ffa657", marker="^", linestyle="None", markersize=7, label="Tier 1 detected"),
+    plt.Line2D([0], [0], color="#ffa657", marker="v", linestyle="None", markersize=7, label="Tier 1 cleared"),
+    plt.Line2D([0], [0], color="#3fb950", linewidth=1.5, label="→ NORMAL transition"),
+]
+ax.legend(handles=legend_handles_zoom, fontsize=8, loc="upper right")
+fig.autofmt_xdate()
+fig.tight_layout()
+fig.savefig(os.path.join(OUT_DIR, "plot_tier1_zoom.png"), dpi=150, bbox_inches="tight")
+plt.close()
+print("saved plot_tier1_zoom.png")
+
+
 # ── Stats for markdown ────────────────────────────────────────────────────────
 duration = status_df.index[-1] - status_df.index[0]
 peak_level = status_df["water_level"].max()
