@@ -186,6 +186,7 @@ void loop() {
     mqtt.loop();
     rtc.sync();
     light.update();
+    wifiMgr.maintainConnection();
 
     // Run OTA update checks (only when not in CONFIG or EMERGENCY states)
     if (otaManager && systemState.currentState != CONFIG && systemState.currentState != EMERGENCY) {
@@ -463,6 +464,8 @@ void loop() {
                       currentReading.level_cm,
                       systemState.sensorError,
                       systemState.emergencyConditions);
+        LOG_STATUS("[WIFI] Connected=%d, RSSI=%d dBm",
+                      wifiMgr.isConnected(), wifiMgr.getRSSI());
         LOG_STATUS("[HEAP] Free=%u, MinFree=%u, MaxBlock=%u",
                       ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
         LOG_STATUS("[NOTIFIER] Pending=%u, Dropped=%u",

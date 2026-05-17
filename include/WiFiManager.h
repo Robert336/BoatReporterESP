@@ -6,8 +6,9 @@
 #include <vector>
 
 constexpr const char* WIFI_PREFERENCES_NAMESPACE = "wifi";
-static constexpr int MAX_NETWORKS = 10; // Max amount of networks we're storing info for
+static constexpr int MAX_NETWORKS = 10;
 static constexpr int CONNECT_TIMEOUT_MS = 15000; // 15 secs
+static constexpr uint32_t RECONNECT_INTERVAL_MS = 30000; // 30 secs between retry attempts
 
 struct WiFiCredential {
     char* ssid;
@@ -20,25 +21,34 @@ private:
     std::vector<WiFiCredential> storedNetworks;
     bool isWiFiConnected = false;
 
-    WiFiManager(); // Singleton pattern - hide the constructor
-    void loadCredentials(); // Load from NVS
-    void saveCredentials(); // Save to NVS
-    
+    // Connection health tracking
+    uint32_t _connectedSince = 0;
+    uint32_t _disconnectedSince = 0;
+    volatile uint8_t _lastDisconnectReason = 0; // written by WiFi event task
+    uint32_t _reconnectAttemptCount = 0;
+    uint32_t _lastReconnectAttempt = 0;
+
+    WiFiManager();
+    void loadCredentials();
+    void saveCredentials();
+    static void onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info);
+    static const char* reasonToString(uint8_t reason);
+
 public:
-    // Singleton pattern
     static WiFiManager& getInstance();
 
-    // Delete copy constructor and assignment operator
     WiFiManager(const WiFiManager&) = delete;
     WiFiManager& operator=(const WiFiManager&) = delete;
     ~WiFiManager();
 
-    void begin(); // Initialize the WiFiManager
+    void begin();
     void addNetwork(const char* ssid, const char* password);
     void removeNetwork(const char* ssid);
-    void connectToBestNetwork(); // Scan and connect to the best network available
-    std::vector<String> getStoredSSIDs(); // Get the saved network names
+    void connectToBestNetwork();
+    void maintainConnection(); // Call from main loop — non-blocking reconnect with backoff
+    std::vector<String> getStoredSSIDs();
     bool isConnected();
+    int  getRSSI(); // Returns current RSSI in dBm, 0 if not connected
     void disconnect();
 };
 

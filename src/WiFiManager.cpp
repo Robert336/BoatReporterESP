@@ -25,11 +25,9 @@ WiFiManager::~WiFiManager() {
 }
 
 void WiFiManager::begin() {
-    
     loadCredentials();
     WiFi.mode(WIFI_STA);
-    
-    // Auto-connect to the best available network
+    WiFi.onEvent(onWiFiEvent, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
     connectToBestNetwork();
 }
 
@@ -141,18 +139,27 @@ void WiFiManager::connectToBestNetwork() {
         return;
     }
     
-    LOG_NETWORK("Scanning for available networks...");
+    LOG_NETWORK("[WIFI] Scanning for available networks...");
     int numNetworks = WiFi.scanNetworks();
-    
+    LOG_NETWORK("[WIFI] Scan found %d network(s):", numNetworks);
+    for (int i = 0; i < numNetworks; i++) {
+        bool isStored = false;
+        for (int j = 0; j < (int)storedNetworks.size(); j++) {
+            if (WiFi.SSID(i) == storedNetworks[j].ssid) { isStored = true; break; }
+        }
+        LOG_NETWORK("  [%d] %-32s  %4d dBm  ch%-2d%s",
+                    i, WiFi.SSID(i).c_str(), WiFi.RSSI(i), WiFi.channel(i),
+                    isStored ? "  *" : "");
+    }
+
     int bestNetwork = -1;
-    int bestRSSI = -120; // Worst possible signal strength
-    
-    // Find the best signal from stored networks
+    int bestRSSI = -120;
+
     for (int i = 0; i < numNetworks; i++) {
         String scannedSSID = WiFi.SSID(i);
         int scannedRSSI = WiFi.RSSI(i);
-        
-        for (int j = 0; j < storedNetworks.size(); j++) {
+
+        for (int j = 0; j < (int)storedNetworks.size(); j++) {
             if (scannedSSID == storedNetworks[j].ssid) {
                 if (scannedRSSI > bestRSSI) {
                     bestRSSI = scannedRSSI;
@@ -162,29 +169,29 @@ void WiFiManager::connectToBestNetwork() {
             }
         }
     }
-    
+
     if (bestNetwork != -1) {
-        LOG_NETWORK("Connecting to: %s", storedNetworks[bestNetwork].ssid);
-        LOG_DEBUG("Signal strength: %d dBm", bestRSSI);
-        
+        LOG_NETWORK("[WIFI] Connecting to: %s (%d dBm)", storedNetworks[bestNetwork].ssid, bestRSSI);
+
         WiFi.begin(storedNetworks[bestNetwork].ssid, storedNetworks[bestNetwork].password);
-        
-        // Wait for connection with timeout
+
         unsigned long startTime = millis();
         while (WiFi.status() != WL_CONNECTED && (millis() - startTime) < CONNECT_TIMEOUT_MS) {
             delay(500);
-            LOG_DEBUG(".");
         }
-        
+
         if (WiFi.status() == WL_CONNECTED) {
             isWiFiConnected = true;
-            LOG_NETWORK("Connected! IP address: %s", WiFi.localIP().toString().c_str());
+            _connectedSince = millis();
+            _disconnectedSince = 0;
+            _reconnectAttemptCount = 0;
+            LOG_NETWORK("[WIFI] Connected! IP: %s", WiFi.localIP().toString().c_str());
         } else {
             isWiFiConnected = false;
-            LOG_NETWORK("Connection failed");
+            LOG_NETWORK("[WIFI] Connection failed");
         }
     } else {
-        LOG_NETWORK("No stored networks found in scan results!");
+        LOG_NETWORK("[WIFI] No stored networks found in scan results!");
     }
     
     WiFi.scanDelete();
@@ -203,7 +210,72 @@ bool WiFiManager::isConnected() {
 }
 
 void WiFiManager::disconnect() {
-    WiFi.disconnect(true); // true = turn off WiFi radio
+    WiFi.disconnect(true);
     isWiFiConnected = false;
-    LOG_NETWORK("WiFi disconnected");
+    LOG_NETWORK("[WIFI] Disconnected");
+}
+
+void WiFiManager::maintainConnection() {
+    if (WiFi.status() == WL_CONNECTED) {
+        if (_disconnectedSince != 0) {
+            // Just came back up
+            LOG_NETWORK("[WIFI] Reconnected after %u attempt(s), was down %lus",
+                        _reconnectAttemptCount,
+                        (unsigned long)((millis() - _disconnectedSince) / 1000));
+            _connectedSince = millis();
+            _disconnectedSince = 0;
+            _reconnectAttemptCount = 0;
+            _lastDisconnectReason = 0;
+        }
+        return;
+    }
+
+    uint32_t now = millis();
+
+    if (_disconnectedSince == 0) {
+        _disconnectedSince = now;
+        uint8_t reason = _lastDisconnectReason;
+        LOG_NETWORK("[WIFI] Disconnect reason: %u (%s), was up %lus",
+                    reason, reasonToString(reason),
+                    _connectedSince > 0 ? (unsigned long)((now - _connectedSince) / 1000) : 0);
+        _connectedSince = 0;
+    }
+
+    if (now - _lastReconnectAttempt >= RECONNECT_INTERVAL_MS) {
+        _lastReconnectAttempt = now;
+        _reconnectAttemptCount++;
+        LOG_NETWORK("[WIFI] Reconnect attempt #%u (down %lus)",
+                    _reconnectAttemptCount,
+                    (unsigned long)((now - _disconnectedSince) / 1000));
+        WiFi.reconnect();
+    }
+}
+
+int WiFiManager::getRSSI() {
+    return (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : 0;
+}
+
+void WiFiManager::onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
+    getInstance()._lastDisconnectReason = info.wifi_sta_disconnected.reason;
+}
+
+const char* WiFiManager::reasonToString(uint8_t reason) {
+    switch (reason) {
+        case 1:   return "unspecified";
+        case 2:   return "auth-expire";
+        case 3:   return "auth-leave";
+        case 4:   return "assoc-expire";
+        case 5:   return "assoc-too-many";
+        case 6:   return "not-authed";
+        case 7:   return "not-assoced";
+        case 8:   return "assoc-leave";
+        case 15:  return "4way-handshake-timeout";
+        case 200: return "beacon-timeout";
+        case 201: return "no-ap-found";
+        case 202: return "auth-fail";
+        case 203: return "assoc-fail";
+        case 204: return "handshake-timeout";
+        case 205: return "connection-fail";
+        default:  return "unknown";
+    }
 }
