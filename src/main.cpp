@@ -67,6 +67,9 @@ volatile unsigned long lastButtonPress = 0;
 volatile unsigned long buttonPressStartTime = 0;
 volatile bool buttonCurrentlyPressed = false;
 
+// Message tracing - unique ID for each notification
+static uint32_t messageTraceId = 0;
+
 // Create easier references to the singleton objects
 ConfigServer* configServer = nullptr;
 OTAManager* otaManager = nullptr;
@@ -189,6 +192,9 @@ void loop() {
     
     if (wasWiFiConnected && !isWiFiConnected) {
         LOG_EVENT("[WIFI] Connection lost - internet disconnected");
+        if (systemState.currentState == EMERGENCY) {
+            LOG_EVENT("[WIFI_EMERGENCY] WiFi lost during EMERGENCY state - emergency notifications may be delayed!");
+        }
         // Update LED if in NORMAL state to show WiFi disconnection
         if (systemState.currentState == NORMAL) {
             light.setPattern(PATTERN_DOUBLE_BLINK);
@@ -250,16 +256,14 @@ void loop() {
                 
                 // Send confirmation notification
                 if (!USE_MOCK) {
-                    const char* silenceMessage = "Boat Monitor: Emergency alerts have been temporarily silenced";
-                    if (!sms.send(silenceMessage)) {
-                        LOG_EVENT("[SMS] Failed to send silence confirmation SMS");
-                    }
-                    if (!discord.send(silenceMessage)) {
-                        LOG_EVENT("[Discord] Failed to send silence confirmation to Discord");
-                    }
+                    messageTraceId++;
+                    char silenceMessage[100];
+                    snprintf(silenceMessage, sizeof(silenceMessage), "[MSG:%u] Boat Monitor: Emergency alerts silenced", messageTraceId);
+                    sms.send(silenceMessage);
+                    discord.send(silenceMessage);
                 }
             } else {
-                LOG_EVENT("[EVENT] Emergency notifications RE-ENABLED by button hold");
+                LOG_EVENT("[EVENT] Emergency notifications RE-ENABLED by button hold - WiFi: %d", wifiMgr.isConnected());
             }
         }
     }
@@ -324,8 +328,8 @@ void loop() {
             }
             else if (systemState.emergencyConditions && 
                 (millis() - systemState.emergencyConditionsTrueTime) >= EMERGENCY_TIMEOUT_MS) {
-                LOG_EVENT("[STATE] Transitioning from %s to EMERGENCY (water level=%.2f cm)", 
-                              stateToString(systemState.currentState), currentReading.level_cm);
+                LOG_EVENT("[STATE] Transitioning to EMERGENCY state - WiFi connected: %d, IP: %s, water level: %.2f cm", 
+                              wifiMgr.isConnected(), WiFi.localIP().toString().c_str(), currentReading.level_cm);
                 systemState.currentState = EMERGENCY;
                 systemState.lastStateChangeTime = millis();
             }
@@ -376,26 +380,20 @@ void loop() {
                     
                     // Only send notifications if not silenced
                     if (!systemState.notificationsSilenced) {
+                        messageTraceId++;
                         char emergMessageBuf[120];
                         if (systemState.urgentEmergencyConditions) {
-                            snprintf(emergMessageBuf, sizeof(emergMessageBuf), "Boat Monitor URGENT Alert: Tier 2 Emergency Level Reached - Critical Level %.2f cm", currentReading.level_cm);
+                            snprintf(emergMessageBuf, sizeof(emergMessageBuf), "[MSG:%u] Boat Monitor URGENT Alert: Tier 2 Emergency Level %.2f cm", messageTraceId, currentReading.level_cm);
                         } else {
-                            snprintf(emergMessageBuf, sizeof(emergMessageBuf), "Boat Monitor Alert: Emergency Level %.2f cm", currentReading.level_cm);
+                            snprintf(emergMessageBuf, sizeof(emergMessageBuf), "[MSG:%u] Boat Monitor Alert: Emergency Level %.2f cm", messageTraceId, currentReading.level_cm);
                         }
                         LOG_EVENT("[STATE] EMERGENCY: Sending alert message: %s", emergMessageBuf);
 
                         if (!USE_MOCK) {
-                            bool smsResult = sms.send(emergMessageBuf);
-                            if (!smsResult){
-                                LOG_EVENT("[SMS] Emergency SMS failed to send");
-                            }
-
-                            bool discordResult = discord.send(emergMessageBuf);
-                            if (!discordResult){
-                                LOG_EVENT("[Discord] Emergency Discord webhook failed to send");
-                            }
+                            sms.send(emergMessageBuf);
+                            discord.send(emergMessageBuf);
                         } else {
-                            LOG_EVENT("[MOCK] Skipping SMS/Discord send");
+                            LOG_EVENT("[MOCK] Skipping SMS/Discord send (TraceID:%u)", messageTraceId);
                         }
                     } else {
                         LOG_INFO("[STATE] EMERGENCY: Notifications silenced, skipping alert message");
