@@ -22,6 +22,7 @@ bool SendDiscord::send(const char* message) {
     
     // Check for active wifi connection first
     if (!WiFi.isConnected()) {
+        LOG_NETWORK("[Discord] WiFi not connected, cannot send");
         return false;
     }
 
@@ -62,14 +63,26 @@ bool SendDiscord::send(const char* message) {
     
     snprintf(jsonPayload, jsonSize, "{\"content\":\"%s\"}", escapedMessage);
     
+    LOG_NETWORK("[Discord] Initiating HTTP POST to webhook");
+    uint32_t startTime = millis();
     http.begin(webhookUrl);
     http.setTimeout(10000); // 10 second timeout
     http.addHeader("Content-Type", "application/json");
 
     int httpResponseCode = http.POST(jsonPayload);
+    uint32_t elapsed = millis() - startTime;
+    LOG_NETWORK("[Discord] HTTP response code: %d (elapsed: %u ms)", httpResponseCode, elapsed);
 
     if (httpResponseCode < 0) {
-        LOG_DEBUG("[Discord] HTTP error: %s", http.errorToString(httpResponseCode).c_str());
+        LOG_NETWORK("[Discord] HTTP error: %s", http.errorToString(httpResponseCode).c_str());
+    } else if (httpResponseCode < 200 || httpResponseCode >= 300) {
+        // Log response body snippet for error status codes
+        String responseBody = http.getString();
+        if (responseBody.length() > 0) {
+            // Log first 200 chars of response
+            String snippet = responseBody.substring(0, 200);
+            LOG_NETWORK("[Discord] Error response body: %s", snippet.c_str());
+        }
     }
 
     // Free allocated memory
@@ -77,6 +90,7 @@ bool SendDiscord::send(const char* message) {
     free(jsonPayload);
 
     bool success = (httpResponseCode >= 200 && httpResponseCode < 300);
+    LOG_NETWORK("[Discord] Send %s (HTTP %d, %u ms)", success ? "SUCCESS" : "FAILED", httpResponseCode, elapsed);
 
     http.end();
     return success;
