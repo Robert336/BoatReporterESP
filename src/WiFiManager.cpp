@@ -113,6 +113,13 @@ void WiFiManager::addNetwork(const char* ssid, const char* password) {
         LOG_CRITICAL("WiFiManager: Failed to open preferences, reloading from NVS");
         loadCredentials();
     }
+
+    // Attempt an immediate connection when in STA mode and not yet connected.
+    // Skip in AP/AP_STA mode (CONFIG state) — connectToBestNetwork() will be
+    // called by stopSetupMode() when the AP tears down.
+    if (!isConnected() && WiFi.getMode() == WIFI_MODE_STA) {
+        connectToBestNetwork();
+    }
 }
 
 void WiFiManager::removeNetwork(const char* ssid) {
