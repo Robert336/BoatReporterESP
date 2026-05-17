@@ -985,7 +985,7 @@ void ConfigServer::handleTestMqtt() {
 }
 
 String ConfigServer::getWiFiConfigPage() {
-    String html = R"(<!DOCTYPE html>
+    String html = R"WIFI(<!DOCTYPE html>
 <html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>WiFi Config</title>
 <style>
 body{font-family:Arial,sans-serif;margin:0;padding:10px;max-width:600px;margin:0 auto;}
@@ -1015,19 +1015,23 @@ document.getElementById('status').innerHTML=s;
 loadNetworks();
 }
 function loadNetworks(){
-fetch('/wifi/networks').then(r=>r.json()).then(list=>{
+fetch('/wifi/networks').then(r=>r.json()).then(function(list){
 var el=document.getElementById('networks');
 if(!list.length){el.innerHTML='<div class="row"><span style="color:#666">No saved networks</span></div>';return;}
 el.innerHTML=list.map(function(ssid){
-return '<div class="row"><span>'+ssid+'</span><button class="del" onclick="remove(\''+ssid.replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')">\xd7 Remove</button></div>';
+var safe=ssid.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+return '<div class="row"><span>'+safe+'</span><button class="del" data-ssid="'+safe+'">&#xD7; Remove</button></div>';
 }).join('');
-}).catch(e=>console.error(e));
+el.querySelectorAll('.del').forEach(function(b){
+b.addEventListener('click',function(){removeNet(this.dataset.ssid);});
+});
+}).catch(function(e){console.error(e);});
 }
-function remove(ssid){
+function removeNet(ssid){
 if(!confirm('Remove "'+ssid+'"?'))return;
 fetch('/wifi/remove',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'ssid='+encodeURIComponent(ssid)})
-.then(r=>r.json()).then(d=>{if(d.success)loadNetworks();else alert('Remove failed');})
-.catch(e=>alert('Error: '+e.message));
+.then(function(r){return r.json();}).then(function(d){if(d.success)loadNetworks();else alert('Remove failed');})
+.catch(function(e){alert('Error: '+e.message);});
 }
 function save(e){
 e.preventDefault();
@@ -1037,16 +1041,16 @@ if(!s||!p){alert('Enter SSID and password');return;}
 var btn=document.getElementById('btn');
 btn.disabled=true;btn.textContent='Saving...';
 fetch('/config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'ssid='+encodeURIComponent(s)+'&password='+encodeURIComponent(p)})
-.then(r=>{
+.then(function(r){
 if(r.ok){alert('Saved! Connecting...');document.getElementById('form').reset();setTimeout(load,3000);}
 else{alert('Failed to save');}
-}).catch(e=>alert('Error: '+e.message))
-.finally(()=>{btn.disabled=false;btn.textContent='Save & Connect';});
+}).catch(function(e){alert('Error: '+e.message);})
+.finally(function(){btn.disabled=false;btn.textContent='Save & Connect';});
 }
 window.onload=function(){load();document.getElementById('form').addEventListener('submit',save);};
 </script>
 </head><body>
-<a href="/" style="text-decoration:none;color:#000;">< Back</a>
+<a href="/" style="text-decoration:none;color:#000;">&lt; Back</a>
 <h1>WiFi Configuration</h1>
 <div class="card"><h2>Current Status</h2><div id="status"><div class="row"><span>Loading...</span></div></div></div>
 <div class="card"><h2>Saved Networks</h2><div id="networks"><div class="row"><span>Loading...</span></div></div></div>
@@ -1058,10 +1062,10 @@ window.onload=function(){load();document.getElementById('form').addEventListener
 <label>Password</label>
 <input type="password" id="password" name="password" required>
 <div class="help">Network password</div>
-<button type="submit" id="btn">Save & Connect</button>
+<button type="submit" id="btn">Save &amp; Connect</button>
 </form>
 </div>
-</body></html>)";
+</body></html>)WIFI";
     return html;
 }
 
