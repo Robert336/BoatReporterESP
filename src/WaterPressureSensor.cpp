@@ -6,7 +6,8 @@
 WaterPressureSensor::WaterPressureSensor(bool mock)
     : currentReadingIndex(0), useMockData(mock), mockWaterLevel(0),
       adcCalHandle(nullptr), calibrationInitialized(false), zeroReadingVoltage_mv(590),
-      secondPointVoltage_mv(0), secondPointLevel_cm(0.0f), twoPointCalibrationActive(false) {
+      secondPointVoltage_mv(0), secondPointLevel_cm(0.0f), twoPointCalibrationActive(false),
+      lastLogTime(0) {
     // Default zero level is 590mV (typical for our setup)
     // This can be calibrated by measuring the sensor voltage at 0cm water level
     
@@ -130,9 +131,13 @@ SensorReading WaterPressureSensor::readLevel() {
         
         int16_t rawADC = ads.readADC_SingleEnded(CHANNEL);
         reading.millivolts = ads.computeVolts(rawADC) * 1000;
-        LOG_DEBUG("WaterPressureSensor: millivolts reading = %.2f mV", reading.millivolts);
         float computedVolts = ads.computeVolts(rawADC);
-        LOG_DEBUG("WaterPressureSensor: raw ADC = %d, computedVolts = %.5f V", rawADC, computedVolts);
+        uint32_t now = millis();
+        if (now - lastLogTime >= 1000) {
+            LOG_DEBUG("WaterPressureSensor: millivolts reading = %.2f mV", reading.millivolts);
+            LOG_DEBUG("WaterPressureSensor: raw ADC = %d, computedVolts = %.5f V", rawADC, computedVolts);
+            lastLogTime = now;
+        }
         // Use voltage-based conversion for accurate readings
         reading.level_cm = voltageToCentimeters(reading.millivolts);
         
