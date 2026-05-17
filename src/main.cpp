@@ -265,8 +265,7 @@ void loop() {
                     messageTraceId++;
                     char silenceMessage[100];
                     snprintf(silenceMessage, sizeof(silenceMessage), "[MSG:%u] Boat Monitor: Emergency alerts silenced", messageTraceId);
-                    notifier.enqueueSms(silenceMessage);
-                    notifier.enqueueDiscord(silenceMessage);
+                    notifier.enqueue(silenceMessage);
                 }
             } else {
                 LOG_EVENT("[EVENT] Emergency notifications RE-ENABLED by button hold - WiFi: %d", wifiMgr.isConnected());
@@ -396,8 +395,7 @@ void loop() {
                         LOG_EVENT("[STATE] EMERGENCY: Sending alert message: %s", emergMessageBuf);
 
                         if (!USE_MOCK) {
-                            notifier.enqueueSms(emergMessageBuf);
-                            notifier.enqueueDiscord(emergMessageBuf);
+                            notifier.enqueue(emergMessageBuf);
                         } else {
                             LOG_EVENT("[MOCK] Skipping SMS/Discord send (TraceID:%u)", messageTraceId);
                         }
@@ -467,6 +465,8 @@ void loop() {
                       systemState.emergencyConditions);
         LOG_STATUS("[HEAP] Free=%u, MinFree=%u, MaxBlock=%u",
                       ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
+        LOG_STATUS("[NOTIFIER] Pending=%u, Dropped=%u",
+                      notifier.getPendingCount(), notifier.getDropCount());
         lastStatusLogTime = millis();
     }
 }

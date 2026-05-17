@@ -7,11 +7,12 @@
 #include "SendSMS.h"
 #include "SendDiscord.h"
 
-enum class NotifKind : uint8_t { SMS, DISCORD };
-
+// SMS and Discord are paired in one item so both channels are dropped together
+// if the queue is full — prevents partial delivery (SMS only, no Discord).
 struct NotifMsg {
-    NotifKind kind;
     char body[160];
+    bool sendSms;
+    bool sendDiscord;
 };
 
 // Runs outbound HTTP (SMS, Discord) on Core 0 so the main-loop state machine
@@ -22,10 +23,11 @@ public:
 
     void begin(SendSMS* sms, SendDiscord* discord);
 
-    // Fire-and-forget: returns false only if the queue is full.
-    bool enqueueSms(const char* message);
-    bool enqueueDiscord(const char* message);
+    // Enqueue a notification for SMS, Discord, or both atomically.
+    // One queue slot = one alert; returns false and logs if the queue is full.
+    bool enqueue(const char* message, bool sendSms = true, bool sendDiscord = true);
 
+    uint32_t getPendingCount() const;
     uint32_t getDropCount() const { return dropCount; }
 
 private:
@@ -37,10 +39,10 @@ private:
     QueueHandle_t queue          = nullptr;
     uint32_t      dropCount      = 0;
 
-    static constexpr size_t    QUEUE_DEPTH    = 8;
-    static constexpr uint32_t  TASK_STACK     = 6144;
+    static constexpr size_t      QUEUE_DEPTH   = 8;
+    static constexpr uint32_t    TASK_STACK    = 6144;
     static constexpr UBaseType_t TASK_PRIORITY = 1;
-    static constexpr BaseType_t TASK_CORE     = 0;
+    static constexpr BaseType_t  TASK_CORE     = 0;
 };
 
 #endif // UNIT_TESTING
