@@ -76,7 +76,7 @@ bool TimeManagement::initSNTPSync(const char* server, uint32_t maxWaitMs) {
     
     try {
         // Configure SNTP with the modern API
-        esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
+        esp_sntp_setoperatingmode(ESP_SNTP_OPMODE_POLL);
         esp_sntp_setservername(0, server);
         
         // Set sync notification callback

@@ -28,6 +28,7 @@ MQTTService::MQTTService()
     , logQueueTail(0)
     , logQueueCount(0)
     , logsDropped(0)
+    , logQueueMux(portMUX_INITIALIZER_UNLOCKED)
     , inMqttCall(false)
 {
     brokerHost[0]         = '\0';
@@ -118,17 +119,17 @@ bool MQTTService::publish(const char* topic, const char* payload, bool retained)
 bool MQTTService::publishLog(const char* message) {
     if (!m_initialized || !message) return false;
 
+    portENTER_CRITICAL(&logQueueMux);
     if (logQueueCount >= LOG_QUEUE_SIZE) {
-        // Drop oldest to make room
         logQueueTail = (logQueueTail + 1) % LOG_QUEUE_SIZE;
         logQueueCount--;
         logsDropped++;
     }
-
     strncpy(logQueue[logQueueHead], message, LOG_MSG_MAX - 1);
     logQueue[logQueueHead][LOG_MSG_MAX - 1] = '\0';
     logQueueHead = (logQueueHead + 1) % LOG_QUEUE_SIZE;
     logQueueCount++;
+    portEXIT_CRITICAL(&logQueueMux);
     return true;
 }
 
@@ -284,13 +285,25 @@ void MQTTService::tryReconnect() {
 
 void MQTTService::drainLogQueue() {
     uint32_t start = millis();
-    while (logQueueCount > 0 && (millis() - start) < DRAIN_BUDGET_MS) {
+    char msgCopy[LOG_MSG_MAX];
+    while ((millis() - start) < DRAIN_BUDGET_MS) {
         if (!client.connected()) break;
-        inMqttCall = true;
-        client.publish(logTopic, logQueue[logQueueTail], false);
-        inMqttCall = false;
+
+        // Pull one item under the lock, then publish outside it so client.publish()
+        // is never called while the spinlock is held.
+        portENTER_CRITICAL(&logQueueMux);
+        if (logQueueCount == 0) {
+            portEXIT_CRITICAL(&logQueueMux);
+            break;
+        }
+        memcpy(msgCopy, logQueue[logQueueTail], LOG_MSG_MAX);
         logQueueTail = (logQueueTail + 1) % LOG_QUEUE_SIZE;
         logQueueCount--;
+        portEXIT_CRITICAL(&logQueueMux);
+
+        inMqttCall = true;
+        client.publish(logTopic, msgCopy, false);
+        inMqttCall = false;
     }
 }
 
