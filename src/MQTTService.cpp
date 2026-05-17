@@ -167,7 +167,7 @@ void MQTTService::updateBroker(const char* host, uint16_t port) {
 int MQTTService::getBroker(char* hostBuf, size_t hostSize, uint16_t* portOut) {
     if (!hostBuf || hostSize == 0) return -1;
     // Return hardcoded broker configuration
-    const char* hardcodedHost = "10.0.0.205";
+    const char* hardcodedHost = "192.168.2.41";
     size_t hostLen = strlen(hardcodedHost);
     if (hostLen + 1 > hostSize) return -1;
     strcpy(hostBuf, hardcodedHost);
