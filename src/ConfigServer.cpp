@@ -76,6 +76,12 @@ void ConfigServer::startSetupMode() {
     
     // Route: GET /wifi-config → serve WiFi configuration page
     server->on("/wifi-config", HTTP_GET, [this]() { handleWiFiConfig(); });
+
+    // Route: GET /wifi/networks → return stored SSID list as JSON
+    server->on("/wifi/networks", HTTP_GET, [this]() { handleWiFiNetworks(); });
+
+    // Route: POST /wifi/remove → remove a stored network by SSID
+    server->on("/wifi/remove", HTTP_POST, [this]() { handleWiFiRemove(); });
     
     // Route: GET /notifications-page → serve notifications configuration page
     server->on("/notifications-page", HTTP_GET, [this]() { handleNotificationsPage(); });
@@ -274,6 +280,29 @@ void ConfigServer::handleStatus() {
     json += "}";
     
     server->send(200, "application/json", json);
+}
+
+void ConfigServer::handleWiFiNetworks() {
+    std::vector<String> ssids = WiFiManager::getInstance().getStoredSSIDs();
+    String json = "[";
+    for (int i = 0; i < (int)ssids.size(); i++) {
+        if (i > 0) json += ",";
+        json += "\"" + ssids[i] + "\"";
+    }
+    json += "]";
+    server->send(200, "application/json", json);
+    serverStartTime = millis();
+}
+
+void ConfigServer::handleWiFiRemove() {
+    if (!server->hasArg("ssid") || server->arg("ssid").isEmpty()) {
+        server->send(400, "application/json", "{\"success\":false,\"message\":\"Missing ssid\"}");
+        return;
+    }
+    String ssid = server->arg("ssid");
+    WiFiManager::getInstance().removeNetwork(ssid.c_str());
+    server->send(200, "application/json", "{\"success\":true}");
+    serverStartTime = millis();
 }
 
 String ConfigServer::getConfigPage() {
