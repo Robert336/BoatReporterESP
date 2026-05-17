@@ -71,16 +71,14 @@ private:
     int hornOffDuration_ms;                 // Horn alarm off duration
     
     // === WiFi Configuration Handlers ===
-    void handleRoot();                      // Serve main dashboard page
-    void handleWiFiConfig();                // Serve WiFi configuration page
-    void handleNotificationsPage();         // Serve notifications configuration page
+    void handleRoot();                      // Serve main dashboard page (gzipped)
+    void handleWiFiConfig();                // Serve WiFi configuration page (gzipped)
+    void handleNotificationsPage();         // Serve notifications configuration page (gzipped)
+    void handleInit();                      // GET /init — merged JSON for main page load
     void handleSubmit();                    // Process WiFi configuration submission
     void handleStatus();                    // Return WiFi connection status JSON
     void handleWiFiNetworks();              // GET /wifi/networks — stored SSID list JSON
     void handleWiFiRemove();               // POST /wifi/remove — remove a stored network
-    String getConfigPage();                 // Generate HTML for main dashboard page
-    String getWiFiConfigPage();             // Generate HTML for WiFi config page
-    String getNotificationsPageHTML();      // Generate HTML for notifications page
     
     // === Sensor Calibration Handlers ===
     void handleCalibrateZero();             // POST: Set zero calibration point
@@ -109,15 +107,14 @@ private:
     // === Debug and Monitoring Handlers ===
     void handleDebug();                     // Serve debug page with detailed sensor information
     void handleGetReading();                // Return current sensor reading as JSON
-    String getDebugPage();                  // Generate HTML for debug/calibration page
+    String getDebugPage();                  // Generate debug page HTML (dynamic — embeds live sensor data)
     
     // === OTA Update Handlers ===
-    void handleOTAPage();                   // Serve OTA settings page
+    void handleOTAPage();                   // Serve OTA settings page (gzipped)
     void handleOTAStatus();                 // GET: Return OTA status JSON
     void handleOTACheck();                  // GET: Manually trigger update check
     void handleOTAUpdate();                 // POST: Start firmware update
     void handleOTASettings();               // POST: Configure OTA settings
-    String getOTAPage();                    // Generate HTML for OTA page
     
 public:
     ConfigServer(WaterPressureSensor* sensor = nullptr, SendSMS* sms = nullptr, SendDiscord* discord = nullptr, OTAManager* ota = nullptr, MQTTService* mqtt = nullptr);

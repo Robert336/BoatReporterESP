@@ -1,5 +1,6 @@
 #include "ConfigServer.h"
 #include "Logger.h"
+#include "compressed_pages.h"
 
 // ============================================================================
 // CORE LIFECYCLE METHODS
@@ -64,7 +65,10 @@ void ConfigServer::startSetupMode() {
     // Step 5: Register HTTP handlers
     // Route: GET / → serve HTML form
     server->on("/", HTTP_GET, [this]() { handleRoot(); });
-    
+
+    // Route: GET /init → merged JSON for main page load (wifi + sensor + thresholds)
+    server->on("/init", HTTP_GET, [this]() { handleInit(); });
+
     // Route: POST /config → save credentials
     server->on("/config", HTTP_POST, [this]() { handleSubmit(); });
     
@@ -229,20 +233,54 @@ void ConfigServer::handleClient() {
 // ============================================================================
 
 void ConfigServer::handleRoot() {
-    String html = getConfigPage();
-    server->send(200, "text/html", html);
-    serverStartTime = millis(); // Reset the timeout on page load
+    server->sendHeader("Content-Encoding", "gzip");
+    server->send_P(200, "text/html", (const char*)INDEX_HTML_GZ, INDEX_HTML_GZ_LEN);
+    serverStartTime = millis();
 }
 
 void ConfigServer::handleWiFiConfig() {
-    String html = getWiFiConfigPage();
-    server->send(200, "text/html", html);
+    server->sendHeader("Content-Encoding", "gzip");
+    server->send_P(200, "text/html", (const char*)WIFI_CONFIG_HTML_GZ, WIFI_CONFIG_HTML_GZ_LEN);
     serverStartTime = millis();
 }
 
 void ConfigServer::handleNotificationsPage() {
-    String html = getNotificationsPageHTML();
-    server->send(200, "text/html", html);
+    server->sendHeader("Content-Encoding", "gzip");
+    server->send_P(200, "text/html", (const char*)NOTIFICATIONS_HTML_GZ, NOTIFICATIONS_HTML_GZ_LEN);
+    serverStartTime = millis();
+}
+
+void ConfigServer::handleInit() {
+    String json = "{";
+
+    bool connected = WiFiManager::getInstance().isConnected();
+    json += "\"wifi\":{";
+    json += "\"connected\":" + String(connected ? "true" : "false") + ",";
+    json += "\"ssid\":\"" + WiFi.SSID() + "\",";
+    json += "\"ip\":\"" + WiFi.localIP().toString() + "\",";
+    json += "\"rssi\":" + String(WiFi.RSSI());
+    json += "},";
+
+    json += "\"sensor\":{";
+    if (!waterSensor) {
+        json += "\"sensorAvailable\":false";
+    } else {
+        SensorReading reading = waterSensor->readLevel();
+        json += "\"sensorAvailable\":true,";
+        json += "\"valid\":" + String(reading.valid ? "true" : "false");
+        if (reading.valid) {
+            json += ",\"level_cm\":" + String(reading.level_cm, 2);
+        }
+    }
+    json += "},";
+
+    json += "\"thresholds\":{";
+    json += "\"emergencyWaterLevel_cm\":" + String(emergencyWaterLevel_cm, 2) + ",";
+    json += "\"urgentEmergencyWaterLevel_cm\":" + String(urgentEmergencyWaterLevel_cm, 2);
+    json += "}";
+
+    json += "}";
+    server->send(200, "application/json", json);
     serverStartTime = millis();
 }
 
@@ -309,86 +347,6 @@ void ConfigServer::handleWiFiRemove() {
     serverStartTime = millis();
 }
 
-String ConfigServer::getConfigPage() {
-    String html = R"HTML(<!DOCTYPE html>
-<html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Boat Monitor</title>
-<style>
-body{font-family:Arial,sans-serif;margin:0;padding:10px;max-width:600px;margin:0 auto;}
-h1{text-align:center;font-size:1.5em;margin:10px 0;}
-.card{border:1px solid #ccc;padding:15px;margin:10px 0;}
-.card h2{font-size:1.1em;margin:0 0 10px 0;border-bottom:1px solid #ddd;padding-bottom:5px;}
-.row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #eee;}
-.row:last-child{border-bottom:none;}
-.label{font-weight:bold;}
-.level{font-size:2em;text-align:center;margin:10px 0;}
-.thresh{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;}
-.thresh div{border:1px solid #ccc;padding:10px;text-align:center;}
-.thresh .label{font-size:0.8em;display:block;margin-bottom:5px;}
-button{width:100%;padding:12px;margin:5px 0;border:1px solid #333;background:#fff;font-size:1em;cursor:pointer;}
-button:active{background:#eee;}
-</style>
-<script>
-function load(){
-fetch('/status').then(r=>r.json()).then(d=>{
-document.getElementById('wifi_status').textContent=(d.connected ? d.ssid : 'Disconnected');
-document.getElementById('wifi_ip').textContent=d.ip||'N/A';
-document.getElementById('wifi_rssi').textContent=(d.rssi||'N/A')+' dBm';
-}).catch(e=>console.error(e));
-fetch('/read').then(r=>r.json()).then(d=>{
-document.getElementById('water_level').textContent=(d.sensorAvailable&&d.valid)?d.level_cm.toFixed(1):'--';
-}).catch(e=>console.error(e));
-fetch('/emergency-settings').then(r=>r.json()).then(d=>{
-document.getElementById('tier1').value=d.emergencyWaterLevel_cm.toFixed(1);
-document.getElementById('tier2').value=d.urgentEmergencyWaterLevel_cm.toFixed(1);
-}).catch(e=>console.error(e));
-}
-window.onload=load;
-function updateThresholds(){
-var tier1=parseFloat(document.getElementById('tier1').value);
-var tier2=parseFloat(document.getElementById('tier2').value);
-var status=document.getElementById('threshold-status');
-if(isNaN(tier1)||isNaN(tier2)){status.textContent='⚠️ Please enter valid numbers';status.style.color='red';return;}
-if(tier1>=tier2){status.textContent='⚠️ Tier 1 must be less than Tier 2';status.style.color='red';return;}
-if(tier1<5||tier1>100||tier2<5||tier2>100){status.textContent='⚠️ Values must be between 5 and 100 cm';status.style.color='red';return;}
-status.textContent='⏳ Updating...';status.style.color='#666';
-Promise.all([
-fetch('/calibration/emergency-level',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'level_cm='+tier1}),
-fetch('/emergency/urgent-level',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'level_cm='+tier2})
-]).then(responses=>Promise.all(responses.map(r=>r.json()))).then(results=>{
-if(results[0].success&&results[1].success){
-status.textContent='✓ Thresholds updated successfully';status.style.color='green';
-setTimeout(()=>{status.textContent='';},3000);
-}else{
-status.textContent='⚠️ Update failed: '+(results[0].error||results[1].error||'Unknown error');status.style.color='red';
-}
-}).catch(e=>{status.textContent='⚠️ Error: '+e.message;status.style.color='red';console.error(e);});
-}
-</script>
-</head><body>
-<h1>Bilge Buddy</h1>
-<div class="card"><h2>WiFi Connection</h2>
-<div class="row"><span class="label">Status</span><span id="wifi_status">Loading...</span></div>
-<div class="row"><span class="label">IP Address</span><span id="wifi_ip">Loading...</span></div>
-<div class="row"><span class="label">Signal</span><span id="wifi_rssi">Loading...</span></div>
-</div>
-<div class="card"><h2>Current Water Level</h2>
-<div class="level"><span id="water_level">--</span> cm</div>
-</div>
-<div class="card"><h2>Emergency Thresholds</h2>
-<div class="thresh">
-<div><span class="label">TIER 1</span><input type="number" id="tier1" step="0.1" min="5" max="100" style="width:100%;padding:5px;margin-top:5px;box-sizing:border-box;"> cm</div>
-<div><span class="label">TIER 2</span><input type="number" id="tier2" step="0.1" min="5" max="100" style="width:100%;padding:5px;margin-top:5px;box-sizing:border-box;"> cm</div>
-</div>
-<button onclick="updateThresholds()" style="margin-top:10px;">Update Thresholds</button>
-<div id="threshold-status" style="text-align:center;margin-top:10px;font-size:0.9em;"></div>
-</div>
-<button onclick="location.href='/notifications-page'">Notification Settings</button>
-<button onclick="location.href='/wifi-config'">WiFi Networks</button>
-<button onclick="location.href='/ota-settings'">Firmware Updates (OTA)</button>
-<button onclick="location.href='/debug'">Advanced Debug & Calibration</button>
-</body></html>)HTML";
-    return html;
-}
 
 // ============================================================================
 // SENSOR CALIBRATION HANDLERS
@@ -984,263 +942,7 @@ void ConfigServer::handleTestMqtt() {
     }
 }
 
-String ConfigServer::getWiFiConfigPage() {
-    String html = R"WIFI(<!DOCTYPE html>
-<html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>WiFi Config</title>
-<style>
-body{font-family:Arial,sans-serif;margin:0;padding:10px;max-width:600px;margin:0 auto;}
-h1{font-size:1.5em;margin:10px 0;}
-.card{border:1px solid #ccc;padding:15px;margin:10px 0;}
-.card h2{font-size:1.1em;margin:0 0 10px 0;border-bottom:1px solid #ddd;padding-bottom:5px;}
-.row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #eee;}
-.row:last-child{border-bottom:none;}
-label{display:block;margin:10px 0 5px;font-weight:bold;}
-input{width:100%;padding:8px;border:1px solid #ccc;font-size:1em;box-sizing:border-box;}
-button{width:100%;padding:12px;margin:5px 0;border:1px solid #333;background:#fff;font-size:1em;cursor:pointer;}
-button:active{background:#eee;}
-.help{font-size:0.85em;color:#666;margin-top:3px;}
-.del{width:auto;padding:4px 10px;margin:0;border:1px solid #c00;color:#c00;font-size:0.85em;}
-</style>
-<script>
-function load(){
-fetch('/status').then(r=>r.json()).then(d=>{
-var s='<div class="row"><span style="font-weight:bold">Status</span><span>'+(d.connected?'Connected':'Disconnected')+'</span></div>';
-if(d.connected){
-s+='<div class="row"><span style="font-weight:bold">Network</span><span>'+(d.ssid||'Unknown')+'</span></div>';
-s+='<div class="row"><span style="font-weight:bold">IP</span><span>'+(d.ip||'N/A')+'</span></div>';
-s+='<div class="row"><span style="font-weight:bold">Signal</span><span>'+(d.rssi||'N/A')+' dBm</span></div>';
-}
-document.getElementById('status').innerHTML=s;
-}).catch(e=>console.error(e));
-loadNetworks();
-}
-function loadNetworks(){
-fetch('/wifi/networks').then(r=>r.json()).then(function(list){
-var el=document.getElementById('networks');
-if(!list.length){el.innerHTML='<div class="row"><span style="color:#666">No saved networks</span></div>';return;}
-el.innerHTML=list.map(function(ssid){
-var safe=ssid.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
-return '<div class="row"><span>'+safe+'</span><button class="del" data-ssid="'+safe+'">&#xD7; Remove</button></div>';
-}).join('');
-el.querySelectorAll('.del').forEach(function(b){
-b.addEventListener('click',function(){removeNet(this.dataset.ssid);});
-});
-}).catch(function(e){console.error(e);});
-}
-function removeNet(ssid){
-if(!confirm('Remove "'+ssid+'"?'))return;
-fetch('/wifi/remove',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'ssid='+encodeURIComponent(ssid)})
-.then(function(r){return r.json();}).then(function(d){if(d.success)loadNetworks();else alert('Remove failed');})
-.catch(function(e){alert('Error: '+e.message);});
-}
-function save(e){
-e.preventDefault();
-var s=document.getElementById('ssid').value;
-var p=document.getElementById('password').value;
-if(!s||!p){alert('Enter SSID and password');return;}
-var btn=document.getElementById('btn');
-btn.disabled=true;btn.textContent='Saving...';
-fetch('/config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'ssid='+encodeURIComponent(s)+'&password='+encodeURIComponent(p)})
-.then(function(r){
-if(r.ok){alert('Saved! Connecting...');document.getElementById('form').reset();setTimeout(load,3000);}
-else{alert('Failed to save');}
-}).catch(function(e){alert('Error: '+e.message);})
-.finally(function(){btn.disabled=false;btn.textContent='Save & Connect';});
-}
-window.onload=function(){load();document.getElementById('form').addEventListener('submit',save);};
-</script>
-</head><body>
-<a href="/" style="text-decoration:none;color:#000;">&lt; Back</a>
-<h1>WiFi Configuration</h1>
-<div class="card"><h2>Current Status</h2><div id="status"><div class="row"><span>Loading...</span></div></div></div>
-<div class="card"><h2>Saved Networks</h2><div id="networks"><div class="row"><span>Loading...</span></div></div></div>
-<div class="card"><h2>Add Network</h2>
-<form id="form">
-<label>WiFi Network (SSID)</label>
-<input type="text" id="ssid" name="ssid" required>
-<div class="help">Network name</div>
-<label>Password</label>
-<input type="password" id="password" name="password" required>
-<div class="help">Network password</div>
-<button type="submit" id="btn">Save &amp; Connect</button>
-</form>
-</div>
-</body></html>)WIFI";
-    return html;
-}
 
-String ConfigServer::getNotificationsPageHTML() {
-    String html = R"HTML(<!DOCTYPE html>
-<html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Notifications</title>
-<style>
-body{font-family:Arial,sans-serif;margin:0;padding:10px;max-width:700px;margin:0 auto;}
-h1{font-size:1.5em;margin:10px 0;}
-.card{border:1px solid #ccc;padding:15px;margin:10px 0;}
-.card h2{font-size:1.1em;margin:0 0 10px 0;border-bottom:1px solid #ddd;padding-bottom:5px;}
-h3{font-size:1em;margin:15px 0 10px;}
-label{display:block;margin:10px 0 5px;font-weight:bold;}
-input{width:100%;padding:8px;border:1px solid #ccc;font-size:1em;box-sizing:border-box;}
-button{padding:10px 15px;margin:5px 5px 5px 0;border:1px solid #333;background:#fff;font-size:0.95em;cursor:pointer;}
-button:active{background:#eee;}
-.row{display:flex;justify-content:space-between;padding:5px 0;}
-.badge{display:inline-block;padding:4px 8px;border:1px solid #666;font-size:0.85em;margin-top:5px;}
-.badge.active{background:#4CAF50;color:#fff;border-color:#4CAF50;}
-.badge.inactive{background:#333;color:#fff;border-color:#333;}
-.help{font-size:0.85em;color:#666;margin-top:3px;}
-.info{border:1px solid #ccc;padding:10px;margin-top:10px;}
-</style>
-<script>
-async function loadNotif(){
-try{
-const r=await fetch('/notifications');
-const d=await r.json();
-document.getElementById('phone').value=d.phoneNumber||'';
-const smsEl=document.getElementById('sms_status');
-smsEl.textContent=d.hasPhoneNumber?'SMS: Configured':'SMS: Not Configured';
-smsEl.className=d.hasPhoneNumber?'badge active':'badge inactive';
-document.getElementById('webhook').value=d.discordWebhook||'';
-const discEl=document.getElementById('disc_status');
-discEl.textContent=d.hasDiscordWebhook?'Discord: Configured':'Discord: Not Configured';
-discEl.className=d.hasDiscordWebhook?'badge active':'badge inactive';
-}catch(e){console.error(e);}
-}
-async function loadEmerg(){
-try{
-const r=await fetch('/emergency-settings');
-const d=await r.json();
-document.getElementById('tier1_lv').value=d.emergencyWaterLevel_cm.toFixed(1);
-document.getElementById('tier2_lv').value=d.urgentEmergencyWaterLevel_cm.toFixed(1);
-document.getElementById('freq').value=(d.emergencyNotifFreq_ms/1000).toFixed(0);
-document.getElementById('cur_tier1').textContent=d.emergencyWaterLevel_cm.toFixed(1)+' cm';
-document.getElementById('cur_tier2').textContent=d.urgentEmergencyWaterLevel_cm.toFixed(1)+' cm';
-document.getElementById('cur_freq').textContent=(d.emergencyNotifFreq_ms/1000)+' seconds';
-}catch(e){console.error(e);}
-}
-async function savePhone(){
-const phone=document.getElementById('phone').value;
-if(!phone){alert('Enter phone number');return;}
-try{
-const r=await fetch('/notifications/phone',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'phone='+encodeURIComponent(phone)});
-const d=await r.json();
-alert(d.success?'Saved!':d.error);
-if(d.success)loadNotif();
-}catch(e){alert('Error: '+e.message);}
-}
-async function saveWebhook(){
-const wh=document.getElementById('webhook').value;
-if(!wh){alert('Enter webhook URL');return;}
-try{
-const r=await fetch('/notifications/discord',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'webhook='+encodeURIComponent(wh)});
-const d=await r.json();
-alert(d.success?'Saved!':d.error);
-if(d.success)loadNotif();
-}catch(e){alert('Error: '+e.message);}
-}
-async function testSMS(){
-if(!confirm('Send test SMS?'))return;
-const btn=document.getElementById('test_sms');
-btn.disabled=true;
-btn.textContent='Sending...';
-try{
-const r=await fetch('/notifications/test/sms',{method:'POST'});
-const d=await r.json();
-alert(d.success?d.message:d.error);
-}catch(e){alert('Error: '+e.message);}finally{
-btn.disabled=false;
-btn.textContent='Test';
-}
-}
-async function testDisc(){
-if(!confirm('Send test Discord?'))return;
-const btn=document.getElementById('test_disc');
-btn.disabled=true;
-btn.textContent='Sending...';
-try{
-const r=await fetch('/notifications/test/discord',{method:'POST'});
-const d=await r.json();
-alert(d.success?d.message:d.error);
-}catch(e){alert('Error: '+e.message);}finally{
-btn.disabled=false;
-btn.textContent='Test';
-}
-}
-async function saveTier1(){
-const lv=document.getElementById('tier1_lv').value;
-if(!lv){alert('Enter level');return;}
-try{
-const r=await fetch('/calibration/emergency-level',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'level_cm='+lv});
-const d=await r.json();
-alert(d.success?'Saved!':d.error);
-if(d.success)loadEmerg();
-}catch(e){alert('Error: '+e.message);}
-}
-async function saveTier2(){
-const lv=document.getElementById('tier2_lv').value;
-if(!lv){alert('Enter level');return;}
-try{
-const r=await fetch('/emergency/urgent-level',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'level_cm='+lv});
-const d=await r.json();
-alert(d.success?'Saved!':d.error);
-if(d.success)loadEmerg();
-}catch(e){alert('Error: '+e.message);}
-}
-async function saveFreq(){
-const f=document.getElementById('freq').value;
-if(!f){alert('Enter frequency');return;}
-try{
-const r=await fetch('/notifications/emergency-freq',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'freq_ms='+(f*1000)});
-const d=await r.json();
-alert(d.success?'Saved!':d.error);
-if(d.success)loadEmerg();
-}catch(e){alert('Error: '+e.message);}
-}
-window.onload=function(){loadNotif();loadEmerg();};
-</script>
-</head><body>
-<a href="/" style="text-decoration:none;color:#000;">< Back</a>
-<h1>Notification Settings</h1>
-<div class="card"><h2>SMS Notifications (Twilio)</h2>
-<span id="sms_status" class="badge">Loading...</span>
-<label>Phone Number</label>
-<input type="tel" id="phone" placeholder="+1234567890">
-<div class="help">Include country code (e.g., +1 for US/Canada)</div>
-<button onclick="savePhone()">Save</button>
-<button id="test_sms" onclick="testSMS()">Test</button>
-</div>
-<div class="card"><h2>Discord Notifications</h2>
-<span id="disc_status" class="badge">Loading...</span>
-<label>Webhook URL</label>
-<input type="url" id="webhook" placeholder="https://discord.com/api/webhooks/...">
-<div class="help">From Discord: Server Settings → Integrations → Webhooks</div>
-<button onclick="saveWebhook()">Save</button>
-<button id="test_disc" onclick="testDisc()">Test</button>
-</div>
-<div class="card"><h2>Emergency Settings</h2>
-<h3>Tier 1: Message Notifications</h3>
-<label>Emergency Water Level (cm)</label>
-<input type="number" id="tier1_lv" min="5" max="100" step="1">
-<div class="help">Triggers SMS/Discord when water reaches this level</div>
-<button onclick="saveTier1()">Save Tier 1 Level</button>
-<h3>Tier 2: Horn Alarm (Urgent)</h3>
-<label>Urgent Emergency Level (cm)</label>
-<input type="number" id="tier2_lv" min="5" max="100" step="1">
-<div class="help">Triggers horn alarm (must be higher than Tier 1)</div>
-<button onclick="saveTier2()">Save Tier 2 Level</button>
-<h3>Notification Frequency</h3>
-<label>How often to send (seconds)</label>
-<input type="number" id="freq" min="5" max="3600" step="1">
-<div class="help">Frequency while in emergency state</div>
-<button onclick="saveFreq()">Save Frequency</button>
-<div class="info">
-<strong>Current Settings:</strong><br>
-Tier 1: <span id="cur_tier1">--</span><br>
-Tier 2: <span id="cur_tier2">--</span><br>
-Frequency: <span id="cur_freq">--</span>
-</div>
-</div>
-</body></html>)HTML";
-    return html;
-}
 
 // ============================================================================
 // DEBUG AND MONITORING HANDLERS
@@ -1642,8 +1344,8 @@ String ConfigServer::getDebugPage() {
 
 void ConfigServer::handleOTAPage() {
     serverStartTime = millis();
-    String html = getOTAPage();
-    server->send(200, "text/html", html);
+    server->sendHeader("Content-Encoding", "gzip");
+    server->send_P(200, "text/html", (const char*)OTA_HTML_GZ, OTA_HTML_GZ_LEN);
 }
 
 void ConfigServer::handleOTAStatus() {
@@ -1798,192 +1500,4 @@ void ConfigServer::handleOTASettings() {
     }
 }
 
-String ConfigServer::getOTAPage() {
-    String html = R"HTML(<!DOCTYPE html>
-<html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>OTA Updates</title>
-<style>
-body{font-family:Arial,sans-serif;margin:0;padding:10px;max-width:700px;margin:0 auto;}
-h1{font-size:1.5em;margin:10px 0;}
-.card{border:1px solid #ccc;padding:15px;margin:10px 0;}
-.card h2{font-size:1.1em;margin:0 0 10px 0;border-bottom:1px solid #ddd;padding-bottom:5px;}
-.row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #eee;}
-.row:last-child{border-bottom:none;}
-.label{font-weight:bold;}
-label{display:block;margin:10px 0 5px;font-weight:bold;}
-input,select{width:100%;padding:8px;border:1px solid #ccc;font-size:1em;box-sizing:border-box;}
-button{padding:10px 15px;margin:5px 5px 5px 0;border:1px solid #333;background:#fff;font-size:0.95em;cursor:pointer;}
-button:active{background:#eee;}
-button:disabled{opacity:0.5;cursor:not-allowed;}
-.primary{background:#4CAF50;color:#fff;border-color:#4CAF50;}
-.danger{background:#f44336;color:#fff;border-color:#f44336;}
-.help{font-size:0.85em;color:#666;margin-top:3px;}
-.status{padding:10px;margin:10px 0;border:1px solid #ccc;text-align:center;}
-.status.success{background:#d4edda;border-color:#c3e6cb;color:#155724;}
-.status.error{background:#f8d7da;border-color:#f5c6cb;color:#721c24;}
-.status.warning{background:#fff3cd;border-color:#ffeaa7;color:#856404;}
-.version{font-size:1.5em;text-align:center;margin:10px 0;}
-</style>
-<script>
-let checking=false;
-let updating=false;
-async function loadStatus(){
-try{
-const r=await fetch('/ota/status');
-const d=await r.json();
-document.getElementById('cur_ver').textContent=d.currentVersion;
-document.getElementById('gh_repo').value=d.githubRepo;
-document.getElementById('auto_check').checked=d.autoCheckEnabled;
-document.getElementById('auto_install').checked=d.autoInstallEnabled;
-document.getElementById('check_interval').value=d.checkIntervalHours;
-document.getElementById('notify').checked=d.notificationsEnabled;
-document.getElementById('last_check').textContent=d.timeSinceLastCheckHours.toFixed(1)+' hours ago';
-const updateDiv=document.getElementById('update_status');
-if(d.updateAvailable){
-updateDiv.className='status success';
-updateDiv.innerHTML='<strong>Update Available!</strong><br>Version '+d.availableVersion+' is ready to install';
-document.getElementById('install_btn').disabled=false;
-}else if(d.state==='checking'){
-updateDiv.className='status warning';
-updateDiv.textContent='Checking for updates...';
-}else if(d.state==='failed'){
-updateDiv.className='status error';
-updateDiv.textContent='Error: '+d.lastError;
-}else{
-updateDiv.className='status';
-updateDiv.textContent='No updates available. Current version: '+d.currentVersion;
-document.getElementById('install_btn').disabled=true;
-}
-}catch(e){console.error(e);}
-}
-async function checkUpdates(){
-if(checking)return;
-checking=true;
-const btn=document.getElementById('check_btn');
-btn.disabled=true;
-btn.textContent='Checking...';
-const statusDiv=document.getElementById('update_status');
-statusDiv.className='status warning';
-statusDiv.textContent='Checking GitHub for updates...';
-try{
-const r=await fetch('/ota/check');
-const d=await r.json();
-await new Promise(res=>setTimeout(res,1000));
-await loadStatus();
-}catch(e){
-statusDiv.className='status error';
-statusDiv.textContent='Error checking for updates: '+e.message;
-}finally{
-checking=false;
-btn.disabled=false;
-btn.textContent='Check for Updates';
-}
-}
-async function installUpdate(){
-if(updating)return;
-const pwd=document.getElementById('update_pwd').value;
-if(!confirm('Install firmware update? Device will reboot.'))return;
-updating=true;
-const btn=document.getElementById('install_btn');
-btn.disabled=true;
-btn.textContent='Installing...';
-const statusDiv=document.getElementById('update_status');
-statusDiv.className='status warning';
-statusDiv.textContent='Downloading and installing update... Device will reboot shortly.';
-try{
-const formData=new URLSearchParams();
-if(pwd)formData.append('password',pwd);
-const r=await fetch('/ota/update',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:formData});
-const d=await r.json();
-if(d.success){
-statusDiv.className='status success';
-statusDiv.textContent='Update started! Device is rebooting...';
-}else{
-statusDiv.className='status error';
-statusDiv.textContent='Update failed: '+(d.error||'Unknown error');
-updating=false;
-btn.disabled=false;
-btn.textContent='Install Update';
-}
-}catch(e){
-statusDiv.className='status warning';
-statusDiv.textContent='Update may be in progress (device rebooting)...';
-}
-}
-async function saveSettings(){
-const owner=document.getElementById('gh_repo').value.split('/')[0]||'';
-const repo=document.getElementById('gh_repo').value.split('/')[1]||'';
-const token=document.getElementById('gh_token').value;
-const pwd=document.getElementById('ota_pwd').value;
-const autoCheck=document.getElementById('auto_check').checked;
-const autoInstall=document.getElementById('auto_install').checked;
-const interval=document.getElementById('check_interval').value;
-const notify=document.getElementById('notify').checked;
-if(!owner||!repo){alert('Enter GitHub repository (owner/repo)');return;}
-try{
-const formData=new URLSearchParams();
-formData.append('github_owner',owner);
-formData.append('github_repo',repo);
-if(token)formData.append('github_token',token);
-if(pwd)formData.append('update_password',pwd);
-formData.append('auto_check',autoCheck);
-formData.append('auto_install',autoInstall);
-formData.append('check_interval_hours',interval);
-formData.append('notifications_enabled',notify);
-const r=await fetch('/ota/settings',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:formData});
-const d=await r.json();
-alert(d.success?'Settings saved!':d.error);
-if(d.success)loadStatus();
-}catch(e){alert('Error: '+e.message);}
-}
-window.onload=loadStatus;
-</script>
-</head><body>
-<a href="/" style="text-decoration:none;color:#000;">< Back</a>
-<h1>Firmware Updates (OTA)</h1>
-<div class="card"><h2>Current Version</h2>
-<div class="version"><span id="cur_ver">--</span></div>
-<div class="help">Last checked: <span id="last_check">--</span></div>
-</div>
-<div class="card"><h2>Update Status</h2>
-<div id="update_status" class="status">Loading...</div>
-<button id="check_btn" onclick="checkUpdates()">Check for Updates</button>
-<div style="margin-top:15px;">
-<label>Update Password (if set)</label>
-<input type="password" id="update_pwd" placeholder="Leave blank if no password">
-<button id="install_btn" class="primary" onclick="installUpdate()" disabled>Install Update</button>
-</div>
-</div>
-<div class="card"><h2>OTA Settings</h2>
-<label>GitHub Repository</label>
-<input type="text" id="gh_repo" placeholder="owner/repository">
-<div class="help">Enter the GitHub repository where firmware releases are published</div>
-<label>GitHub Token (optional, for private repos)</label>
-<input type="password" id="gh_token" placeholder="Leave blank for public repos">
-<div class="help">Personal access token for private repositories</div>
-<label>Update Password (optional)</label>
-<input type="password" id="ota_pwd" placeholder="Leave blank for no password">
-<div class="help">Require password to install updates</div>
-<h3 style="margin-top:20px;">Automatic Updates</h3>
-<div style="display:flex;align-items:center;margin:10px 0;">
-<input type="checkbox" id="auto_check" style="width:auto;margin-right:10px;">
-<label for="auto_check" style="margin:0;">Enable automatic update checks</label>
-</div>
-<label>Check interval (hours)</label>
-<input type="number" id="check_interval" min="1" max="168" value="24">
-<div class="help">How often to check for updates (1-168 hours)</div>
-<div style="display:flex;align-items:center;margin:10px 0;">
-<input type="checkbox" id="auto_install" style="width:auto;margin-right:10px;">
-<label for="auto_install" style="margin:0;">Enable automatic update installation</label>
-</div>
-<div class="help" style="color:#d84315;">⚠️ When enabled, updates will install automatically without user confirmation. Device will reboot.</div>
-<div style="display:flex;align-items:center;margin:10px 0;">
-<input type="checkbox" id="notify" style="width:auto;margin-right:10px;">
-<label for="notify" style="margin:0;">Enable OTA notifications</label>
-</div>
-<div class="help">Send SMS/Discord notifications about update status</div>
-<button onclick="saveSettings()">Save Settings</button>
-</div>
-</body></html>)HTML";
-    return html;
-}
 
