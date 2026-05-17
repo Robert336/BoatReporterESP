@@ -17,7 +17,7 @@ TimeManagement::TimeManagement(bool mock)
     
     if (!isMocked) {
         // Get current SNTP sync status
-        sntp_sync_status_t status = sntp_get_sync_status();
+        sntp_sync_status_t status = esp_sntp_get_sync_status();
         if (status == SNTP_SYNC_STATUS_COMPLETED) {
             syncStatus = SNTP_SYNCED;
         } else if (status == SNTP_SYNC_STATUS_IN_PROGRESS) {
@@ -75,15 +75,15 @@ bool TimeManagement::initSNTPSync(const char* server, uint32_t maxWaitMs) {
     }
     
     try {
-        // Configure SNTP with the older API
-        sntp_setoperatingmode(SNTP_OPMODE_POLL);
-        sntp_setservername(0, server);
+        // Configure SNTP with the modern API
+        esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
+        esp_sntp_setservername(0, server);
         
         // Set sync notification callback
-        sntp_set_time_sync_notification_cb(onSNTPSync);
+        esp_sntp_set_time_sync_notification_cb(onSNTPSync);
         
         // Initialize SNTP service
-        sntp_init();
+        esp_sntp_init();
         
         syncStatus = SNTP_SYNCING;
         ESP_LOGI(TAG, "SNTP initialized with server: %s", server);
@@ -114,7 +114,7 @@ bool TimeManagement::initSNTPSync(const char* server, uint32_t maxWaitMs) {
 
 void TimeManagement::stopSNTPSync() {
     if (!isMocked && syncStatus != SNTP_NOT_STARTED) {
-        sntp_stop();
+        esp_sntp_stop();
         syncStatus = SNTP_NOT_STARTED;
         ESP_LOGI(TAG, "SNTP synchronization stopped");
     }
@@ -123,7 +123,7 @@ void TimeManagement::stopSNTPSync() {
 SNTPSyncStatus TimeManagement::getSNTPStatus() {
     if (!isMocked) {
         // Check actual SNTP status from lwIP
-        sntp_sync_status_t lwip_status = sntp_get_sync_status();
+        sntp_sync_status_t lwip_status = esp_sntp_get_sync_status();
         if (lwip_status == SNTP_SYNC_STATUS_COMPLETED) {
             syncStatus = SNTP_SYNCED;
         } else if (lwip_status == SNTP_SYNC_STATUS_IN_PROGRESS) {
