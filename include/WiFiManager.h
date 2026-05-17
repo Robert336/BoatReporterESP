@@ -30,7 +30,6 @@ private:
 
     WiFiManager();
     void loadCredentials();
-    void saveCredentials();
     static void onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info);
     static const char* reasonToString(uint8_t reason);
 

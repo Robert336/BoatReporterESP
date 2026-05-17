@@ -64,73 +64,91 @@ void WiFiManager::loadCredentials() {
     preferences.end();
 }
 
-void WiFiManager::saveCredentials() {
-    if (!preferences.begin(WIFI_PREFERENCES_NAMESPACE, false)) {
-        LOG_CRITICAL("WiFiManager: Failed to open preferences for writing!");
-        return;
-    }
-    // Clear old data
-    preferences.clear();
-    
-    // Save count of networks
-    preferences.putInt("count", storedNetworks.size());
-    
-    // Save each network
-    for (int i = 0; i < storedNetworks.size(); i++) {
-        char key_ssid[16], key_pass[16];
-        snprintf(key_ssid, sizeof(key_ssid), "ssid_%d", i);
-        snprintf(key_pass, sizeof(key_pass), "pass_%d", i);
-        
-        preferences.putString(key_ssid, storedNetworks[i].ssid);
-        preferences.putString(key_pass, storedNetworks[i].password);
-        
-        LOG_NETWORK("Saved network: %s", storedNetworks[i].ssid);
-    }
-    preferences.end();
-}
-
 void WiFiManager::addNetwork(const char* ssid, const char* password) {
-    // Check if network already exists
-    for (auto& cred : storedNetworks) {
-        if (strcmp(cred.ssid, ssid) == 0) {
-            LOG_NETWORK("Network already exists, updating password...");
-            delete[] cred.password;
-            // Allocate new buffer with correct size for the new password
-            cred.password = new char[strlen(password) + 1];
-            strcpy(cred.password, password);
-            saveCredentials();
+    // Update password if network already exists — write only that one key
+    for (int i = 0; i < (int)storedNetworks.size(); i++) {
+        if (strcmp(storedNetworks[i].ssid, ssid) == 0) {
+            delete[] storedNetworks[i].password;
+            storedNetworks[i].password = new char[strlen(password) + 1];
+            strcpy(storedNetworks[i].password, password);
+
+            if (preferences.begin(WIFI_PREFERENCES_NAMESPACE, false)) {
+                char key_pass[16];
+                snprintf(key_pass, sizeof(key_pass), "pass_%d", i);
+                preferences.putString(key_pass, password);
+                preferences.end();
+                LOG_NETWORK("Updated password for: %s", ssid);
+            } else {
+                LOG_CRITICAL("WiFiManager: Failed to open preferences, reloading from NVS");
+                loadCredentials();
+            }
             return;
         }
     }
-    
-    // Add new network if not at max
-    if (storedNetworks.size() < MAX_NETWORKS) {
-        WiFiCredential cred;
-        cred.ssid = new char[strlen(ssid) + 1];
-        cred.password = new char[strlen(password) + 1];
-        strcpy(cred.ssid, ssid);
-        strcpy(cred.password, password);
-        storedNetworks.push_back(cred);
-        
-        saveCredentials();
+
+    if ((int)storedNetworks.size() >= MAX_NETWORKS) {
+        LOG_NETWORK("Max networks reached!");
+        return;
+    }
+
+    // Append new entry — write only the two new keys and the updated count
+    int idx = storedNetworks.size();
+    WiFiCredential cred;
+    cred.ssid = new char[strlen(ssid) + 1];
+    cred.password = new char[strlen(password) + 1];
+    strcpy(cred.ssid, ssid);
+    strcpy(cred.password, password);
+    storedNetworks.push_back(cred);
+
+    if (preferences.begin(WIFI_PREFERENCES_NAMESPACE, false)) {
+        char key_ssid[16], key_pass[16];
+        snprintf(key_ssid, sizeof(key_ssid), "ssid_%d", idx);
+        snprintf(key_pass, sizeof(key_pass), "pass_%d", idx);
+        preferences.putString(key_ssid, ssid);
+        preferences.putString(key_pass, password);
+        preferences.putInt("count", storedNetworks.size());
+        preferences.end();
         LOG_NETWORK("Added network: %s", ssid);
     } else {
-        LOG_NETWORK("Max networks reached!");
+        LOG_CRITICAL("WiFiManager: Failed to open preferences, reloading from NVS");
+        loadCredentials();
     }
 }
 
 void WiFiManager::removeNetwork(const char* ssid) {
     for (auto it = storedNetworks.begin(); it != storedNetworks.end(); ++it) {
         if (strcmp(it->ssid, ssid) == 0) {
+            String removed = it->ssid;
             delete[] it->ssid;
             delete[] it->password;
             storedNetworks.erase(it);
-            saveCredentials();
-            LOG_NETWORK("Removed network: %s", ssid);
+
+            if (preferences.begin(WIFI_PREFERENCES_NAMESPACE, false)) {
+                // Rewrite the compacted list in-place (no clear needed)
+                for (int i = 0; i < (int)storedNetworks.size(); i++) {
+                    char key_ssid[16], key_pass[16];
+                    snprintf(key_ssid, sizeof(key_ssid), "ssid_%d", i);
+                    snprintf(key_pass, sizeof(key_pass), "pass_%d", i);
+                    preferences.putString(key_ssid, storedNetworks[i].ssid);
+                    preferences.putString(key_pass, storedNetworks[i].password);
+                }
+                // Delete the now-stale last slot
+                char stale_ssid[16], stale_pass[16];
+                snprintf(stale_ssid, sizeof(stale_ssid), "ssid_%d", (int)storedNetworks.size());
+                snprintf(stale_pass, sizeof(stale_pass), "pass_%d", (int)storedNetworks.size());
+                preferences.remove(stale_ssid);
+                preferences.remove(stale_pass);
+                preferences.putInt("count", storedNetworks.size());
+                preferences.end();
+                LOG_NETWORK("Removed network: %s", removed.c_str());
+            } else {
+                LOG_CRITICAL("WiFiManager: Failed to open preferences, reloading from NVS");
+                loadCredentials();
+            }
             return;
         }
     }
-    LOG_NETWORK("Network not found!");
+    LOG_NETWORK("Network not found: %s", ssid);
 }
 
 void WiFiManager::connectToBestNetwork() {
