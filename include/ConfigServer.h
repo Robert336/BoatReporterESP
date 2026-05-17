@@ -76,6 +76,8 @@ private:
     void handleNotificationsPage();         // Serve notifications configuration page
     void handleSubmit();                    // Process WiFi configuration submission
     void handleStatus();                    // Return WiFi connection status JSON
+    void handleWiFiNetworks();              // GET /wifi/networks — stored SSID list JSON
+    void handleWiFiRemove();               // POST /wifi/remove — remove a stored network
     String getConfigPage();                 // Generate HTML for main dashboard page
     String getWiFiConfigPage();             // Generate HTML for WiFi config page
     String getNotificationsPageHTML();      // Generate HTML for notifications page
