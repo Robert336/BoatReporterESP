@@ -31,5 +31,6 @@ void sendMqttLog(const char* message);
 #define LOG_SETUP(...)   LOG_INFO(__VA_ARGS__)
 #define LOG_STATUS(...)  LOG_DEBUG(__VA_ARGS__)
 #define LOG_SENSOR(...) LOG_DEBUG(__VA_ARGS__)
+#define LOG_NETWORK(...) LOG_DEBUG(__VA_ARGS__)
 
 #endif // LOGGER_H

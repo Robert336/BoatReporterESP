@@ -22,8 +22,8 @@ bool SendSMS::send(const char* message) {
     }
     
     // Check for active wifi connection first
-    // Send message and wait for response
     if (!WiFi.isConnected()) {
+        LOG_NETWORK("[SMS] WiFi not connected, cannot send");
         return false;
     }
 
@@ -71,15 +71,28 @@ bool SendSMS::send(const char* message) {
              encodedTo, encodedMessagingServiceSid, encodedBody);
 
     String endpoint = getEndpointUrl();
+    LOG_NETWORK("[SMS] Initiating HTTP POST to Twilio - endpoint: %s", endpoint.c_str());
+    
+    uint32_t startTime = millis();
     http.begin(endpoint);
     http.setAuthorization(twilio_account_sid, twilio_auth_token); // HTTP Basic Auth
     http.setTimeout(10000); // 10 second timeout
     http.addHeader("Content-Type", "application/x-www-form-urlencoded");
 
     int httpResponseCode = http.POST(postData);
+    uint32_t elapsed = millis() - startTime;
+    LOG_NETWORK("[SMS] HTTP response code: %d (elapsed: %u ms)", httpResponseCode, elapsed);
 
     if (httpResponseCode < 0) {
-        LOG_DEBUG("[SMS] HTTP error: %s", http.errorToString(httpResponseCode).c_str());
+        LOG_NETWORK("[SMS] HTTP error: %s", http.errorToString(httpResponseCode).c_str());
+    } else if (httpResponseCode < 200 || httpResponseCode >= 300) {
+        // Log response body snippet for error status codes
+        String responseBody = http.getString();
+        if (responseBody.length() > 0) {
+            // Log first 200 chars of response
+            String snippet = responseBody.substring(0, 200);
+            LOG_NETWORK("[SMS] Error response body: %s", snippet.c_str());
+        }
     }
 
     // Free allocated memory
@@ -89,6 +102,7 @@ bool SendSMS::send(const char* message) {
     free(postData);
 
     bool success = (httpResponseCode >= 200 && httpResponseCode < 300);
+    LOG_NETWORK("[SMS] Send %s (HTTP %d, %u ms)", success ? "SUCCESS" : "FAILED", httpResponseCode, elapsed);
 
     http.end();
     return success;
