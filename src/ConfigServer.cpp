@@ -981,7 +981,6 @@ void ConfigServer::handleTestMqtt() {
 }
 
 String ConfigServer::getWiFiConfigPage() {
-    // Minimal WiFi configuration page
     String html = R"(<!DOCTYPE html>
 <html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>WiFi Config</title>
 <style>
@@ -989,13 +988,14 @@ body{font-family:Arial,sans-serif;margin:0;padding:10px;max-width:600px;margin:0
 h1{font-size:1.5em;margin:10px 0;}
 .card{border:1px solid #ccc;padding:15px;margin:10px 0;}
 .card h2{font-size:1.1em;margin:0 0 10px 0;border-bottom:1px solid #ddd;padding-bottom:5px;}
-.row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #eee;}
+.row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #eee;}
 .row:last-child{border-bottom:none;}
 label{display:block;margin:10px 0 5px;font-weight:bold;}
 input{width:100%;padding:8px;border:1px solid #ccc;font-size:1em;box-sizing:border-box;}
 button{width:100%;padding:12px;margin:5px 0;border:1px solid #333;background:#fff;font-size:1em;cursor:pointer;}
 button:active{background:#eee;}
 .help{font-size:0.85em;color:#666;margin-top:3px;}
+.del{width:auto;padding:4px 10px;margin:0;border:1px solid #c00;color:#c00;font-size:0.85em;}
 </style>
 <script>
 function load(){
@@ -1008,6 +1008,22 @@ s+='<div class="row"><span style="font-weight:bold">Signal</span><span>'+(d.rssi
 }
 document.getElementById('status').innerHTML=s;
 }).catch(e=>console.error(e));
+loadNetworks();
+}
+function loadNetworks(){
+fetch('/wifi/networks').then(r=>r.json()).then(list=>{
+var el=document.getElementById('networks');
+if(!list.length){el.innerHTML='<div class="row"><span style="color:#666">No saved networks</span></div>';return;}
+el.innerHTML=list.map(function(ssid){
+return '<div class="row"><span>'+ssid+'</span><button class="del" onclick="remove(\''+ssid.replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')">\xd7 Remove</button></div>';
+}).join('');
+}).catch(e=>console.error(e));
+}
+function remove(ssid){
+if(!confirm('Remove "'+ssid+'"?'))return;
+fetch('/wifi/remove',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'ssid='+encodeURIComponent(ssid)})
+.then(r=>r.json()).then(d=>{if(d.success)loadNetworks();else alert('Remove failed');})
+.catch(e=>alert('Error: '+e.message));
 }
 function save(e){
 e.preventDefault();
@@ -1015,27 +1031,21 @@ var s=document.getElementById('ssid').value;
 var p=document.getElementById('password').value;
 if(!s||!p){alert('Enter SSID and password');return;}
 var btn=document.getElementById('btn');
-btn.disabled=true;
-btn.textContent='Saving...';
+btn.disabled=true;btn.textContent='Saving...';
 fetch('/config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'ssid='+encodeURIComponent(s)+'&password='+encodeURIComponent(p)})
 .then(r=>{
-if(r.ok){
-alert('Saved! Connecting...');
-document.getElementById('form').reset();
-setTimeout(load,3000);
-}else{alert('Failed to save');}
+if(r.ok){alert('Saved! Connecting...');document.getElementById('form').reset();setTimeout(load,3000);}
+else{alert('Failed to save');}
 }).catch(e=>alert('Error: '+e.message))
 .finally(()=>{btn.disabled=false;btn.textContent='Save & Connect';});
 }
-window.onload=function(){
-load();
-document.getElementById('form').addEventListener('submit',save);
-};
+window.onload=function(){load();document.getElementById('form').addEventListener('submit',save);};
 </script>
 </head><body>
 <a href="/" style="text-decoration:none;color:#000;">< Back</a>
 <h1>WiFi Configuration</h1>
 <div class="card"><h2>Current Status</h2><div id="status"><div class="row"><span>Loading...</span></div></div></div>
+<div class="card"><h2>Saved Networks</h2><div id="networks"><div class="row"><span>Loading...</span></div></div></div>
 <div class="card"><h2>Add Network</h2>
 <form id="form">
 <label>WiFi Network (SSID)</label>
@@ -1047,7 +1057,6 @@ document.getElementById('form').addEventListener('submit',save);
 <button type="submit" id="btn">Save & Connect</button>
 </form>
 </div>
-<div class="card"><p style="margin:0;font-size:0.9em;"><strong>Tip:</strong> ESP32 auto-connects to saved networks.</p></div>
 </body></html>)";
     return html;
 }
