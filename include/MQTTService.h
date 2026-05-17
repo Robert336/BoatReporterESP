@@ -25,6 +25,7 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <Preferences.h>
+#include <freertos/portmacro.h>
 #include <functional>
 #include <vector>
 
@@ -112,13 +113,16 @@ private:
     uint32_t reconnectBackoffMs;     // 5s → 10s → 20s → 30s cap
 
     // Outbound log ring buffer (~4 KB RAM: 16 × 256)
+    // logQueueMux guards the ring buffer across cores (NotificationWorker on Core 0,
+    // main loop on Core 1 both call LOG_* → publishLog).
     static constexpr size_t LOG_QUEUE_SIZE = 16;
     static constexpr size_t LOG_MSG_MAX    = 256;
-    char    logQueue[LOG_QUEUE_SIZE][LOG_MSG_MAX];
-    uint8_t logQueueHead;
-    uint8_t logQueueTail;
-    uint8_t logQueueCount;
-    uint32_t logsDropped;
+    char         logQueue[LOG_QUEUE_SIZE][LOG_MSG_MAX];
+    uint8_t      logQueueHead;
+    uint8_t      logQueueTail;
+    uint8_t      logQueueCount;
+    uint32_t     logsDropped;
+    portMUX_TYPE logQueueMux;
 
     // Subscriber fan-out (PubSubClient only supports one global callback)
     struct Subscription {

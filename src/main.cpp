@@ -11,6 +11,7 @@
 #include "SendSMS.h"
 #include "SendDiscord.h"
 #include "OTAManager.h"
+#include "NotificationWorker.h"
 #include "Version.h"
 
 // System States
@@ -73,6 +74,7 @@ static uint32_t messageTraceId = 0;
 // Create easier references to the singleton objects
 ConfigServer* configServer = nullptr;
 OTAManager* otaManager = nullptr;
+NotificationWorker notifier;
 LightCode light(LIGHT_PIN);
 TimeManagement& rtc = TimeManagement::getInstance();
 WiFiManager& wifiMgr = WiFiManager::getInstance();
@@ -128,6 +130,10 @@ void setup() {
     g_mqtt = &mqtt;
     mqtt.begin();
     LOG_SETUP("[SETUP] MQTTService initialized");
+
+    // Start notification worker on Core 0 — SMS/Discord HTTP calls no longer block Core 1
+    notifier.begin(&sms, &discord);
+    LOG_SETUP("[SETUP] NotificationWorker started on Core 0");
 
     // Initialize OTAManager early to check for rollback/first boot after update
     otaManager = new OTAManager(&sms, &discord);
@@ -259,8 +265,8 @@ void loop() {
                     messageTraceId++;
                     char silenceMessage[100];
                     snprintf(silenceMessage, sizeof(silenceMessage), "[MSG:%u] Boat Monitor: Emergency alerts silenced", messageTraceId);
-                    sms.send(silenceMessage);
-                    discord.send(silenceMessage);
+                    notifier.enqueueSms(silenceMessage);
+                    notifier.enqueueDiscord(silenceMessage);
                 }
             } else {
                 LOG_EVENT("[EVENT] Emergency notifications RE-ENABLED by button hold - WiFi: %d", wifiMgr.isConnected());
@@ -390,8 +396,8 @@ void loop() {
                         LOG_EVENT("[STATE] EMERGENCY: Sending alert message: %s", emergMessageBuf);
 
                         if (!USE_MOCK) {
-                            sms.send(emergMessageBuf);
-                            discord.send(emergMessageBuf);
+                            notifier.enqueueSms(emergMessageBuf);
+                            notifier.enqueueDiscord(emergMessageBuf);
                         } else {
                             LOG_EVENT("[MOCK] Skipping SMS/Discord send (TraceID:%u)", messageTraceId);
                         }
