@@ -196,6 +196,10 @@ void ConfigServer::stopSetupMode() {
     setupModeActive = false;
 
     LOG_INFO("\n=== Setup mode stopped, resuming normal WiFi ===");
+
+    // Reconnect using the full scan-and-pick path so any newly added network
+    // is tried immediately rather than waiting for maintainConnection() to fire.
+    WiFiManager::getInstance().connectToBestNetwork();
 }
 
 bool ConfigServer::isSetupModeActive() {
