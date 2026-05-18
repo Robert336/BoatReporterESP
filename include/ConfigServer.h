@@ -76,6 +76,9 @@ private:
     void handleNotificationsPage();         // Serve notifications configuration page (gzipped)
     void handleSettings();                  // Serve settings hub page (gzipped)
     void handleInit();                      // GET /init — merged JSON for main page load
+    void handleSettingsInit();              // GET /settings/init — merged JSON for settings page load
+    void handleDebugInit();                 // GET /debug/init — merged JSON for debug page load
+    void handleCaptivePortalProbe();        // 302 redirect for captive-portal probe URLs
     void handleSubmit();                    // Process WiFi configuration submission
     void handleStatus();                    // Return WiFi connection status JSON
     void handleWiFiNetworks();              // GET /wifi/networks — stored SSID list JSON

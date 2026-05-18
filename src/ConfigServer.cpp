@@ -70,6 +70,12 @@ void ConfigServer::startSetupMode() {
     // Route: GET /init → merged JSON for main page load (wifi + sensor + thresholds)
     server->on("/init", HTTP_GET, [this]() { handleInit(); });
 
+    // Route: GET /settings/init → merged JSON for settings page load
+    server->on("/settings/init", HTTP_GET, [this]() { handleSettingsInit(); });
+
+    // Route: GET /debug/init → merged JSON for debug page load (reading + calibration)
+    server->on("/debug/init", HTTP_GET, [this]() { handleDebugInit(); });
+
     // Route: POST /config → save credentials
     server->on("/config", HTTP_POST, [this]() { handleSubmit(); });
     
@@ -167,13 +173,12 @@ void ConfigServer::startSetupMode() {
     // Route: POST /ota/settings → configure OTA settings
     server->on("/ota/settings", HTTP_POST, [this]() { handleOTASettings(); });
     
-    // Handle 404 and captive portal detection
-    // Redirect all unknown paths to root for better captive portal detection
-    server->onNotFound([this]() {
-        // Serve the root page for captive portal detection
-        // Many devices try to access specific URLs to detect captive portals
-        handleRoot();
-    });
+    // Handle 404 and captive portal detection.
+    // Captive portal probes (Apple/Android/Windows/ChromeOS) all hit unknown paths to
+    // decide if a portal exists. Returning a tiny 302 here triggers the OS portal
+    // popup AND frees the single-connection slot fast (vs. serving the full ~5 KB
+    // index page to every probe).
+    server->onNotFound([this]() { handleCaptivePortalProbe(); });
     
     // Enable reading If-None-Match for ETag-based caching
     const char* headersToCollect[] = {"If-None-Match"};
@@ -300,6 +305,81 @@ void ConfigServer::handleInit() {
     json += "}";
     server->send(200, "application/json", json);
     serverStartTime = millis();
+}
+
+void ConfigServer::handleSettingsInit() {
+    String json = "{";
+
+    // notifications block (mirrors fields settings.html reads from /notifications)
+    bool mqttCfg = mqttService && mqttService->hasBrokerConfig();
+    json += "\"notifications\":{";
+    json += "\"hasPhoneNumber\":";
+    json += (smsService && smsService->hasPhoneNumber()) ? "true" : "false";
+    json += ",\"hasDiscordWebhook\":";
+    json += (discordService && discordService->hasWebhookUrl()) ? "true" : "false";
+    json += ",\"mqttConfigured\":";
+    json += mqttCfg ? "true" : "false";
+    json += ",\"mqttConnected\":";
+    json += (mqttCfg && mqttService->isConnected()) ? "true" : "false";
+    json += "},";
+
+    // emergency freq (the only /emergency-settings field settings.html uses)
+    json += "\"emergencyNotifFreq_ms\":" + String(emergencyNotifFreq_ms) + ",";
+
+    // wifi (mirrors fields settings.html reads from /status)
+    bool connected = WiFiManager::getInstance().isConnected();
+    json += "\"wifi\":{";
+    json += "\"connected\":" + String(connected ? "true" : "false") + ",";
+    json += "\"ssid\":\"" + WiFi.SSID() + "\"";
+    json += "},";
+
+    // calibration (only the hasTwoPointCalibration flag is used)
+    json += "\"hasTwoPointCalibration\":";
+    json += (waterSensor && waterSensor->hasTwoPointCalibration()) ? "true" : "false";
+
+    json += "}";
+    server->send(200, "application/json", json);
+    serverStartTime = millis();
+}
+
+void ConfigServer::handleDebugInit() {
+    String json = "{\"reading\":";
+
+    if (!waterSensor) {
+        json += "{\"sensorAvailable\":false},\"calibration\":null}";
+        server->send(200, "application/json", json);
+        serverStartTime = millis();
+        return;
+    }
+
+    SensorReading reading = waterSensor->readLevel();
+    json += "{\"sensorAvailable\":true,";
+    json += "\"valid\":" + String(reading.valid ? "true" : "false") + ",";
+    json += "\"millivolts\":" + String(reading.millivolts, 2);
+    if (reading.valid) {
+        json += ",\"level_cm\":" + String(reading.level_cm, 2);
+    }
+    json += "},\"calibration\":{";
+    json += "\"zeroPoint_mv\":" + String(waterSensor->getZeroPointMilliVolts()) + ",";
+    json += "\"hasTwoPointCalibration\":";
+    json += waterSensor->hasTwoPointCalibration() ? "true" : "false";
+    if (waterSensor->hasTwoPointCalibration()) {
+        json += ",\"secondPoint_mv\":" + String(waterSensor->getSecondPointMilliVolts());
+        json += ",\"secondPoint_cm\":" + String(waterSensor->getSecondPointLevelCm(), 2);
+    }
+    json += "}}";
+
+    server->send(200, "application/json", json);
+    serverStartTime = millis();
+}
+
+void ConfigServer::handleCaptivePortalProbe() {
+    // Tiny 302 → triggers OS captive-portal popup and frees the connection slot.
+    // Apple, Android, Windows, ChromeOS all treat any 3xx on their probe URL as
+    // "portal present" and open a mini-browser to the Location target.
+    server->sendHeader("Location", "http://192.168.4.1/", true);
+    server->sendHeader("Cache-Control", "no-store");
+    server->send(302, "text/plain", "");
 }
 
 void ConfigServer::handleSubmit() {
