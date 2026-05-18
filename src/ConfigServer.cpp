@@ -1,5 +1,6 @@
 #include "ConfigServer.h"
 #include "Logger.h"
+#include "Version.h"
 #include "compressed_pages.h"
 
 // ============================================================================
@@ -174,6 +175,10 @@ void ConfigServer::startSetupMode() {
         handleRoot();
     });
     
+    // Enable reading If-None-Match for ETag-based caching
+    const char* headersToCollect[] = {"If-None-Match"};
+    server->collectHeaders(headersToCollect, 1);
+
     // Start the server
     server->begin();
     setupModeActive = true;
@@ -235,28 +240,32 @@ void ConfigServer::handleClient() {
 // WIFI CONFIGURATION HANDLERS
 // ============================================================================
 
-void ConfigServer::handleRoot() {
-    server->sendHeader("Content-Encoding", "gzip");
-    server->send_P(200, "text/html", (const char*)INDEX_HTML_GZ, INDEX_HTML_GZ_LEN);
+void ConfigServer::sendCachedPage(const char* data, size_t len, const char* contentType) {
     serverStartTime = millis();
+    if (server->hasHeader("If-None-Match") && server->header("If-None-Match") == FIRMWARE_VERSION) {
+        server->send(304);
+        return;
+    }
+    server->sendHeader("Cache-Control", "max-age=86400, must-revalidate");
+    server->sendHeader("ETag", FIRMWARE_VERSION);
+    server->sendHeader("Content-Encoding", "gzip");
+    server->send_P(200, contentType, data, len);
+}
+
+void ConfigServer::handleRoot() {
+    sendCachedPage((const char*)INDEX_HTML_GZ, INDEX_HTML_GZ_LEN, "text/html");
 }
 
 void ConfigServer::handleWiFiConfig() {
-    server->sendHeader("Content-Encoding", "gzip");
-    server->send_P(200, "text/html", (const char*)WIFI_CONFIG_HTML_GZ, WIFI_CONFIG_HTML_GZ_LEN);
-    serverStartTime = millis();
+    sendCachedPage((const char*)WIFI_CONFIG_HTML_GZ, WIFI_CONFIG_HTML_GZ_LEN, "text/html");
 }
 
 void ConfigServer::handleNotificationsPage() {
-    server->sendHeader("Content-Encoding", "gzip");
-    server->send_P(200, "text/html", (const char*)NOTIFICATIONS_HTML_GZ, NOTIFICATIONS_HTML_GZ_LEN);
-    serverStartTime = millis();
+    sendCachedPage((const char*)NOTIFICATIONS_HTML_GZ, NOTIFICATIONS_HTML_GZ_LEN, "text/html");
 }
 
 void ConfigServer::handleSettings() {
-    server->sendHeader("Content-Encoding", "gzip");
-    server->send_P(200, "text/html", (const char*)SETTINGS_HTML_GZ, SETTINGS_HTML_GZ_LEN);
-    serverStartTime = millis();
+    sendCachedPage((const char*)SETTINGS_HTML_GZ, SETTINGS_HTML_GZ_LEN, "text/html");
 }
 
 void ConfigServer::handleInit() {
@@ -983,9 +992,7 @@ void ConfigServer::handleGetReading() {
 }
 
 void ConfigServer::handleDebug() {
-    serverStartTime = millis();
-    server->sendHeader("Content-Encoding", "gzip");
-    server->send_P(200, "text/html", (const char*)DEBUG_HTML_GZ, DEBUG_HTML_GZ_LEN);
+    sendCachedPage((const char*)DEBUG_HTML_GZ, DEBUG_HTML_GZ_LEN, "text/html");
 }
 
 // ============================================================================
@@ -993,9 +1000,7 @@ void ConfigServer::handleDebug() {
 // ============================================================================
 
 void ConfigServer::handleOTAPage() {
-    serverStartTime = millis();
-    server->sendHeader("Content-Encoding", "gzip");
-    server->send_P(200, "text/html", (const char*)OTA_HTML_GZ, OTA_HTML_GZ_LEN);
+    sendCachedPage((const char*)OTA_HTML_GZ, OTA_HTML_GZ_LEN, "text/html");
 }
 
 void ConfigServer::handleOTAStatus() {
