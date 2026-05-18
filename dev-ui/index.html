@@ -54,7 +54,7 @@ h2{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;
 <div class="app">
 <header>
 <h1>Bilge Buddy</h1>
-<a href="settings.html" class="gear" aria-label="Settings">⚙</a>
+<a href="/settings" class="gear" aria-label="Settings">⚙</a>
 </header>
 
 <div class="card statusrow">
@@ -187,15 +187,12 @@ if(cur>=t2){el.textContent='urgent · horn alarm';el.className='status bad'}
 else if(cur>=t1){el.textContent='high · alerts active';el.className='status warn'}
 else{el.textContent='safe';el.className='status'}
 }
-function loadStatus(){
-fetch('/status').then(r=>r.json()).then(d=>{
+function applyStatus(d){
 var dot=document.getElementById('wifi_dot'),lbl=document.getElementById('wifi_label');
 if(d.connected){dot.className='dot ok';lbl.textContent=d.ssid||'Connected'}
 else{dot.className='dot bad';lbl.textContent='Disconnected'}
-}).catch(e=>{document.getElementById('wifi_label').textContent='offline'})
 }
-function loadReading(){
-fetch('/read').then(r=>r.json()).then(d=>{
+function applyReading(d){
 curValid=d.sensorAvailable&&d.valid;
 if(curValid)cur=d.level_cm;
 document.getElementById('water_level').textContent=curValid?cur.toFixed(1):'--';
@@ -204,18 +201,24 @@ if(!d.sensorAvailable){sd.className='dot bad';sl.textContent='sensor offline'}
 else if(!d.valid){sd.className='dot warn';sl.textContent='sensor uncalibrated'}
 else{sd.className='dot ok';sl.textContent='sensor ok'}
 setStatus();render();
-}).catch(e=>{})
 }
-function loadThresholds(){
-fetch('/emergency-settings').then(r=>r.json()).then(d=>{
+function applyThresholds(d){
 t1=d.emergencyWaterLevel_cm;t2=d.urgentEmergencyWaterLevel_cm;
 t1Saved=t1;t2Saved=t2;
 document.getElementById('tier1').value=t1.toFixed(1);
 document.getElementById('tier2').value=t2.toFixed(1);
 render();setStatus();syncDirty();
-}).catch(e=>{
-document.getElementById('upd').textContent='Failed to load';
-}).catch(e=>{})
+}
+function loadInit(){
+fetch('/init').then(r=>r.json()).then(d=>{
+applyStatus(d.wifi);applyReading(d.sensor);applyThresholds(d.thresholds);
+}).catch(e=>{document.getElementById('wifi_label').textContent='offline'})
+}
+function loadStatus(){
+fetch('/status').then(r=>r.json()).then(d=>applyStatus(d)).catch(e=>{document.getElementById('wifi_label').textContent='offline'})
+}
+function loadReading(){
+fetch('/read').then(r=>r.json()).then(d=>applyReading(d)).catch(e=>{})
 }
 function updateThresholds(){
 submitted=true;validateFields();syncDirty();
@@ -263,7 +266,7 @@ document.getElementById('tier2').addEventListener('input',function(e){var v=pars
 window.addEventListener('pointermove',dragMove);
 window.addEventListener('pointerup',dragEnd);
 window.addEventListener('pointercancel',dragEnd);
-render();syncDirty();loadStatus();loadReading();loadThresholds();
+render();syncDirty();loadInit();
 setInterval(loadReading,2000);
 setInterval(loadStatus,10000);
 </script>
