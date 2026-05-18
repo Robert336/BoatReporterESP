@@ -1,89 +1,103 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<title>WiFi Config</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="UTF-8">
+<title>Wi-Fi · Bilge Buddy</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-body{font-family:Arial,sans-serif;margin:0;padding:10px;max-width:600px;margin:0 auto;}
-h1{font-size:1.5em;margin:10px 0;}
-.card{border:1px solid #ccc;padding:15px;margin:10px 0;}
-.card h2{font-size:1.1em;margin:0 0 10px 0;border-bottom:1px solid #ddd;padding-bottom:5px;}
-.row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #eee;}
-.row:last-child{border-bottom:none;}
-.label{font-weight:bold;}
-label{display:block;margin:10px 0 5px;font-weight:bold;}
-input{width:100%;padding:8px;border:1px solid #ccc;font-size:1em;box-sizing:border-box;}
-button{width:100%;padding:12px;margin:5px 0;border:1px solid #333;background:#fff;font-size:1em;cursor:pointer;}
-button:active{background:#eee;}
-.alert{padding:10px;margin:10px 0;border:1px solid #ccc;}
-.help{font-size:0.85em;color:#666;margin-top:3px;}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;background:#f7f5f1;color:#1c1917;font-size:16px;line-height:1.4;-webkit-font-smoothing:antialiased}
+.app{max-width:480px;margin:0 auto;padding:16px}
+header{display:flex;align-items:center;gap:8px;padding:8px 0 14px}
+.back{color:#44403c;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;background:#fff;border:1px solid #e7e5e4;font-size:18px;line-height:1}
+.back:active{background:#f5f5f4}
+h1{font-size:20px;font-weight:600;margin:0;letter-spacing:-0.01em}
+h2{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#78716c;margin:0 0 12px}
+.card{background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:18px;margin-bottom:14px}
+.head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:8px}
+.head h2{margin:0}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:#f5f5f4;border:1px solid #e7e5e4;font-size:12px;color:#44403c}
+.dot{width:7px;height:7px;border-radius:50%;background:#a8a29e;flex-shrink:0;display:inline-block}
+.dot.ok{background:#65a30d}
+.dot.bad{background:#dc2626}
+.statgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stat{padding:10px;background:#f5f5f4;border-radius:10px}
+.stat .k{font-size:11px;color:#78716c;text-transform:uppercase;letter-spacing:.05em}
+.stat .v{font-size:15px;font-weight:600;margin-top:2px;word-break:break-all;font-variant-numeric:tabular-nums}
+label{display:block;font-size:13px;color:#78716c;margin:10px 0 6px}
+.input{display:flex;align-items:stretch;background:#f5f5f4;border:1px solid #e7e5e4;border-radius:10px;overflow:hidden;transition:border-color .15s}
+.input:focus-within{border-color:#1c1917;background:#fff}
+.input input{flex:1;border:0;background:transparent;padding:10px 12px;font-size:15px;font-family:inherit;color:inherit;width:100%;min-width:0}
+.input input:focus{outline:0}
+.btn{display:block;width:100%;padding:13px;background:#1c1917;color:#fff;border:0;border-radius:10px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;margin-top:14px;transition:background .15s}
+.btn:active{background:#292524}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.msg{margin-top:10px;font-size:13px;text-align:center;color:#78716c;min-height:18px}
+.msg.ok{color:#65a30d}
+.msg.bad{color:#dc2626}
+.note{font-size:12px;color:#a8a29e;line-height:1.5;margin-top:8px}
 </style>
-<script>
-async function loadStatus(){
-try{
-const r=await fetch('/status');
-const d=await r.json();
-const s=document.getElementById('status');
-s.innerHTML=`<div class="row"><span class="label">Status</span><span>${d.connected?'● Connected':'○ Disconnected'}</span></div>`;
-if(d.connected){
-s.innerHTML+=`<div class="row"><span class="label">Network</span><span>${d.ssid||'Unknown'}</span></div>
-<div class="row"><span class="label">IP</span><span>${d.ip||'N/A'}</span></div>
-<div class="row"><span class="label">Signal</span><span>${d.rssi||'N/A'} dBm</span></div>`;
-}
-}catch(e){console.error(e);}
-}
-async function save(e){
-e.preventDefault();
-const ssid=document.getElementById('ssid').value;
-const pass=document.getElementById('password').value;
-if(!ssid||!pass){alert('Enter SSID and password');return;}
-const btn=document.getElementById('btn');
-btn.disabled=true;
-btn.textContent='Saving...';
-try{
-const r=await fetch('/config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'ssid='+encodeURIComponent(ssid)+'&password='+encodeURIComponent(pass)});
-if(r.ok){
-alert('Saved! Connecting...');
-document.getElementById('form').reset();
-setTimeout(loadStatus,3000);
-}else{alert('Failed to save');}
-}catch(e){alert('Error: '+e.message);}finally{
-btn.disabled=false;
-btn.textContent='Save & Connect';
-}
-}
-window.onload=function(){
-loadStatus();
-document.getElementById('form').addEventListener('submit',save);
-};
-</script>
 </head>
 <body>
-<a href="index.html" style="text-decoration:none;color:#000;">< Back</a>
-<h1>WiFi Configuration</h1>
+<div class="app">
+<header>
+<a href="settings.html" class="back" aria-label="Back">‹</a>
+<h1>Wi-Fi</h1>
+</header>
 
 <div class="card">
-<h2>Current Status</h2>
-<div id="status"><div class="row"><span>Loading...</span></div></div>
+<div class="head"><h2>Current connection</h2><span class="pill" id="pill"><span class="dot" id="dot"></span><span id="state">…</span></span></div>
+<div class="statgrid" id="stats">
+<div class="stat"><div class="k">Network</div><div class="v" id="s_ssid">…</div></div>
+<div class="stat"><div class="k">IP address</div><div class="v" id="s_ip">…</div></div>
+<div class="stat"><div class="k">Signal</div><div class="v" id="s_rssi">…</div></div>
+<div class="stat"><div class="k">Status</div><div class="v" id="s_state">…</div></div>
+</div>
 </div>
 
 <div class="card">
-<h2>Add Network</h2>
-<form id="form">
-<label>WiFi Network (SSID)</label>
-<input type="text" id="ssid" name="ssid" required>
-<div class="help">Network name</div>
-
+<h2>Add or change network</h2>
+<form id="form" onsubmit="return save(event)">
+<label>SSID</label>
+<div class="input"><input type="text" id="ssid" required autocomplete="off"></div>
 <label>Password</label>
-<input type="password" id="password" name="password" required>
-<div class="help">Network password</div>
-
-<button type="submit" id="btn">Save & Connect</button>
+<div class="input"><input type="password" id="password" required autocomplete="new-password"></div>
+<button type="submit" class="btn" id="btn">Save & connect</button>
+<div class="msg" id="msg"></div>
 </form>
+<div class="note">After saving, the ESP32 will try to connect. If it fails, the config portal will start automatically.</div>
+</div>
 </div>
 
-<div class="card">
-<p style="margin:0;font-size:0.9em;"><strong>Tip:</strong> ESP32 auto-connects to saved networks. If failed, config portal starts automatically.</p>
-</div>
+<script>
+function el(id){return document.getElementById(id)}
+function load(){
+fetch('/status').then(r=>r.json()).then(d=>{
+if(d.connected){
+el('dot').className='dot ok';el('state').textContent='connected';
+el('s_ssid').textContent=d.ssid||'—';el('s_ip').textContent=d.ip||'—';
+el('s_rssi').textContent=(d.rssi||'—')+(d.rssi?' dBm':'');el('s_state').textContent='Online';
+}else{
+el('dot').className='dot bad';el('state').textContent='disconnected';
+el('s_ssid').textContent='—';el('s_ip').textContent='—';el('s_rssi').textContent='—';el('s_state').textContent='Offline';
+}
+}).catch(e=>{el('state').textContent='offline'})
+}
+function save(e){
+e.preventDefault();
+var s=el('ssid').value,p=el('password').value;
+if(!s||!p){el('msg').textContent='Enter SSID and password';el('msg').className='msg bad';return false}
+var btn=el('btn');btn.disabled=true;btn.textContent='Saving…';
+el('msg').textContent='';el('msg').className='msg';
+fetch('/config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'ssid='+encodeURIComponent(s)+'&password='+encodeURIComponent(p)})
+.then(r=>{
+btn.disabled=false;btn.textContent='Save & connect';
+if(r.ok){el('msg').textContent='✓ Saved — connecting…';el('msg').className='msg ok';el('form').reset();setTimeout(load,3000)}
+else{el('msg').textContent='✗ Failed to save';el('msg').className='msg bad'}
+}).catch(err=>{btn.disabled=false;btn.textContent='Save & connect';el('msg').textContent='Error: '+err.message;el('msg').className='msg bad'});
+return false;
+}
+load();setInterval(load,5000);
+</script>
 </body>
 </html>

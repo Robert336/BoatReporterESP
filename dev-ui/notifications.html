@@ -1,246 +1,149 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<title>Notifications</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="UTF-8">
+<title>Notifications · Bilge Buddy</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-body{font-family:Arial,sans-serif;margin:0;padding:10px;max-width:700px;margin:0 auto;}
-h1{font-size:1.5em;margin:10px 0;}
-.card{border:1px solid #ccc;padding:15px;margin:10px 0;}
-.card h2{font-size:1.1em;margin:0 0 10px 0;border-bottom:1px solid #ddd;padding-bottom:5px;}
-h3{font-size:1em;margin:15px 0 10px;}
-label{display:block;margin:10px 0 5px;font-weight:bold;}
-input{width:100%;padding:8px;border:1px solid #ccc;font-size:1em;box-sizing:border-box;}
-button{padding:10px 15px;margin:5px 5px 5px 0;border:1px solid #333;background:#fff;font-size:0.95em;cursor:pointer;}
-button:active{background:#eee;}
-.row{display:flex;justify-content:space-between;padding:5px 0;}
-.badge{display:inline-block;padding:4px 8px;border:1px solid #666;font-size:0.85em;margin-top:5px;}
-.badge.active{background:#4CAF50;color:#fff;border-color:#4CAF50;}
-.badge.inactive{background:#333;color:#fff;border-color:#333;}
-.help{font-size:0.85em;color:#666;margin-top:3px;}
-.info{border:1px solid #ccc;padding:10px;margin-top:10px;}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;background:#f7f5f1;color:#1c1917;font-size:16px;line-height:1.4;-webkit-font-smoothing:antialiased}
+.app{max-width:480px;margin:0 auto;padding:16px}
+header{display:flex;align-items:center;gap:8px;padding:8px 0 14px}
+.back{color:#44403c;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;background:#fff;border:1px solid #e7e5e4;font-size:18px;line-height:1}
+.back:active{background:#f5f5f4}
+h1{font-size:20px;font-weight:600;margin:0;letter-spacing:-0.01em}
+h2{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#78716c;margin:0 0 10px}
+.card{background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:18px;margin-bottom:14px;scroll-margin-top:16px}
+.head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:8px}
+.head h2{margin:0}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:#f5f5f4;border:1px solid #e7e5e4;font-size:12px;color:#44403c}
+.dot{width:7px;height:7px;border-radius:50%;background:#a8a29e;flex-shrink:0;display:inline-block}
+.dot.ok{background:#65a30d}
+.dot.warn{background:#ea580c}
+.dot.bad{background:#dc2626}
+label{display:block;font-size:13px;color:#78716c;margin:10px 0 6px}
+label .hint{font-weight:normal;color:#a8a29e;margin-left:4px}
+.input{display:flex;align-items:stretch;background:#f5f5f4;border:1px solid #e7e5e4;border-radius:10px;overflow:hidden;transition:border-color .15s}
+.input:focus-within{border-color:#1c1917;background:#fff}
+.input input,.input textarea{flex:1;border:0;background:transparent;padding:10px 12px;font-size:15px;font-family:inherit;color:inherit;width:100%;min-width:0;resize:none}
+.input input:focus,.input textarea:focus{outline:0}
+.input .sfx{align-self:center;padding-right:12px;font-size:13px;color:#78716c}
+.actions{display:flex;gap:8px;margin-top:14px}
+.btn{flex:1;padding:12px;background:#1c1917;color:#fff;border:0;border-radius:10px;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer;transition:background .15s}
+.btn:active{background:#292524}
+.btn.secondary{background:#fff;color:#1c1917;border:1px solid #e7e5e4}
+.btn.secondary:active{background:#f5f5f4}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.msg{margin-top:10px;font-size:13px;text-align:center;color:#78716c;min-height:18px}
+.msg.ok{color:#65a30d}
+.msg.bad{color:#dc2626}
+.helptext{font-size:12px;color:#a8a29e;margin-top:6px}
 </style>
-<script>
-async function loadNotif(){
-try{
-const r=await fetch('/notifications');
-const d=await r.json();
-document.getElementById('phone').value=d.phoneNumber||'';
-const smsEl=document.getElementById('sms_status');
-smsEl.textContent=d.hasPhoneNumber?'SMS: Configured':'SMS: Not Configured';
-smsEl.className=d.hasPhoneNumber?'badge active':'badge inactive';
-document.getElementById('webhook').value=d.discordWebhook||'';
-const discEl=document.getElementById('disc_status');
-discEl.textContent=d.hasDiscordWebhook?'Discord: Configured':'Discord: Not Configured';
-discEl.className=d.hasDiscordWebhook?'badge active':'badge inactive';
-// MQTT
-document.getElementById('mqtt_host').value=d.mqttHost||'';
-document.getElementById('mqtt_port').value=d.mqttPort||1883;
-document.getElementById('mqtt_user').value=d.mqttUser||'';
-document.getElementById('mqtt_topic').value=d.mqttBaseTopic||'';
-const mqttEl=document.getElementById('mqtt_status');
-if(d.mqttConfigured&&d.mqttConnected){
-  mqttEl.textContent='MQTT: Connected';mqttEl.className='badge active';
-}else if(d.mqttConfigured){
-  mqttEl.textContent='MQTT: Configured (disconnected)';mqttEl.className='badge inactive';
-}else{
-  mqttEl.textContent='MQTT: Not Configured';mqttEl.className='badge inactive';
-}
-}catch(e){console.error(e);}
-}
-async function loadEmerg(){
-try{
-const r=await fetch('/emergency-settings');
-const d=await r.json();
-document.getElementById('tier1_lv').value=d.emergencyWaterLevel_cm.toFixed(1);
-document.getElementById('tier2_lv').value=d.urgentEmergencyWaterLevel_cm.toFixed(1);
-document.getElementById('freq').value=(d.emergencyNotifFreq_ms/1000).toFixed(0);
-document.getElementById('cur_tier1').textContent=d.emergencyWaterLevel_cm.toFixed(1)+' cm';
-document.getElementById('cur_tier2').textContent=d.urgentEmergencyWaterLevel_cm.toFixed(1)+' cm';
-document.getElementById('cur_freq').textContent=(d.emergencyNotifFreq_ms/1000)+' seconds';
-}catch(e){console.error(e);}
-}
-async function savePhone(){
-const phone=document.getElementById('phone').value;
-if(!phone){alert('Enter phone number');return;}
-try{
-const r=await fetch('/notifications/phone',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'phone='+encodeURIComponent(phone)});
-const d=await r.json();
-alert(d.success?'Saved!':d.error);
-if(d.success)loadNotif();
-}catch(e){alert('Error: '+e.message);}
-}
-async function saveWebhook(){
-const wh=document.getElementById('webhook').value;
-if(!wh){alert('Enter webhook URL');return;}
-try{
-const r=await fetch('/notifications/discord',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'webhook='+encodeURIComponent(wh)});
-const d=await r.json();
-alert(d.success?'Saved!':d.error);
-if(d.success)loadNotif();
-}catch(e){alert('Error: '+e.message);}
-}
-async function testSMS(){
-if(!confirm('Send test SMS?'))return;
-const btn=document.getElementById('test_sms');
-btn.disabled=true;
-btn.textContent='Sending...';
-try{
-const r=await fetch('/notifications/test/sms',{method:'POST'});
-const d=await r.json();
-alert(d.success?d.message:d.error);
-}catch(e){alert('Error: '+e.message);}finally{
-btn.disabled=false;
-btn.textContent='Test';
-}
-}
-async function testDisc(){
-if(!confirm('Send test Discord?'))return;
-const btn=document.getElementById('test_disc');
-btn.disabled=true;
-btn.textContent='Sending...';
-try{
-const r=await fetch('/notifications/test/discord',{method:'POST'});
-const d=await r.json();
-alert(d.success?d.message:d.error);
-}catch(e){alert('Error: '+e.message);}finally{
-btn.disabled=false;
-btn.textContent='Test';
-}
-}
-async function saveMqtt(){
-const host=document.getElementById('mqtt_host').value;
-if(!host){alert('Enter broker host');return;}
-const port=document.getElementById('mqtt_port').value||'1883';
-const user=document.getElementById('mqtt_user').value;
-const pass=document.getElementById('mqtt_pass').value;
-const topic=document.getElementById('mqtt_topic').value;
-try{
-const body='host='+encodeURIComponent(host)+'&port='+encodeURIComponent(port)
-  +'&user='+encodeURIComponent(user)+'&pass='+encodeURIComponent(pass)
-  +'&topic='+encodeURIComponent(topic);
-const r=await fetch('/notifications/mqtt',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
-const d=await r.json();
-alert(d.success?'Saved!':d.error);
-if(d.success)loadNotif();
-}catch(e){alert('Error: '+e.message);}
-}
-async function testMqtt(){
-if(!confirm('Publish test MQTT message?'))return;
-const btn=document.getElementById('test_mqtt');
-btn.disabled=true;
-btn.textContent='Sending...';
-try{
-const r=await fetch('/notifications/test/mqtt',{method:'POST'});
-const d=await r.json();
-alert(d.success?d.message:d.error);
-}catch(e){alert('Error: '+e.message);}finally{
-btn.disabled=false;
-btn.textContent='Test';
-}
-}
-async function saveTier1(){
-const lv=document.getElementById('tier1_lv').value;
-if(!lv){alert('Enter level');return;}
-try{
-const r=await fetch('/calibration/emergency-level',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'level_cm='+lv});
-const d=await r.json();
-alert(d.success?'Saved!':d.error);
-if(d.success)loadEmerg();
-}catch(e){alert('Error: '+e.message);}
-}
-async function saveTier2(){
-const lv=document.getElementById('tier2_lv').value;
-if(!lv){alert('Enter level');return;}
-try{
-const r=await fetch('/emergency/urgent-level',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'level_cm='+lv});
-const d=await r.json();
-alert(d.success?'Saved!':d.error);
-if(d.success)loadEmerg();
-}catch(e){alert('Error: '+e.message);}
-}
-async function saveFreq(){
-const f=document.getElementById('freq').value;
-if(!f){alert('Enter frequency');return;}
-try{
-const r=await fetch('/notifications/emergency-freq',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'freq_ms='+(f*1000)});
-const d=await r.json();
-alert(d.success?'Saved!':d.error);
-if(d.success)loadEmerg();
-}catch(e){alert('Error: '+e.message);}
-}
-window.onload=function(){loadNotif();loadEmerg();};
-</script>
 </head>
 <body>
-<a href="index.html" style="text-decoration:none;color:#000;">< Back</a>
-<h1>Notification Settings</h1>
+<div class="app">
+<header>
+<a href="settings.html" class="back" aria-label="Back">‹</a>
+<h1>Notifications</h1>
+</header>
 
-<div class="card">
-<h2>SMS Notifications (Twilio)</h2>
-<span id="sms_status" class="badge">Loading...</span>
-<label>Phone Number</label>
-<input type="tel" id="phone" placeholder="+1234567890">
-<div class="help">Include country code (e.g., +1 for US/Canada)</div>
-<button onclick="savePhone()">Save</button>
-<button id="test_sms" onclick="testSMS()">Test</button>
+<div class="card" id="sms">
+<div class="head"><h2>SMS · Twilio</h2><span class="pill" id="sms_pill"><span class="dot" id="sms_dot"></span><span id="sms_label">…</span></span></div>
+<label>Phone number</label>
+<div class="input"><input type="tel" id="phone" placeholder="+1234567890"></div>
+<div class="helptext">Include country code (e.g. +1 for US/CA)</div>
+<div class="actions">
+<button class="btn" onclick="savePhone()">Save</button>
+<button class="btn secondary" id="test_sms" onclick="testSMS()">Test</button>
+</div>
+<div class="msg" id="sms_msg"></div>
 </div>
 
-<div class="card">
-<h2>Discord Notifications</h2>
-<span id="disc_status" class="badge">Loading...</span>
+<div class="card" id="discord">
+<div class="head"><h2>Discord</h2><span class="pill" id="disc_pill"><span class="dot" id="disc_dot"></span><span id="disc_label">…</span></span></div>
 <label>Webhook URL</label>
-<input type="url" id="webhook" placeholder="https://discord.com/api/webhooks/...">
-<div class="help">From Discord: Server Settings → Integrations → Webhooks</div>
-<button onclick="saveWebhook()">Save</button>
-<button id="test_disc" onclick="testDisc()">Test</button>
+<div class="input"><input type="url" id="webhook" placeholder="https://discord.com/api/webhooks/…"></div>
+<div class="helptext">Server Settings → Integrations → Webhooks</div>
+<div class="actions">
+<button class="btn" onclick="saveWebhook()">Save</button>
+<button class="btn secondary" id="test_disc" onclick="testDisc()">Test</button>
+</div>
+<div class="msg" id="disc_msg"></div>
 </div>
 
-<div class="card">
-<h2>MQTT Broker (Logging &amp; Home Assistant)</h2>
-<span id="mqtt_status" class="badge">Loading...</span>
-<label>Broker Host</label>
-<input type="text" id="mqtt_host" placeholder="192.168.1.50">
+<div class="card" id="mqtt">
+<div class="head"><h2>MQTT broker</h2><span class="pill" id="mqtt_pill"><span class="dot" id="mqtt_dot"></span><span id="mqtt_label">…</span></span></div>
+<label>Broker host</label>
+<div class="input"><input type="text" id="mqtt_host" placeholder="192.168.1.50"></div>
 <label>Port</label>
-<input type="number" id="mqtt_port" placeholder="1883" min="1" max="65535">
-<label>Username <span style="font-weight:normal">(optional)</span></label>
-<input type="text" id="mqtt_user" placeholder="leave empty for anonymous">
-<label>Password <span style="font-weight:normal">(optional, write-only)</span></label>
-<input type="password" id="mqtt_pass" placeholder="leave empty for anonymous">
-<label>Base Topic <span style="font-weight:normal">(optional)</span></label>
-<input type="text" id="mqtt_topic" placeholder="boat/aabbcc (auto-derived from MAC if empty)">
-<div class="help">Logs publish to &lt;baseTopic&gt;/log. Availability: &lt;baseTopic&gt;/availability.</div>
-<button onclick="saveMqtt()">Save</button>
-<button id="test_mqtt" onclick="testMqtt()">Test</button>
+<div class="input"><input type="number" id="mqtt_port" placeholder="1883" min="1" max="65535"></div>
+<label>Username <span class="hint">optional</span></label>
+<div class="input"><input type="text" id="mqtt_user" placeholder="anonymous"></div>
+<label>Password <span class="hint">optional · write-only</span></label>
+<div class="input"><input type="password" id="mqtt_pass" placeholder="anonymous"></div>
+<label>Base topic <span class="hint">optional</span></label>
+<div class="input"><input type="text" id="mqtt_topic" placeholder="boat/aabbcc"></div>
+<div class="helptext">Logs publish to &lt;topic&gt;/log · availability at &lt;topic&gt;/availability</div>
+<div class="actions">
+<button class="btn" onclick="saveMqtt()">Save</button>
+<button class="btn secondary" id="test_mqtt" onclick="testMqtt()">Test</button>
+</div>
+<div class="msg" id="mqtt_msg"></div>
 </div>
 
-<div class="card">
-<h2>Emergency Settings</h2>
-
-<h3>Tier 1: Message Notifications</h3>
-<label>Emergency Water Level (cm)</label>
-<input type="number" id="tier1_lv" min="5" max="100" step="1">
-<div class="help">Triggers SMS/Discord when water reaches this level</div>
-<button onclick="saveTier1()">Save Tier 1 Level</button>
-
-<h3>Tier 2: Horn Alarm (Urgent)</h3>
-<label>Urgent Emergency Level (cm)</label>
-<input type="number" id="tier2_lv" min="5" max="100" step="1">
-<div class="help">Triggers horn alarm (must be higher than Tier 1)</div>
-<button onclick="saveTier2()">Save Tier 2 Level</button>
-
-<h3>Notification Frequency</h3>
-<label>How often to send (seconds)</label>
-<input type="number" id="freq" min="5" max="3600" step="1">
-<div class="help">Frequency while in emergency state</div>
-<button onclick="saveFreq()">Save Frequency</button>
-
-<div class="info">
-<strong>Current Settings:</strong><br>
-Tier 1: <span id="cur_tier1">--</span><br>
-Tier 2: <span id="cur_tier2">--</span><br>
-Frequency: <span id="cur_freq">--</span>
 </div>
-</div>
+
+<script>
+function el(id){return document.getElementById(id)}
+function flash(id,t,cls){var m=el(id);m.textContent=t;m.className='msg '+(cls||'');if(cls==='ok')setTimeout(function(){m.textContent='';m.className='msg'},2500)}
+function setPill(dot,lbl,state,text){el(dot).className='dot '+state;el(lbl).textContent=text}
+
+function loadNotif(){
+fetch('/notifications').then(r=>r.json()).then(d=>{
+el('phone').value=d.phoneNumber||'';
+setPill('sms_dot','sms_label',d.hasPhoneNumber?'ok':'',d.hasPhoneNumber?'configured':'off');
+el('webhook').value=d.discordWebhook||'';
+setPill('disc_dot','disc_label',d.hasDiscordWebhook?'ok':'',d.hasDiscordWebhook?'configured':'off');
+el('mqtt_host').value=d.mqttHost||'';
+el('mqtt_port').value=d.mqttPort||1883;
+el('mqtt_user').value=d.mqttUser||'';
+el('mqtt_topic').value=d.mqttBaseTopic||'';
+if(d.mqttConfigured&&d.mqttConnected)setPill('mqtt_dot','mqtt_label','ok','connected');
+else if(d.mqttConfigured)setPill('mqtt_dot','mqtt_label','warn','disconnected');
+else setPill('mqtt_dot','mqtt_label','','off');
+}).catch(e=>{})
+}
+function post(url,body,msgId,okText){
+return fetch(url,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body}).then(r=>r.json()).then(d=>{
+if(d.success){flash(msgId,okText||'✓ Saved','ok');return true}
+flash(msgId,'✗ '+(d.error||'failed'),'bad');return false
+}).catch(e=>{flash(msgId,'Error: '+e.message,'bad');return false})
+}
+function savePhone(){var v=el('phone').value;if(!v){flash('sms_msg','Enter phone number','bad');return}post('/notifications/phone','phone='+encodeURIComponent(v),'sms_msg').then(ok=>{if(ok)loadNotif()})}
+function saveWebhook(){var v=el('webhook').value;if(!v){flash('disc_msg','Enter webhook URL','bad');return}post('/notifications/discord','webhook='+encodeURIComponent(v),'disc_msg').then(ok=>{if(ok)loadNotif()})}
+function saveMqtt(){
+var h=el('mqtt_host').value;if(!h){flash('mqtt_msg','Enter broker host','bad');return}
+var body='host='+encodeURIComponent(h)
++'&port='+encodeURIComponent(el('mqtt_port').value||'1883')
++'&user='+encodeURIComponent(el('mqtt_user').value)
++'&pass='+encodeURIComponent(el('mqtt_pass').value)
++'&topic='+encodeURIComponent(el('mqtt_topic').value);
+post('/notifications/mqtt',body,'mqtt_msg').then(ok=>{if(ok){el('mqtt_pass').value='';loadNotif()}})
+}
+function testChan(url,btnId,msgId){
+var btn=el(btnId);btn.disabled=true;var old=btn.textContent;btn.textContent='…';
+flash(msgId,'Sending…','');
+fetch(url,{method:'POST'}).then(r=>r.json()).then(d=>{
+btn.disabled=false;btn.textContent=old;
+flash(msgId,d.success?'✓ '+(d.message||'sent'):'✗ '+(d.error||'failed'),d.success?'ok':'bad');
+}).catch(e=>{btn.disabled=false;btn.textContent=old;flash(msgId,'Error: '+e.message,'bad')})
+}
+function testSMS(){testChan('/notifications/test/sms','test_sms','sms_msg')}
+function testDisc(){testChan('/notifications/test/discord','test_disc','disc_msg')}
+function testMqtt(){testChan('/notifications/test/mqtt','test_mqtt','mqtt_msg')}
+
+loadNotif();
+if(location.hash){setTimeout(function(){var t=document.querySelector(location.hash);if(t)t.scrollIntoView({behavior:'smooth',block:'start'})},100)}
+</script>
 </body>
 </html>

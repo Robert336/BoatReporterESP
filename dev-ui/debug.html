@@ -1,139 +1,160 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<title>Debug & Calibration</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="UTF-8">
+<title>Calibration · Bilge Buddy</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-body{font-family:Arial,sans-serif;margin:0;padding:10px;max-width:800px;margin:0 auto;}
-h1{font-size:1.5em;margin:10px 0;}
-.card{border:1px solid #ccc;padding:15px;margin:10px 0;}
-.card h2{font-size:1.1em;margin:0 0 10px 0;border-bottom:1px solid #ddd;padding-bottom:5px;}
-h3{font-size:1em;margin:15px 0 10px;}
-table{width:100%;border-collapse:collapse;}
-td{padding:8px;border-bottom:1px solid #eee;}
-tr:last-child td{border-bottom:none;}
-td:first-child{font-weight:bold;width:50%;}
-.section{border:1px solid #ddd;padding:15px;margin:10px 0;}
-label{display:block;margin:10px 0 5px;font-weight:bold;}
-input{width:100%;padding:8px;border:1px solid #ccc;font-size:1em;box-sizing:border-box;}
-button{padding:10px 15px;margin:5px 5px 5px 0;border:1px solid #333;background:#fff;font-size:0.95em;cursor:pointer;}
-button:active{background:#eee;}
-.current{border:1px solid #ccc;padding:10px;margin:10px 0;text-align:center;}
-.info{border:1px solid #ccc;padding:10px;margin-top:10px;}
-.help{font-size:0.85em;color:#666;margin-top:3px;}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;background:#f7f5f1;color:#1c1917;font-size:16px;line-height:1.4;-webkit-font-smoothing:antialiased}
+.app{max-width:520px;margin:0 auto;padding:16px}
+header{display:flex;align-items:center;gap:8px;padding:8px 0 14px}
+.back{color:#44403c;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;background:#fff;border:1px solid #e7e5e4;font-size:18px;line-height:1}
+.back:active{background:#f5f5f4}
+h1{font-size:20px;font-weight:600;margin:0;letter-spacing:-0.01em}
+h2{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#78716c;margin:0 0 12px}
+.card{background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:18px;margin-bottom:14px;scroll-margin-top:16px}
+.head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:8px}
+.head h2{margin:0}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:#f5f5f4;border:1px solid #e7e5e4;font-size:12px;color:#44403c}
+.dot{width:7px;height:7px;border-radius:50%;background:#a8a29e;flex-shrink:0;display:inline-block}
+.dot.ok{background:#65a30d}
+.dot.warn{background:#ea580c}
+.dot.bad{background:#dc2626}
+.live{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:6px}
+.stat{padding:10px;background:#f5f5f4;border-radius:10px;text-align:center}
+.stat .k{font-size:11px;color:#78716c;text-transform:uppercase;letter-spacing:.05em}
+.stat .v{font-size:17px;font-weight:600;margin-top:2px;font-variant-numeric:tabular-nums}
+.refresh{font-size:11px;color:#a8a29e;text-align:center;margin-top:6px}
+label{display:block;font-size:13px;color:#78716c;margin:10px 0 6px}
+label .hint{font-weight:normal;color:#a8a29e;margin-left:4px;font-size:12px}
+.input{display:flex;align-items:stretch;background:#f5f5f4;border:1px solid #e7e5e4;border-radius:10px;overflow:hidden;transition:border-color .15s}
+.input:focus-within{border-color:#1c1917;background:#fff}
+.input input{flex:1;border:0;background:transparent;padding:10px 12px;font-size:15px;font-family:inherit;color:inherit;width:100%;min-width:0;font-variant-numeric:tabular-nums}
+.input input:focus{outline:0}
+.input .sfx{align-self:center;padding-right:12px;font-size:13px;color:#78716c}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.btn{flex:1;padding:12px;background:#1c1917;color:#fff;border:0;border-radius:10px;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer;margin-top:14px;transition:background .15s}
+.btn:active{background:#292524}
+.btn.secondary{background:#fff;color:#1c1917;border:1px solid #e7e5e4}
+.btn.secondary:active{background:#f5f5f4}
+.msg{margin-top:10px;font-size:13px;text-align:center;color:#78716c;min-height:18px}
+.msg.ok{color:#65a30d}
+.msg.bad{color:#dc2626}
+.cal-summary{padding:10px 12px;background:#f5f5f4;border-radius:10px;font-size:13px;color:#44403c;font-variant-numeric:tabular-nums;margin-top:4px}
+.cal-summary b{color:#1c1917}
+.api{display:flex;flex-wrap:wrap;gap:8px}
+.api a{color:#44403c;text-decoration:none;padding:8px 12px;background:#f5f5f4;border:1px solid #e7e5e4;border-radius:8px;font-size:13px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.api a:active{background:#e7e5e4}
+.helptext{font-size:12px;color:#a8a29e;margin-top:6px;line-height:1.5}
 </style>
-<script>
-let autoRefresh=true;
-async function refreshReading(){
-try{
-const r=await fetch('/read');
-const d=await r.json();
-if(d.sensorAvailable){
-document.getElementById('status').textContent=d.valid?'Valid':'Invalid';
-document.getElementById('mv').textContent=d.millivolts.toFixed(2)+' mV';
-document.getElementById('level').textContent=d.valid?d.level_cm.toFixed(2)+' cm':'N/A';
-document.getElementById('cur_zero').textContent=Math.round(d.millivolts)+' mV';
-document.getElementById('cur_p2').textContent=Math.round(d.millivolts)+' mV';
-document.getElementById('zero_mv').value=Math.round(d.millivolts);
-document.getElementById('p2_mv').value=Math.round(d.millivolts);
-}
-}catch(e){console.error(e);}
-}
-async function loadCal(){
-try{
-const r=await fetch('/calibration');
-const d=await r.json();
-document.getElementById('cal_zero').textContent=d.zeroPoint_mv+' mV = 0 cm';
-document.getElementById('cal_p2').textContent=d.hasTwoPointCalibration?(d.secondPoint_mv+' mV = '+d.secondPoint_cm.toFixed(2)+' cm'):'Not set';
-document.getElementById('cal_status').textContent=d.hasTwoPointCalibration?'2-point active':'Single-point';
-if(d.hasTwoPointCalibration){
-document.getElementById('p2_lv').value=d.secondPoint_cm.toFixed(1);
-}
-}catch(e){console.error(e);}
-}
-async function calZero(){
-const mv=document.getElementById('zero_mv').value;
-const lv=document.getElementById('zero_lv').value||0;
-try{
-const r=await fetch('/calibrate/zero',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'millivolts='+mv+'&level_cm='+lv});
-const d=await r.json();
-alert(d.success?'Zero calibrated!':d.error);
-if(d.success)loadCal();
-}catch(e){alert('Error: '+e.message);}
-}
-async function calP2(){
-const mv=document.getElementById('p2_mv').value;
-const lv=document.getElementById('p2_lv').value;
-if(!lv){alert('Enter water level');return;}
-try{
-const r=await fetch('/calibrate/point2',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'millivolts='+mv+'&level_cm='+lv});
-const d=await r.json();
-alert(d.success?'Point 2 calibrated!':d.error);
-if(d.success)loadCal();
-}catch(e){alert('Error: '+e.message);}
-}
-window.onload=function(){
-refreshReading();
-loadCal();
-setInterval(()=>{if(autoRefresh)refreshReading();},2000);
-};
-</script>
 </head>
 <body>
-<a href="index.html" style="text-decoration:none;color:#000;">< Back</a>
-<h1>Debug & Calibration</h1>
+<div class="app">
+<header>
+<a href="settings.html" class="back" aria-label="Back">‹</a>
+<h1>Calibration</h1>
+</header>
 
 <div class="card">
-<h2>Current Sensor Reading</h2>
-<table>
-<tr><td>Status</td><td id="status">Loading...</td></tr>
-<tr><td>Millivolts (Raw ADC)</td><td id="mv">Loading...</td></tr>
-<tr><td>Water Level</td><td id="level">Loading...</td></tr>
-</table>
-<p style="margin:10px 0 0;font-size:0.9em;color:#666;">Auto-refresh: 2s</p>
+<div class="head"><h2>Live sensor reading</h2><span class="pill"><span class="dot" id="live_dot"></span><span id="live_state">…</span></span></div>
+<div class="live">
+<div class="stat"><div class="k">Raw</div><div class="v" id="r_mv">— mV</div></div>
+<div class="stat"><div class="k">Level</div><div class="v" id="r_lv">— cm</div></div>
+<div class="stat"><div class="k">Cal mode</div><div class="v" id="r_cal">—</div></div>
 </div>
-
-<div class="card">
-<h2>Sensor Calibration</h2>
-
-<div class="section">
-<h3>Zero Point Calibration</h3>
-<div class="current">Current: <strong id="cur_zero">--</strong></div>
-<label>Zero Point Millivolts</label>
-<input type="number" id="zero_mv" min="0" max="3300">
-<div class="help">Sensor reading at zero (or reference point)</div>
-
-<label>Reference Level (cm) - optional</label>
-<input type="number" id="zero_lv" value="0" step="0.1" min="0">
-<div class="help">Leave as 0 for zero point, or enter reference level</div>
-<button onclick="calZero()">Set Zero Point</button>
-</div>
-
-<div class="section">
-<h3>Second Point Calibration (2-Point)</h3>
-<div class="current">Current: <strong id="cur_p2">--</strong></div>
-<label>Second Point Millivolts</label>
-<input type="number" id="p2_mv" min="0" max="3300">
-<div class="help">Sensor reading at known water level</div>
-
-<label>Water Level at Second Point (cm)</label>
-<input type="number" id="p2_lv" step="0.1" min="0" required>
-<div class="help">Actual water level in cm at this reading</div>
-<button onclick="calP2()">Set Second Point</button>
-</div>
-
-<div class="info">
-<strong>Current Calibration:</strong><br>
-Zero: <span id="cal_zero">--</span><br>
-Point 2: <span id="cal_p2">--</span><br>
-<em id="cal_status">--</em>
-</div>
+<div class="refresh">refreshing every 2 s</div>
 </div>
 
 <div class="card">
-<h2>API Endpoints</h2>
-<a href="/read" target="_blank" style="display:inline-block;padding:8px;margin:5px;border:1px solid #333;text-decoration:none;color:#000;">/read</a>
-<a href="/calibration" target="_blank" style="display:inline-block;padding:8px;margin:5px;border:1px solid #333;text-decoration:none;color:#000;">/calibration</a>
+<h2>Zero point</h2>
+<div class="cal-summary">Current: <b id="cur_zero">—</b></div>
+<label>Reading at reference <span class="hint">millivolts</span></label>
+<div class="input"><input type="number" id="zero_mv" min="0" max="3300"><span class="sfx">mV</span></div>
+<div class="row2">
+<div>
+<label>Reference level <span class="hint">optional</span></label>
+<div class="input"><input type="number" id="zero_lv" value="0" step="0.1" min="0"><span class="sfx">cm</span></div>
 </div>
+<div></div>
+</div>
+<button class="btn" onclick="calZero()">Set zero point</button>
+<div class="msg" id="zero_msg"></div>
+<div class="helptext">Leave reference at 0 unless calibrating against a known offset.</div>
+</div>
+
+<div class="card">
+<h2>Second point · 2-point calibration</h2>
+<div class="cal-summary">Current: <b id="cur_p2">—</b></div>
+<label>Reading at known level <span class="hint">millivolts</span></label>
+<div class="input"><input type="number" id="p2_mv" min="0" max="3300"><span class="sfx">mV</span></div>
+<label>Known water level</label>
+<div class="input"><input type="number" id="p2_lv" step="0.1" min="0"><span class="sfx">cm</span></div>
+<button class="btn" onclick="calP2()">Set second point</button>
+<div class="msg" id="p2_msg"></div>
+<div class="helptext">Take a measurement at a known water level (e.g. fill to a mark) and enter both values.</div>
+</div>
+
+<div class="card" id="api">
+<h2>Debug · API endpoints</h2>
+<div class="api">
+<a href="/read" target="_blank">/read</a>
+<a href="/calibration" target="_blank">/calibration</a>
+<a href="/status" target="_blank">/status</a>
+<a href="/notifications" target="_blank">/notifications</a>
+<a href="/emergency-settings" target="_blank">/emergency-settings</a>
+</div>
+<div class="helptext">Open in a new tab to view raw JSON.</div>
+</div>
+</div>
+
+<script>
+function el(id){return document.getElementById(id)}
+function flash(id,t,cls){var m=el(id);m.textContent=t;m.className='msg '+(cls||'');if(cls==='ok')setTimeout(function(){m.textContent='';m.className='msg'},2500)}
+var autoFill=true;
+function refresh(){
+fetch('/read').then(r=>r.json()).then(d=>{
+if(!d.sensorAvailable){el('live_dot').className='dot bad';el('live_state').textContent='offline';el('r_mv').textContent='—';el('r_lv').textContent='—';return}
+el('live_dot').className=d.valid?'dot ok':'dot warn';
+el('live_state').textContent=d.valid?'reading':'invalid';
+el('r_mv').textContent=d.millivolts.toFixed(0)+' mV';
+el('r_lv').textContent=d.valid?d.level_cm.toFixed(2)+' cm':'—';
+if(autoFill){el('zero_mv').value=Math.round(d.millivolts);el('p2_mv').value=Math.round(d.millivolts)}
+}).catch(e=>{})
+}
+function loadCal(){
+fetch('/calibration').then(r=>r.json()).then(d=>{
+el('r_cal').textContent=d.hasTwoPointCalibration?'2-pt':'1-pt';
+el('cur_zero').textContent=d.zeroPoint_mv+' mV = 0 cm';
+el('cur_p2').textContent=d.hasTwoPointCalibration?d.secondPoint_mv+' mV = '+d.secondPoint_cm.toFixed(2)+' cm':'not set';
+if(d.hasTwoPointCalibration)el('p2_lv').value=d.secondPoint_cm.toFixed(1);
+}).catch(e=>{})
+}
+function calZero(){
+autoFill=false;
+var mv=el('zero_mv').value,lv=el('zero_lv').value||0;
+if(mv===''){flash('zero_msg','Enter millivolts','bad');autoFill=true;return}
+fetch('/calibrate/zero',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'millivolts='+mv+'&level_cm='+lv})
+.then(r=>r.json()).then(d=>{
+autoFill=true;
+if(d.success){flash('zero_msg','✓ Zero calibrated','ok');loadCal()}
+else flash('zero_msg','✗ '+(d.error||'failed'),'bad');
+}).catch(e=>{autoFill=true;flash('zero_msg','Error: '+e.message,'bad')})
+}
+function calP2(){
+autoFill=false;
+var mv=el('p2_mv').value,lv=el('p2_lv').value;
+if(mv===''||lv===''){flash('p2_msg','Enter both values','bad');autoFill=true;return}
+fetch('/calibrate/point2',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'millivolts='+mv+'&level_cm='+lv})
+.then(r=>r.json()).then(d=>{
+autoFill=true;
+if(d.success){flash('p2_msg','✓ Second point calibrated','ok');loadCal()}
+else flash('p2_msg','✗ '+(d.error||'failed'),'bad');
+}).catch(e=>{autoFill=true;flash('p2_msg','Error: '+e.message,'bad')})
+}
+['zero_mv','zero_lv','p2_mv','p2_lv'].forEach(function(id){el(id).addEventListener('focus',function(){autoFill=false});el(id).addEventListener('blur',function(){setTimeout(function(){autoFill=true},2000)})});
+refresh();loadCal();setInterval(refresh,2000);
+if(location.hash==='#api'){setTimeout(function(){var t=document.getElementById('api');if(t)t.scrollIntoView({behavior:'smooth',block:'start'})},100)}
+</script>
 </body>
 </html>

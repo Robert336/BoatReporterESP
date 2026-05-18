@@ -7,6 +7,7 @@ pages = [
     ("wifi_config.html",   "WIFI_CONFIG_HTML"),
     ("notifications.html", "NOTIFICATIONS_HTML"),
     ("ota.html",           "OTA_HTML"),
+    ("settings.html",      "SETTINGS_HTML"),
 ]
 
 html_dir = os.path.join(env["PROJECT_DIR"], "src", "html")
