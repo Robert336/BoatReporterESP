@@ -106,9 +106,8 @@ private:
     void handleTestMqtt();                  // POST: Send a test MQTT message
     
     // === Debug and Monitoring Handlers ===
-    void handleDebug();                     // Serve debug page with detailed sensor information
+    void handleDebug();                     // Serve debug page (gzipped)
     void handleGetReading();                // Return current sensor reading as JSON
-    String getDebugPage();                  // Generate debug page HTML (dynamic — embeds live sensor data)
     
     // === OTA Update Handlers ===
     void handleOTAPage();                   // Serve OTA settings page (gzipped)
