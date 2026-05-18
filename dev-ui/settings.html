@@ -106,16 +106,19 @@ label{display:block;font-size:13px;color:#78716c;margin:0 0 6px}
 <script>
 function setText(id,t){var el=document.getElementById(id);if(el)el.textContent=t}
 function setClass(id,c){var el=document.getElementById(id);if(el)el.className=c}
-fetch('/notifications').then(r=>r.json()).then(d=>{
-setText('v_sms',d.hasPhoneNumber?'On':'Off');
-setText('v_disc',d.hasDiscordWebhook?'On':'Off');
-if(d.mqttConfigured&&d.mqttConnected)setText('v_mqtt','Connected');
-else if(d.mqttConfigured)setText('v_mqtt','Disconnected');
+fetch('/settings/init').then(r=>r.json()).then(d=>{
+var n=d.notifications||{};
+setText('v_sms',n.hasPhoneNumber?'On':'Off');
+setText('v_disc',n.hasDiscordWebhook?'On':'Off');
+if(n.mqttConfigured&&n.mqttConnected)setText('v_mqtt','Connected');
+else if(n.mqttConfigured)setText('v_mqtt','Disconnected');
 else setText('v_mqtt','Off');
-}).catch(e=>{});
-fetch('/emergency-settings').then(r=>r.json()).then(d=>{
-var el=document.getElementById('freq_v');if(el)el.value=Math.round(d.emergencyNotifFreq_ms/1000);
-}).catch(e=>{});
+var fe=document.getElementById('freq_v');if(fe&&d.emergencyNotifFreq_ms!=null)fe.value=Math.round(d.emergencyNotifFreq_ms/1000);
+var w=d.wifi||{};
+if(w.connected){setText('v_wifi',w.ssid||'Connected');setClass('v_wifi_dot','dot ok')}
+else{setText('v_wifi','Not connected');setClass('v_wifi_dot','dot bad')}
+setText('v_cal',d.hasTwoPointCalibration?'2-point':'Single-point');
+}).catch(e=>{setText('v_wifi','offline')});
 function validateFreq(){
 var v=parseFloat(document.getElementById('freq_v').value);
 var s=document.getElementById('freq_v').value.trim();
@@ -144,13 +147,6 @@ if(d.success){m.textContent='✓ Saved';m.className='msg ok';setTimeout(function
 else{m.textContent='✗ '+(d.error||'failed');m.className='msg bad'}
 }).catch(e=>{btn.disabled=false;var m=document.getElementById('freq_msg');m.textContent='Error: '+e.message;m.className='msg bad'});
 }
-fetch('/status').then(r=>r.json()).then(d=>{
-if(d.connected){setText('v_wifi',d.ssid||'Connected');setClass('v_wifi_dot','dot ok')}
-else{setText('v_wifi','Not connected');setClass('v_wifi_dot','dot bad')}
-}).catch(e=>{setText('v_wifi','offline')});
-fetch('/calibration').then(r=>r.json()).then(d=>{
-setText('v_cal',d.hasTwoPointCalibration?'2-point':'Single-point');
-}).catch(e=>{});
 </script>
 </body>
 </html>

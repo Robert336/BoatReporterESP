@@ -113,24 +113,23 @@ label .hint{font-weight:normal;color:#a8a29e;margin-left:4px;font-size:12px}
 function el(id){return document.getElementById(id)}
 function flash(id,t,cls){var m=el(id);m.textContent=t;m.className='msg '+(cls||'');if(cls==='ok')setTimeout(function(){m.textContent='';m.className='msg'},2500)}
 var autoFill=true;
-function refresh(){
-fetch('/read').then(r=>r.json()).then(d=>{
+function applyReading(d){
 if(!d.sensorAvailable){el('live_dot').className='dot bad';el('live_state').textContent='offline';el('r_mv').textContent='—';el('r_lv').textContent='—';return}
 el('live_dot').className=d.valid?'dot ok':'dot warn';
 el('live_state').textContent=d.valid?'reading':'invalid';
 el('r_mv').textContent=d.millivolts.toFixed(0)+' mV';
 el('r_lv').textContent=d.valid?d.level_cm.toFixed(2)+' cm':'—';
 if(autoFill){el('zero_mv').value=Math.round(d.millivolts);el('p2_mv').value=Math.round(d.millivolts)}
-}).catch(e=>{})
 }
-function loadCal(){
-fetch('/calibration').then(r=>r.json()).then(d=>{
+function applyCal(d){
+if(!d)return;
 el('r_cal').textContent=d.hasTwoPointCalibration?'2-pt':'1-pt';
 el('cur_zero').textContent=d.zeroPoint_mv+' mV = 0 cm';
 el('cur_p2').textContent=d.hasTwoPointCalibration?d.secondPoint_mv+' mV = '+d.secondPoint_cm.toFixed(2)+' cm':'not set';
 if(d.hasTwoPointCalibration)el('p2_lv').value=d.secondPoint_cm.toFixed(1);
-}).catch(e=>{})
 }
+function refresh(){fetch('/read').then(r=>r.json()).then(applyReading).catch(e=>{})}
+function loadCal(){fetch('/calibration').then(r=>r.json()).then(applyCal).catch(e=>{})}
 function calZero(){
 autoFill=false;
 var mv=el('zero_mv').value,lv=el('zero_lv').value||0;
@@ -154,7 +153,8 @@ else flash('p2_msg','✗ '+(d.error||'failed'),'bad');
 }).catch(e=>{autoFill=true;flash('p2_msg','Error: '+e.message,'bad')})
 }
 ['zero_mv','zero_lv','p2_mv','p2_lv'].forEach(function(id){el(id).addEventListener('focus',function(){autoFill=false});el(id).addEventListener('blur',function(){setTimeout(function(){autoFill=true},2000)})});
-refresh();loadCal();setInterval(refresh,2000);
+fetch('/debug/init').then(r=>r.json()).then(d=>{applyReading(d.reading||{});applyCal(d.calibration)}).catch(e=>{});
+setInterval(refresh,2000);
 if(location.hash==='#api'){setTimeout(function(){var t=document.getElementById('api');if(t)t.scrollIntoView({behavior:'smooth',block:'start'})},100)}
 </script>
 </body>
