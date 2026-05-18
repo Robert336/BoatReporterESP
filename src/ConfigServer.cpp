@@ -78,6 +78,9 @@ void ConfigServer::startSetupMode() {
     // Route: GET /debug → serve debug page with detailed sensor info
     server->on("/debug", HTTP_GET, [this]() { handleDebug(); });
     
+    // Route: GET /settings → serve settings hub page
+    server->on("/settings", HTTP_GET, [this]() { handleSettings(); });
+
     // Route: GET /wifi-config → serve WiFi configuration page
     server->on("/wifi-config", HTTP_GET, [this]() { handleWiFiConfig(); });
 
@@ -247,6 +250,12 @@ void ConfigServer::handleWiFiConfig() {
 void ConfigServer::handleNotificationsPage() {
     server->sendHeader("Content-Encoding", "gzip");
     server->send_P(200, "text/html", (const char*)NOTIFICATIONS_HTML_GZ, NOTIFICATIONS_HTML_GZ_LEN);
+    serverStartTime = millis();
+}
+
+void ConfigServer::handleSettings() {
+    server->sendHeader("Content-Encoding", "gzip");
+    server->send_P(200, "text/html", (const char*)SETTINGS_HTML_GZ, SETTINGS_HTML_GZ_LEN);
     serverStartTime = millis();
 }
 

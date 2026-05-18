@@ -1,91 +1,271 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<title>Boat Monitor</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="UTF-8">
+<title>Bilge Buddy</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-body{font-family:Arial,sans-serif;margin:0;padding:10px;max-width:600px;margin:0 auto;}
-h1{text-align:center;font-size:1.5em;margin:10px 0;}
-.card{border:1px solid #ccc;padding:15px;margin:10px 0;}
-.card h2{font-size:1.1em;margin:0 0 10px 0;border-bottom:1px solid #ddd;padding-bottom:5px;}
-.row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #eee;}
-.row:last-child{border-bottom:none;}
-.label{font-weight:bold;}
-.level{font-size:2em;text-align:center;margin:10px 0;}
-.thresh{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;}
-.thresh div{border:1px solid #ccc;padding:10px;text-align:center;}
-.thresh .label{font-size:0.8em;display:block;margin-bottom:5px;}
-button{width:100%;padding:12px;margin:5px 0;border:1px solid #333;background:#fff;font-size:1em;cursor:pointer;}
-button:active{background:#eee;}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;background:#f7f5f1;color:#1c1917;font-size:16px;line-height:1.4;-webkit-font-smoothing:antialiased}
+.app{max-width:480px;margin:0 auto;padding:16px}
+header{display:flex;align-items:center;justify-content:space-between;padding:8px 4px 18px}
+h1{font-size:20px;font-weight:600;margin:0;letter-spacing:-0.01em}
+.gear{color:inherit;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;background:#fff;border:1px solid #e7e5e4;font-size:20px}
+.gear:active{background:#f5f5f4}
+.card{background:#fff;border:1px solid #e7e5e4;border-radius:16px;padding:20px;margin-bottom:14px}
+.statusrow{display:flex;gap:8px;flex-wrap:wrap;padding:10px 14px}
+.pill{display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;background:#fff;border:1px solid #e7e5e4;font-size:13px;color:#44403c}
+.dot{width:8px;height:8px;border-radius:50%;background:#a8a29e;flex-shrink:0}
+.dot.ok{background:#65a30d}
+.dot.warn{background:#ea580c}
+.dot.bad{background:#dc2626}
+.gauge-card{text-align:center;padding:18px 16px 22px}
+.gauge-card svg{width:100%;max-width:320px;height:auto;display:block;margin:0 auto}
+.readout{margin-top:-22px}
+.num{font-size:56px;font-weight:600;letter-spacing:-0.04em;line-height:1;font-variant-numeric:tabular-nums}
+.unit{font-size:20px;color:#78716c;margin-left:4px}
+.status{margin-top:6px;font-size:15px;color:#65a30d;font-weight:500}
+.status.warn{color:#ea580c}
+.status.bad{color:#dc2626}
+.status.mute{color:#78716c}
+h2{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#78716c;margin:0 0 14px}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+.field label{display:block;font-size:13px;color:#78716c;margin-bottom:6px}
+.input{display:flex;align-items:stretch;background:#f5f5f4;border:1px solid #e7e5e4;border-radius:10px;overflow:hidden;transition:border-color .15s}
+.input:focus-within{border-color:#1c1917;background:#fff}
+.input input{flex:1;border:0;background:transparent;padding:10px 12px;font-size:18px;font-weight:600;font-family:inherit;color:inherit;width:100%;min-width:0}
+.input input:focus{outline:0}
+.input .sfx{align-self:center;padding-right:12px;font-size:14px;color:#78716c}
+.btn{display:block;width:100%;padding:13px;background:#1c1917;color:#fff;border:0;border-radius:12px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;transition:background .15s}
+.btn:active{background:#292524}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.msg{margin-top:10px;font-size:13px;text-align:center;color:#78716c;min-height:18px}
+.msg.ok{color:#65a30d}
+.msg.bad{color:#dc2626}
+.handle{cursor:grab;touch-action:none}
+.handle.dragging,.handle:active{cursor:grabbing}
+.handle .dot{transition:r .12s ease,stroke-width .12s ease}
+.handle.dragging .dot{stroke-width:3}
+.input.error{border-color:#dc2626;background:#fff8f8}
+.field-msg{font-size:12px;color:#dc2626;margin-top:4px;min-height:14px;line-height:1.3}
 </style>
-<script>
-function load(){
-fetch('/status').then(r=>r.json()).then(d=>{
-document.getElementById('wifi_status').textContent=(d.connected?'● '+d.ssid:'○ Disconnected');
-document.getElementById('wifi_ip').textContent=d.ip||'N/A';
-document.getElementById('wifi_rssi').textContent=(d.rssi||'N/A')+' dBm';
-}).catch(e=>console.error(e));
-fetch('/read').then(r=>r.json()).then(d=>{
-document.getElementById('water_level').textContent=(d.sensorAvailable&&d.valid)?d.level_cm.toFixed(1):'--';
-}).catch(e=>console.error(e));
-fetch('/emergency-settings').then(r=>r.json()).then(d=>{
-document.getElementById('tier1').value=d.emergencyWaterLevel_cm.toFixed(1);
-document.getElementById('tier2').value=d.urgentEmergencyWaterLevel_cm.toFixed(1);
-}).catch(e=>console.error(e));
-}
-
-window.onload=load;
-function updateThresholds(){
-var tier1=parseFloat(document.getElementById('tier1').value);
-var tier2=parseFloat(document.getElementById('tier2').value);
-var status=document.getElementById('threshold-status');
-if(isNaN(tier1)||isNaN(tier2)){status.textContent='⚠️ Please enter valid numbers';status.style.color='red';return;}
-if(tier1>=tier2){status.textContent='⚠️ Tier 1 must be less than Tier 2';status.style.color='red';return;}
-if(tier1<5||tier1>100||tier2<5||tier2>100){status.textContent='⚠️ Values must be between 5 and 100 cm';status.style.color='red';return;}
-status.textContent='⏳ Updating...';status.style.color='#666';
-Promise.all([
-fetch('/calibration/emergency-level',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'level_cm='+tier1}),
-fetch('/emergency/urgent-level',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'level_cm='+tier2})
-]).then(responses=>Promise.all(responses.map(r=>r.json()))).then(results=>{
-if(results[0].success&&results[1].success){
-status.textContent='✓ Thresholds updated successfully';status.style.color='green';
-setTimeout(()=>{status.textContent='';},3000);
-}else{
-status.textContent='⚠️ Update failed: '+(results[0].error||results[1].error||'Unknown error');status.style.color='red';
-}
-}).catch(e=>{status.textContent='⚠️ Error: '+e.message;status.style.color='red';console.error(e);});
-}
-</script>
 </head>
 <body>
+<div class="app">
+<header>
 <h1>Bilge Buddy</h1>
+<a href="settings.html" class="gear" aria-label="Settings">⚙</a>
+</header>
 
-<div class="card">
-<h2>WiFi Connection</h2>
-<div class="row"><span class="label">Status</span><span id="wifi_status">Loading...</span></div>
-<div class="row"><span class="label">IP Address</span><span id="wifi_ip">Loading...</span></div>
-<div class="row"><span class="label">Signal</span><span id="wifi_rssi">Loading...</span></div>
+<div class="card statusrow">
+<span class="pill"><span class="dot" id="wifi_dot"></span><span id="wifi_label">…</span></span>
+<span class="pill" id="sensor_pill"><span class="dot ok" id="sensor_dot"></span><span id="sensor_label">sensor</span></span>
+</div>
+
+<div class="card gauge-card">
+<svg viewBox="0 0 320 200" aria-hidden="true">
+<path d="M40 170 A 120 120 0 0 1 280 170" fill="none" stroke="#f5f5f4" stroke-width="14" stroke-linecap="round"/>
+<path id="arc_safe" d="" fill="none" stroke="#65a30d" stroke-width="14" stroke-linecap="round"/>
+<path id="arc_warn" d="" fill="none" stroke="#ea580c" stroke-width="14" stroke-linecap="round"/>
+<path id="arc_bad" d="" fill="none" stroke="#dc2626" stroke-width="14" stroke-linecap="round"/>
+<g class="handle" id="handle_t1">
+<circle id="t1_hit" cx="0" cy="0" r="30" fill="transparent"/>
+<circle id="t1_dot" class="dot" cx="0" cy="0" r="14" fill="#fff" stroke="#1c1917" stroke-width="3" style="fill: rgb(234, 88, 12);"/>
+</g>
+<g class="handle" id="handle_t2">
+<circle id="t2_hit" cx="0" cy="0" r="30" fill="transparent"/>
+<circle id="t2_dot" class="dot" cx="0" cy="0" r="14" fill="#fff" stroke="#1c1917" stroke-width="3" style="fill: rgb(220, 38, 38);"/>
+</g>
+<text id="t1_lbl" font-size="11" fill="#44403c" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif">T1</text>
+<text id="t2_lbl" font-size="11" fill="#44403c" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif">T2</text>
+<text x="38" y="192" font-size="11" fill="#a8a29e" font-family="-apple-system,Helvetica,Arial,sans-serif">0</text>
+<text x="270" y="192" font-size="11" fill="#a8a29e" font-family="-apple-system,Helvetica,Arial,sans-serif">100</text>
+<g id="dirty_pill" style="display:none" pointer-events="none">
+<rect x="100" y="115" width="120" height="22" rx="11" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+<text x="160" y="130" font-size="11" fill="#92400e" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif">unsaved changes</text>
+</g>
+<line id="needle" x1="160" y1="170" x2="160" y2="60" stroke="#1c1917" stroke-width="4" stroke-linecap="round"/>
+<circle cx="160" cy="170" r="7" fill="#1c1917"/>
+<circle cx="160" cy="170" r="3" fill="#fff"/>
+</svg>
+<div class="readout">
+<span class="num" id="water_level">--</span><span class="unit">cm</span>
+<div class="status" id="status_text">—</div>
+</div>
 </div>
 
 <div class="card">
-<h2>Current Water Level</h2>
-<div class="level"><span id="water_level">--</span> cm</div>
+<h2>Emergency thresholds</h2>
+<div class="fields">
+<div class="field">
+<label>Tier 1 · SMS</label>
+<div class="input"><input type="number" id="tier1" step="0.1" min="5" max="100" inputmode="decimal"><span class="sfx">cm</span></div>
+<div class="field-msg" id="t1_msg"></div>
+</div>
+<div class="field">
+<label>Tier 2 · Horn</label>
+<div class="input"><input type="number" id="tier2" step="0.1" min="5" max="100" inputmode="decimal"><span class="sfx">cm</span></div>
+<div class="field-msg" id="t2_msg"></div>
+</div>
+</div>
+<button class="btn" id="upd" onclick="updateThresholds()">Update thresholds</button>
+<div class="msg" id="msg"></div>
+</div>
 </div>
 
-<div class="card">
-<h2>Emergency Thresholds</h2>
-<div class="thresh">
-<div><span class="label">TIER 1</span><input type="number" id="tier1" step="0.1" min="5" max="100" style="width:100%;padding:5px;margin-top:5px;box-sizing:border-box;"> cm</div>
-<div><span class="label">TIER 2</span><input type="number" id="tier2" step="0.1" min="5" max="100" style="width:100%;padding:5px;margin-top:5px;box-sizing:border-box;"> cm</div>
-</div>
-<button onclick="updateThresholds()" style="margin-top:10px;">Update Thresholds</button>
-<div id="threshold-status" style="text-align:center;margin-top:10px;font-size:0.9em;"></div>
-</div>
-
-<button onclick="location.href='notifications.html'">Notification Settings</button>
-<button onclick="location.href='wifi-config.html'">WiFi Networks</button>
-<button onclick="location.href='debug.html'">Advanced Debug & Calibration</button>
-
-
+<script>
+var MAX=100,t1=null,t2=null,t1Saved=null,t2Saved=null,cur=0,curValid=false,fieldErrors=false,submitted=false;
+function setFE(id,mid,msg){
+document.getElementById(id).parentElement.classList.toggle('error',msg!=='');
+document.getElementById(mid).textContent=msg;
+}
+function validateFields(){
+var s1=document.getElementById('tier1').value.trim();
+var s2=document.getElementById('tier2').value.trim();
+var v1=parseFloat(s1),v2=parseFloat(s2),e1='',e2='';
+if(s1===''&&submitted)e1='Required';
+else if(s1!==''){
+if(isNaN(v1))e1='Enter a number';
+else if(v1<5||v1>100)e1='5–100 cm only';
+else if(s2!==''&&!isNaN(v2)&&v1>=v2)e1='Must be less than Tier 2';
+}
+if(s2===''&&submitted)e2='Required';
+else if(s2!==''){
+if(isNaN(v2))e2='Enter a number';
+else if(v2<5||v2>100)e2='5–100 cm only';
+else if(s1!==''&&!isNaN(v1)&&v2<=v1)e2='Must be greater than Tier 1';
+}
+setFE('tier1','t1_msg',e1);setFE('tier2','t2_msg',e2);
+fieldErrors=e1!==''||e2!=='';
+}
+function syncDirty(){
+var loaded=t1!==null&&t2!==null&&t1Saved!==null&&t2Saved!==null;
+var d=loaded&&(Math.abs(t1-t1Saved)>0.001||Math.abs(t2-t2Saved)>0.001);
+document.getElementById('dirty_pill').style.display=(d&&!fieldErrors)?'':'none';
+var btn=document.getElementById('upd');
+if(!loaded){btn.textContent='Loading…';btn.disabled=true;return}
+btn.textContent=d?'Save changes':'No changes to save';
+btn.disabled=!d||fieldErrors;
+}
+function ang(v){v=Math.max(0,Math.min(MAX,v));return 180-(v/MAX)*180}
+function pol(cx,cy,r,d){var a=d*Math.PI/180;return{x:cx+r*Math.cos(a),y:cy-r*Math.sin(a)}}
+function arcD(cx,cy,r,a1,a2){if(Math.abs(a1-a2)<0.5)return'';var p1=pol(cx,cy,r,a1),p2=pol(cx,cy,r,a2),lg=Math.abs(a2-a1)>180?1:0,sw=a2<a1?1:0;return'M '+p1.x.toFixed(1)+' '+p1.y.toFixed(1)+' A '+r+' '+r+' 0 '+lg+' '+sw+' '+p2.x.toFixed(1)+' '+p2.y.toFixed(1)}
+function setAttr(id,k,v){document.getElementById(id).setAttribute(k,v)}
+function render(){
+var cx=160,cy=170,r=120,a3=0;
+if(t1!==null&&t2!==null){
+var a1=ang(Math.max(0,Math.min(MAX,t1))),a2=ang(Math.max(0,Math.min(MAX,t2)));
+setAttr('arc_safe','d',arcD(cx,cy,r,180,a1));
+setAttr('arc_warn','d',a1>a2?arcD(cx,cy,r,a1,a2):'');
+setAttr('arc_bad','d',a1>a2?arcD(cx,cy,r,a2,a3):'');
+var h1=pol(cx,cy,r,a1),h2=pol(cx,cy,r,a2);
+setAttr('t1_hit','cx',h1.x.toFixed(1));setAttr('t1_hit','cy',h1.y.toFixed(1));
+setAttr('t1_dot','cx',h1.x.toFixed(1));setAttr('t1_dot','cy',h1.y.toFixed(1));
+setAttr('t2_hit','cx',h2.x.toFixed(1));setAttr('t2_hit','cy',h2.y.toFixed(1));
+setAttr('t2_dot','cx',h2.x.toFixed(1));setAttr('t2_dot','cy',h2.y.toFixed(1));
+document.getElementById('handle_t1').style.display='';
+document.getElementById('handle_t2').style.display='';
+var l1=pol(cx,cy,r+32,a1),l2=pol(cx,cy,r+32,a2);
+setAttr('t1_lbl','x',l1.x.toFixed(1));setAttr('t1_lbl','y',(l1.y+4).toFixed(1));
+document.getElementById('t1_lbl').textContent='T1·'+t1.toFixed(1);
+setAttr('t2_lbl','x',l2.x.toFixed(1));setAttr('t2_lbl','y',(l2.y+4).toFixed(1));
+document.getElementById('t2_lbl').textContent='T2·'+t2.toFixed(1);
+}else{
+setAttr('arc_safe','d','');setAttr('arc_warn','d','');setAttr('arc_bad','d','');
+document.getElementById('handle_t1').style.display='none';
+document.getElementById('handle_t2').style.display='none';
+document.getElementById('t1_lbl').textContent='';
+document.getElementById('t2_lbl').textContent='';
+}
+var na=ang(curValid?cur:0),tip=pol(cx,cy,r-12,na);
+setAttr('needle','x2',tip.x.toFixed(1));setAttr('needle','y2',tip.y.toFixed(1));
+}
+function setStatus(){
+var el=document.getElementById('status_text');
+if(!curValid){el.textContent='sensor offline';el.className='status mute';return}
+if(cur>=t2){el.textContent='urgent · horn alarm';el.className='status bad'}
+else if(cur>=t1){el.textContent='high · alerts active';el.className='status warn'}
+else{el.textContent='safe';el.className='status'}
+}
+function loadStatus(){
+fetch('/status').then(r=>r.json()).then(d=>{
+var dot=document.getElementById('wifi_dot'),lbl=document.getElementById('wifi_label');
+if(d.connected){dot.className='dot ok';lbl.textContent=d.ssid||'Connected'}
+else{dot.className='dot bad';lbl.textContent='Disconnected'}
+}).catch(e=>{document.getElementById('wifi_label').textContent='offline'})
+}
+function loadReading(){
+fetch('/read').then(r=>r.json()).then(d=>{
+curValid=d.sensorAvailable&&d.valid;
+if(curValid)cur=d.level_cm;
+document.getElementById('water_level').textContent=curValid?cur.toFixed(1):'--';
+var sd=document.getElementById('sensor_dot'),sl=document.getElementById('sensor_label');
+if(!d.sensorAvailable){sd.className='dot bad';sl.textContent='sensor offline'}
+else if(!d.valid){sd.className='dot warn';sl.textContent='sensor uncalibrated'}
+else{sd.className='dot ok';sl.textContent='sensor ok'}
+setStatus();render();
+}).catch(e=>{})
+}
+function loadThresholds(){
+fetch('/emergency-settings').then(r=>r.json()).then(d=>{
+t1=d.emergencyWaterLevel_cm;t2=d.urgentEmergencyWaterLevel_cm;
+t1Saved=t1;t2Saved=t2;
+document.getElementById('tier1').value=t1.toFixed(1);
+document.getElementById('tier2').value=t2.toFixed(1);
+render();setStatus();syncDirty();
+}).catch(e=>{
+document.getElementById('upd').textContent='Failed to load';
+}).catch(e=>{})
+}
+function updateThresholds(){
+submitted=true;validateFields();syncDirty();
+if(fieldErrors)return;
+var v1=parseFloat(document.getElementById('tier1').value);
+var v2=parseFloat(document.getElementById('tier2').value);
+var s=document.getElementById('msg');
+s.textContent='Updating…';s.className='msg';
+var btn=document.getElementById('upd');btn.disabled=true;
+Promise.all([
+fetch('/calibration/emergency-level',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'level_cm='+v1}).then(r=>r.json()),
+fetch('/emergency/urgent-level',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'level_cm='+v2}).then(r=>r.json())
+]).then(rs=>{
+btn.disabled=false;
+if(rs[0].success&&rs[1].success){
+s.textContent='✓ Saved';s.className='msg ok';
+t1=v1;t2=v2;t1Saved=t1;t2Saved=t2;render();setStatus();syncDirty();
+setTimeout(function(){s.textContent='';s.className='msg'},2500);
+}else{s.textContent='✗ '+(rs[0].error||rs[1].error||'failed');s.className='msg bad'}
+}).catch(e=>{btn.disabled=false;s.textContent='Error: '+e.message;s.className='msg bad'})
+}
+var drag=null;
+function dragStart(which,e){e.preventDefault();drag=which;document.getElementById('handle_'+which).classList.add('dragging')}
+function dragMove(e){
+if(!drag)return;
+var svg=document.querySelector('.gauge-card svg'),pt=svg.createSVGPoint();
+var cx=e.clientX,cy=e.clientY;
+if(e.touches&&e.touches[0]){cx=e.touches[0].clientX;cy=e.touches[0].clientY}
+pt.x=cx;pt.y=cy;
+var ctm=svg.getScreenCTM();if(!ctm)return;
+var sp=pt.matrixTransform(ctm.inverse());
+var dx=sp.x-160,dy=170-sp.y;
+var a=Math.atan2(dy,dx)*180/Math.PI;
+a=Math.max(0,Math.min(180,a));
+var v=Math.round(((180-a)/180)*MAX);
+if(drag==='t1'){v=Math.max(5,Math.min(t2-1,v));t1=v;document.getElementById('tier1').value=t1.toFixed(1)}
+else{v=Math.max(t1+1,Math.min(100,v));t2=v;document.getElementById('tier2').value=t2.toFixed(1)}
+render();setStatus();syncDirty();
+}
+function dragEnd(){if(!drag)return;document.getElementById('handle_'+drag).classList.remove('dragging');drag=null}
+document.getElementById('handle_t1').addEventListener('pointerdown',function(e){dragStart('t1',e)});
+document.getElementById('handle_t2').addEventListener('pointerdown',function(e){dragStart('t2',e)});
+document.getElementById('tier1').addEventListener('input',function(e){var v=parseFloat(e.target.value);if(!isNaN(v)){t1=v;render();setStatus();}validateFields();syncDirty()});
+document.getElementById('tier2').addEventListener('input',function(e){var v=parseFloat(e.target.value);if(!isNaN(v)){t2=v;render();setStatus();}validateFields();syncDirty()});
+window.addEventListener('pointermove',dragMove);
+window.addEventListener('pointerup',dragEnd);
+window.addEventListener('pointercancel',dragEnd);
+render();syncDirty();loadStatus();loadReading();loadThresholds();
+setInterval(loadReading,2000);
+setInterval(loadStatus,10000);
+</script>
 </body>
 </html>

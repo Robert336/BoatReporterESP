@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Settings · Bilge Buddy</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;background:#f7f5f1;color:#1c1917;font-size:16px;line-height:1.4;-webkit-font-smoothing:antialiased}
+.app{max-width:480px;margin:0 auto;padding:16px}
+header{display:flex;align-items:center;gap:8px;padding:8px 0 14px}
+.back{color:#44403c;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;background:#fff;border:1px solid #e7e5e4;font-size:18px;line-height:1}
+.back:active{background:#f5f5f4}
+h1{font-size:20px;font-weight:600;margin:0;letter-spacing:-0.01em}
+h2{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#78716c;margin:18px 12px 8px}
+.group{background:#fff;border:1px solid #e7e5e4;border-radius:14px;overflow:hidden;margin-bottom:6px}
+.row{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid #f1efea;color:inherit;text-decoration:none;gap:10px;min-height:54px;background:#fff;transition:background .12s}
+.row:last-child{border-bottom:0}
+.row:active{background:#f5f5f4}
+.row .lbl{font-size:15px;font-weight:500}
+.row .val{font-size:14px;color:#78716c;margin-left:auto;display:flex;align-items:center;gap:8px;text-align:right}
+.row .chev{color:#a8a29e;font-size:18px;line-height:1}
+.dot{width:8px;height:8px;border-radius:50%;background:#a8a29e;flex-shrink:0;display:inline-block}
+.dot.ok{background:#65a30d}
+.dot.warn{background:#ea580c}
+.dot.bad{background:#dc2626}
+.foot{margin:24px 12px 8px;font-size:12px;color:#a8a29e;text-align:center}
+.card{background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:18px;margin-bottom:6px}
+.card h2{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#78716c;margin:0 0 12px}
+label{display:block;font-size:13px;color:#78716c;margin:0 0 6px}
+.input{display:flex;align-items:stretch;background:#f5f5f4;border:1px solid #e7e5e4;border-radius:10px;overflow:hidden;transition:border-color .15s}
+.input:focus-within{border-color:#1c1917;background:#fff}
+.input input{flex:1;border:0;background:transparent;padding:10px 12px;font-size:15px;font-family:inherit;color:inherit;width:100%;min-width:0}
+.input input:focus{outline:0}
+.input .sfx{align-self:center;padding-right:12px;font-size:13px;color:#78716c}
+.btn{display:block;width:100%;padding:12px;background:#1c1917;color:#fff;border:0;border-radius:10px;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer;margin-top:12px;transition:background .15s}
+.btn:active{background:#292524}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.msg{margin-top:8px;font-size:13px;text-align:center;color:#78716c;min-height:18px}
+.msg.ok{color:#65a30d}
+.msg.bad{color:#dc2626}
+.helptext{font-size:12px;color:#a8a29e;margin-top:6px}
+.input.error{border-color:#dc2626;background:#fff8f8}
+.field-msg{font-size:12px;color:#dc2626;margin-top:4px;min-height:14px;line-height:1.3}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+<a href="/" class="back" aria-label="Back">‹</a>
+<h1>Settings</h1>
+</header>
+
+<div class="card">
+<h2>Emergency notification frequency</h2>
+<label>How often to re-notify while in emergency</label>
+<div class="input"><input type="number" id="freq_v" min="5" max="3600" step="1" placeholder="…"><span class="sfx">seconds</span></div>
+<div class="field-msg" id="freq_err"></div>
+<div class="helptext">Re-send rate while water stays above Tier 1</div>
+<button class="btn" id="freq_btn" onclick="saveFreq()">Save</button>
+<div class="msg" id="freq_msg"></div>
+</div>
+
+<h2>Notifications</h2>
+<div class="group">
+<a class="row" href="/notifications-page#sms">
+<span class="lbl">SMS</span>
+<span class="val"><span id="v_sms">…</span><span class="chev">›</span></span>
+</a>
+<a class="row" href="/notifications-page#discord">
+<span class="lbl">Discord</span>
+<span class="val"><span id="v_disc">…</span><span class="chev">›</span></span>
+</a>
+<a class="row" href="/notifications-page#mqtt">
+<span class="lbl">MQTT</span>
+<span class="val"><span id="v_mqtt">…</span><span class="chev">›</span></span>
+</a>
+</div>
+
+<h2>Network</h2>
+<div class="group">
+<a class="row" href="/wifi-config">
+<span class="lbl">Wi-Fi</span>
+<span class="val"><span class="dot" id="v_wifi_dot"></span><span id="v_wifi">…</span><span class="chev">›</span></span>
+</a>
+</div>
+
+<h2>Advanced</h2>
+<div class="group">
+<a class="row" href="/debug">
+<span class="lbl">Sensor calibration</span>
+<span class="val"><span id="v_cal">…</span><span class="chev">›</span></span>
+</a>
+<a class="row" href="/debug#api">
+<span class="lbl">Debug & API</span>
+<span class="val"><span class="chev">›</span></span>
+</a>
+</div>
+
+<div class="foot">Bilge Buddy · ESP32</div>
+</div>
+
+<script>
+function setText(id,t){var el=document.getElementById(id);if(el)el.textContent=t}
+function setClass(id,c){var el=document.getElementById(id);if(el)el.className=c}
+fetch('/notifications').then(r=>r.json()).then(d=>{
+setText('v_sms',d.hasPhoneNumber?'On':'Off');
+setText('v_disc',d.hasDiscordWebhook?'On':'Off');
+if(d.mqttConfigured&&d.mqttConnected)setText('v_mqtt','Connected');
+else if(d.mqttConfigured)setText('v_mqtt','Disconnected');
+else setText('v_mqtt','Off');
+}).catch(e=>{});
+fetch('/emergency-settings').then(r=>r.json()).then(d=>{
+var el=document.getElementById('freq_v');if(el)el.value=Math.round(d.emergencyNotifFreq_ms/1000);
+}).catch(e=>{});
+function validateFreq(){
+var v=parseFloat(document.getElementById('freq_v').value);
+var s=document.getElementById('freq_v').value.trim();
+var msg='';
+if(s!==''){
+if(isNaN(v))msg='Enter a number';
+else if(v<5||v>3600)msg='5–3600 seconds';
+}
+document.getElementById('freq_v').parentElement.classList.toggle('error',msg!=='');
+document.getElementById('freq_err').textContent=msg;
+return msg==='';
+}
+document.addEventListener('DOMContentLoaded',function(){
+document.getElementById('freq_v').addEventListener('input',validateFreq);
+});
+function saveFreq(){
+if(!validateFreq())return;
+var v=document.getElementById('freq_v').value;
+if(!v){var m=document.getElementById('freq_msg');m.textContent='Enter a frequency';m.className='msg bad';return}
+var btn=document.getElementById('freq_btn');btn.disabled=true;
+fetch('/notifications/emergency-freq',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'freq_ms='+(v*1000)})
+.then(r=>r.json()).then(d=>{
+btn.disabled=false;
+var m=document.getElementById('freq_msg');
+if(d.success){m.textContent='✓ Saved';m.className='msg ok';setTimeout(function(){m.textContent='';m.className='msg'},2500)}
+else{m.textContent='✗ '+(d.error||'failed');m.className='msg bad'}
+}).catch(e=>{btn.disabled=false;var m=document.getElementById('freq_msg');m.textContent='Error: '+e.message;m.className='msg bad'});
+}
+fetch('/status').then(r=>r.json()).then(d=>{
+if(d.connected){setText('v_wifi',d.ssid||'Connected');setClass('v_wifi_dot','dot ok')}
+else{setText('v_wifi','Not connected');setClass('v_wifi_dot','dot bad')}
+}).catch(e=>{setText('v_wifi','offline')});
+fetch('/calibration').then(r=>r.json()).then(d=>{
+setText('v_cal',d.hasTwoPointCalibration?'2-point':'Single-point');
+}).catch(e=>{});
+</script>
+</body>
+</html>
