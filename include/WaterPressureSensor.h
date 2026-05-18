@@ -61,6 +61,8 @@ private:
     void bufferPush(SensorReading newReading);
     float calculateMedianFromBuffer(); // Calculate rolling median of buffer
 
-    uint32_t lastLogTime; // Throttle debug logging
+    uint32_t lastLogTime;    // Throttle debug logging
+    uint32_t lastSampleTime; // millis() of last ADC read (1-second gate)
+    SensorReading lastReading; // cached result returned between samples
 };
 

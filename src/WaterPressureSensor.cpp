@@ -7,13 +7,7 @@ WaterPressureSensor::WaterPressureSensor(bool mock)
     : currentReadingIndex(0), useMockData(mock), mockWaterLevel(0),
       adcCalHandle(nullptr), calibrationInitialized(false), zeroReadingVoltage_mv(590),
       secondPointVoltage_mv(0), secondPointLevel_cm(0.0f), twoPointCalibrationActive(false),
-      lastLogTime(0) {
-    // Default zero level is 590mV (typical for our setup)
-    // This can be calibrated by measuring the sensor voltage at 0cm water level
-    
-    Timestamp lastReadTime;
-
-    // Initialize buffer to invalid readings
+      lastLogTime(0), lastSampleTime(0), lastReading{} {
     for (int i = 0; i < READINGS_BUFFER_SIZE; i++) {
         readingsBuffer[i].valid = false;
         readingsBuffer[i].level_cm = 0;
@@ -28,7 +22,10 @@ bool WaterPressureSensor::init() {
     if (!useMockData) {
         ads.begin();
         ads.setGain(GAIN_ONE);
-        ads.setDataRate(RATE_ADS1115_8SPS);
+        ads.setDataRate(RATE_ADS1115_32SPS);
+        ads.startADCReading(MUX_BY_CHANNEL[CHANNEL], /*continuous=*/true);
+        // Ensure first readLevel() call samples immediately
+        lastSampleTime = millis() - 1001;
     }
 
     SensorReading firstReading = readLevel();
@@ -128,8 +125,12 @@ SensorReading WaterPressureSensor::readLevel() {
         reading.level_cm = mockWaterLevel;
         reading.millivolts = 590.0f + (mockWaterLevel / 100.0f) * (4096.0f - 590.0f);
     } else {
-        
-        int16_t rawADC = ads.readADC_SingleEnded(CHANNEL);
+        if (millis() - lastSampleTime < 1000) {
+            return lastReading;
+        }
+        lastSampleTime = millis();
+
+        int16_t rawADC = ads.getLastConversionResults();
         reading.millivolts = ads.computeVolts(rawADC) * 1000;
         float computedVolts = ads.computeVolts(rawADC);
         uint32_t now = millis();
@@ -138,19 +139,14 @@ SensorReading WaterPressureSensor::readLevel() {
             LOG_DEBUG("WaterPressureSensor: raw ADC = %d, computedVolts = %.5f V", rawADC, computedVolts);
             lastLogTime = now;
         }
-        // Use voltage-based conversion for accurate readings
         reading.level_cm = voltageToCentimeters(reading.millivolts);
-        
-        // Validate reading based on voltage
         if (reading.millivolts < (zeroReadingVoltage_mv - READING_ERROR_MARGIN_MV)) reading.valid = false;
     }
-    
+
     reading.timestamp = TimeManagement::getInstance().getCurrentTimestamp();
     bufferPush(reading);
-
-    // Return the median of the buffer instead of the raw reading
     reading.level_cm = calculateMedianFromBuffer();
-    
+    lastReading = reading;
     return reading;
 }
 
