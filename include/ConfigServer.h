@@ -105,6 +105,9 @@ private:
     void handleSetMqttConfig();             // POST: Configure MQTT broker
     void handleTestMqtt();                  // POST: Send a test MQTT message
     
+    // === Page Serving Helper ===
+    void sendCachedPage(const char* data, size_t len, const char* contentType);
+
     // === Debug and Monitoring Handlers ===
     void handleDebug();                     // Serve debug page (gzipped)
     void handleGetReading();                // Return current sensor reading as JSON
