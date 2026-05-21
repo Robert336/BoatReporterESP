@@ -67,6 +67,7 @@ volatile bool buttonPressed = false;
 volatile unsigned long lastButtonPress = 0;
 volatile unsigned long buttonPressStartTime = 0;
 volatile bool buttonCurrentlyPressed = false;
+volatile bool emergencyLongHoldDetected = false; // Flag for 5-second hold in emergency
 
 // Message tracing - unique ID for each notification
 static uint32_t messageTraceId = 0;
@@ -245,34 +246,33 @@ void loop() {
     static bool silenceToggleHandled = false;
     static bool lastButtonState = false;
     
-    // Reset flag when button is released (detect transition from pressed to not pressed)
+    // Process long hold detected during emergency (set by interrupt handler)
+    if (emergencyLongHoldDetected && systemState.currentState == EMERGENCY && !silenceToggleHandled) {
+        // Toggle silence state
+        systemState.notificationsSilenced = !systemState.notificationsSilenced;
+        silenceToggleHandled = true;
+        emergencyLongHoldDetected = false;
+        
+        if (systemState.notificationsSilenced) {
+            LOG_EVENT("[EVENT] Emergency notifications SILENCED by button hold");
+            
+            // Send confirmation notification
+            if (!USE_MOCK) {
+                messageTraceId++;
+                char silenceMessage[100];
+                snprintf(silenceMessage, sizeof(silenceMessage), "[MSG:%u] Boat Monitor: Emergency alerts silenced", messageTraceId);
+                notifier.enqueue(silenceMessage);
+            }
+        } else {
+            LOG_EVENT("[EVENT] Emergency notifications RE-ENABLED by button hold - WiFi: %d", wifiMgr.isConnected());
+        }
+    }
+    
+    // Reset silence toggle flag when button is released
     if (lastButtonState && !buttonCurrentlyPressed) {
         silenceToggleHandled = false;
     }
     lastButtonState = buttonCurrentlyPressed;
-    
-    if (buttonCurrentlyPressed && systemState.currentState == EMERGENCY) {
-        unsigned long holdDuration = millis() - buttonPressStartTime;
-        if (holdDuration >= 5000 && !silenceToggleHandled) {
-            // Toggle silence state
-            systemState.notificationsSilenced = !systemState.notificationsSilenced;
-            silenceToggleHandled = true;
-            
-            if (systemState.notificationsSilenced) {
-                LOG_EVENT("[EVENT] Emergency notifications SILENCED by button hold");
-                
-                // Send confirmation notification
-                if (!USE_MOCK) {
-                    messageTraceId++;
-                    char silenceMessage[100];
-                    snprintf(silenceMessage, sizeof(silenceMessage), "[MSG:%u] Boat Monitor: Emergency alerts silenced", messageTraceId);
-                    notifier.enqueue(silenceMessage);
-                }
-            } else {
-                LOG_EVENT("[EVENT] Emergency notifications RE-ENABLED by button hold - WiFi: %d", wifiMgr.isConnected());
-            }
-        }
-    }
 
     // Check Tier 1 emergency conditions (message notifications)
     bool previousEmergencyConditions = systemState.emergencyConditions;
@@ -364,6 +364,11 @@ void loop() {
             }
             break;
         case EMERGENCY:
+            // Clear stale config command when entering emergency state (prevents unwanted CONFIG entry when emergency clears)
+            if (previousState != EMERGENCY) {
+                systemState.configCommandReceived = false;
+            }
+            
             if (systemState.emergencyConditions == false && (millis() - systemState.emergencyConditionsFalseTime) >= EMERGENCY_TIMEOUT_MS) {
                 LOG_EVENT("[STATE] Transitioning from %s to NORMAL (emergency cleared)", stateToString(systemState.currentState));
                 systemState.currentState = NORMAL;
@@ -495,10 +500,16 @@ void IRAM_ATTR handleButtonPress() {
         buttonCurrentlyPressed = false;
         unsigned long holdDuration = now - buttonPressStartTime;
         
-        // Short press (< 5 seconds) = config command
-        if (holdDuration < 5000) {
-            systemState.configCommandReceived = true;
+        // Only process config command if NOT in emergency
+        // If in emergency, the hold duration will be checked for silence toggle
+        if (systemState.currentState != EMERGENCY) {
+            // Short press (< 5 seconds) = config command (only when not in emergency)
+            if (holdDuration < 5000) {
+                systemState.configCommandReceived = true;
+            }
+        } else if (holdDuration >= 5000) {
+            // Long press during emergency = silence toggle signal for main loop
+            emergencyLongHoldDetected = true;
         }
-        // Long press (>= 5 seconds) will be handled in main loop for silence toggle
     }
 }
