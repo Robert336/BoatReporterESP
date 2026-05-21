@@ -49,7 +49,7 @@ void MQTTService::begin() {
     buildClientIdAndDefaults();
     
     // Hardcoded MQTT configuration for logging
-    strcpy(brokerHost, "10.0.0.205");
+    strcpy(brokerHost, "192.168.2.41");
     brokerPort = 1883;
     username[0] = '\0';  // No username
     password[0] = '\0';  // No password
