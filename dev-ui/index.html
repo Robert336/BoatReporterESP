@@ -200,7 +200,7 @@ if(curValid)cur=d.level_cm;
 document.getElementById('water_level').textContent=curValid?cur.toFixed(1):'--';
 var sd=document.getElementById('sensor_dot'),sl=document.getElementById('sensor_label');
 if(!d.sensorAvailable){sd.className='dot bad';sl.textContent='sensor offline'}
-else if(!d.valid){sd.className='dot warn';sl.textContent='sensor uncalibrated'}
+else if(!d.valid){sd.className='dot warn';sl.textContent='sensor error'}
 else{sd.className='dot ok';sl.textContent='sensor ok'}
 setStatus();render();
 }
