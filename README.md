@@ -120,7 +120,7 @@ Using a Twilio trail should be more than enough.
 On first boot (or when no WiFi credentials are saved), the device automatically enters CONFIG mode:
 
 1. The built-in LED will **slow blink** indicating CONFIG mode
-2. Connect to the WiFi access point: `BoatMonitor-Setup`
+2. Connect to the WiFi access point: `BilgeRise-Setup`
 3. Open a web browser and navigate to `http://192.168.4.1` or any `http://...` domain (`https://...` will not work since the site does not use SSL) as the captive portal should automatically open `http://192.168.4.1`
 4. You'll see the configuration web interface
 
@@ -286,7 +286,7 @@ To test the system without physical sensors:
 ## Troubleshooting
 
 ### Device won't connect to WiFi
-- **Solution 1**: Press button to enter CONFIG mode, reconnect to `BoatMonitor-Setup` AP, reconfigure WiFi
+- **Solution 1**: Press button to enter CONFIG mode, reconnect to `BilgeRise-Setup` AP, reconfigure WiFi
 - **Solution 2**: Check WiFi signal strength near installation location
 - **Solution 3**: Verify WiFi password is correct (check serial monitor for connection errors)
 
@@ -319,7 +319,7 @@ To test the system without physical sensors:
 
 ### Web interface not accessible
 - Verify device is in CONFIG mode (LED slow blinking)
-- Check you're connected to `BoatMonitor-Setup` WiFi network
+- Check you're connected to `BilgeRise-Setup` WiFi network
 - Try `http://192.168.4.1` instead of hostname
 - Check firewall settings on your phone/computer
 - Serial monitor will show "Starting configuration server" message

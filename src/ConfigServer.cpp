@@ -915,7 +915,7 @@ void ConfigServer::handleTestSMS() {
     }
     
     LOG_INFO("[TEST] Sending test SMS...");
-    bool success = smsService->send("Boat Monitor Test: This is a test message from your ESP32 boat monitor.");
+    bool success = smsService->send("BilgeRise Test: This is a test message from your ESP32 boat monitor.");
     
     if (success) {
         LOG_INFO("[TEST] Test SMS sent successfully!");
@@ -945,7 +945,7 @@ void ConfigServer::handleTestDiscord() {
     }
     
     LOG_INFO("[TEST] Sending test Discord message...");
-    bool success = discordService->send("🚤 **Boat Monitor Test** - This is a test message from your ESP32 boat monitor.");
+    bool success = discordService->send("🚤 **BilgeRise Test** - This is a test message from your ESP32 boat monitor.");
     
     if (success) {
         LOG_INFO("[TEST] Test Discord message sent successfully!");
@@ -1029,7 +1029,7 @@ void ConfigServer::handleTestMqtt() {
     snprintf(testTopic, sizeof(testTopic), "%s/test", topicBuf);
 
     LOG_INFO("[TEST] Publishing test MQTT message to %s ...", testTopic);
-    bool success = mqttService->publish(testTopic, "Boat Monitor Test: This is a test message from your ESP32 boat monitor.", false);
+    bool success = mqttService->publish(testTopic, "BilgeRise Test: This is a test message from your ESP32 boat monitor.", false);
 
     if (success) {
         LOG_INFO("[TEST] Test MQTT message published successfully!");

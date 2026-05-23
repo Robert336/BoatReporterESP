@@ -263,11 +263,11 @@ inline StateMachineOutput updateStateMachine(StateMachineContext& ctx,
             // Format message
             if (ctx.urgentEmergencyConditions) {
                 snprintf(output.message, sizeof(output.message),
-                        "Boat Monitor URGENT Alert: Tier 2 Emergency Level Reached - Critical Level %.2f cm",
+                        "BilgeRise URGENT Alert: Tier 2 Emergency Level Reached - Critical Level %.2f cm",
                         reading.level_cm);
             } else {
                 snprintf(output.message, sizeof(output.message),
-                        "Boat Monitor Alert: Emergency Level %.2f cm",
+                        "BilgeRise Alert: Emergency Level %.2f cm",
                         reading.level_cm);
             }
         }
@@ -305,7 +305,7 @@ inline StateMachineOutput handleSilenceToggle(StateMachineContext& ctx) {
     if (ctx.notificationsSilenced) {
         output.sendSilenceConfirmation = true;
         snprintf(output.message, sizeof(output.message),
-                "Boat Monitor: Emergency alerts have been temporarily silenced");
+                "BilgeRise: Emergency alerts have been temporarily silenced");
         
         // Turn off horn immediately if it was on
         if (ctx.hornCurrentlyOn) {
@@ -316,7 +316,7 @@ inline StateMachineOutput handleSilenceToggle(StateMachineContext& ctx) {
     } else {
         output.sendUnsilenceConfirmation = true;
         snprintf(output.message, sizeof(output.message),
-                "Boat Monitor: Emergency alerts have been re-enabled");
+                "BilgeRise: Emergency alerts have been re-enabled");
     }
     
     return output;

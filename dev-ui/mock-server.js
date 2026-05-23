@@ -294,7 +294,7 @@ app.post('/notifications/test/mqtt', (req, res) => {
 
 app.listen(PORT, () => {
     console.log('='.repeat(60));
-    console.log('ESP32 Boat Monitor - Development Mock Server');
+    console.log('ESP32 BilgeRise - Development Mock Server');
     console.log('='.repeat(60));
     console.log(`Server running at: http://localhost:${PORT}`);
     console.log('');

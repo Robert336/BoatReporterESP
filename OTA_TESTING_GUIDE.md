@@ -1,7 +1,7 @@
 # OTA Update Testing Guide
 
 ## Overview
-This guide walks through testing the complete OTA (Over-The-Air) firmware update system for the Boat Monitor ESP32 project.
+This guide walks through testing the complete OTA (Over-The-Air) firmware update system for the BilgeRise ESP32 project.
 
 ## Prerequisites
 
@@ -34,7 +34,7 @@ pio device monitor -b 115200
 
 ### 1.3 Configure Device
 
-1. Connect to WiFi AP: `ESP32-BoatMonitor-Setup` (password shown in serial output)
+1. Connect to WiFi AP: `ESP32-BilgeRise-Setup` (password shown in serial output)
 2. Navigate to `192.168.4.1` in browser
 3. Configure WiFi network credentials
 4. Set up SMS/Discord notifications (for OTA alerts)
@@ -123,7 +123,7 @@ pio run -e prod
    - After 2-5 seconds: "Update Available! Version 1.1.0 is ready to install"
    - If notifications enabled: Receive SMS/Discord notification:
      ```
-     Boat Monitor: Firmware update available v1.0.0 → v1.1.0
+     BilgeRise: Firmware update available v1.0.0 → v1.1.0
      ```
 
 ### 4.2 Verify Serial Logs
@@ -132,7 +132,7 @@ Watch serial monitor for:
 
 ```
 [OTA] Checking for updates from GitHub...
-[OTA] Boat Monitor: Firmware update available v1.0.0 → v1.1.0
+[OTA] BilgeRise: Firmware update available v1.0.0 → v1.1.0
 [OTA] Download URL: https://github.com/...
 [OTA] Size: XXXXX bytes
 ```
@@ -148,7 +148,7 @@ Watch serial monitor for:
    - Status shows "Downloading and installing update... Device will reboot shortly."
    - If notifications enabled: Receive SMS/Discord:
      ```
-     Boat Monitor: Starting firmware update from v1.0.0 to v1.1.0. 
+     BilgeRise: Starting firmware update from v1.0.0 to v1.1.0. 
      Device may be offline for 1-2 minutes.
      ```
 
@@ -181,7 +181,7 @@ After reboot, check:
 
 2. **Notification Received**:
    ```
-   Boat Monitor: Firmware updated successfully! v1.0.0 → v1.1.0. System online.
+   BilgeRise: Firmware updated successfully! v1.0.0 → v1.1.0. System online.
    ```
 
 3. **Web Interface**: OTA page shows current version: `1.1.0`
@@ -224,7 +224,7 @@ void setup() {
    - ESP32 bootloader automatically rolls back to v1.2.0
    - On successful rollback boot, receive notification:
      ```
-     Boat Monitor: New firmware v1.3.0 failed to boot. 
+     BilgeRise: New firmware v1.3.0 failed to boot. 
      Rolled back to v1.2.0. System stable.
      ```
 

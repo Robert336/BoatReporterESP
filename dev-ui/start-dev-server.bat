@@ -1,6 +1,6 @@
 @echo off
 echo ============================================================
-echo ESP32 Boat Monitor - Development UI Setup
+echo ESP32 BilgeRise - Development UI Setup
 echo ============================================================
 echo.
 
