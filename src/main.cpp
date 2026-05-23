@@ -149,7 +149,7 @@ void setup() {
     // Print unique device AP password for easy access
     LOG_SETUP("========================================");
     LOG_SETUP("Device Configuration Access Point:");
-    LOG_SETUP("  SSID: ESP32-BoatMonitor-Setup");
+    LOG_SETUP("  SSID: ESP32-BilgeRise-Setup");
     LOG_SETUP("  Password: %s", configServer->getAPPassword());
     LOG_SETUP("  Firmware: v%s", FIRMWARE_VERSION);
     LOG_SETUP("========================================");
@@ -260,7 +260,7 @@ void loop() {
             if (!USE_MOCK) {
                 messageTraceId++;
                 char silenceMessage[100];
-                snprintf(silenceMessage, sizeof(silenceMessage), "[MSG:%u] Boat Monitor: Emergency alerts silenced", messageTraceId);
+                snprintf(silenceMessage, sizeof(silenceMessage), "[MSG:%u] BilgeRise: Emergency alerts silenced", messageTraceId);
                 notifier.enqueue(silenceMessage);
             }
         } else {
@@ -394,9 +394,9 @@ void loop() {
                         messageTraceId++;
                         char emergMessageBuf[120];
                         if (systemState.urgentEmergencyConditions) {
-                            snprintf(emergMessageBuf, sizeof(emergMessageBuf), "[MSG:%u] Boat Monitor URGENT Alert: Tier 2 Emergency Level %.2f cm", messageTraceId, currentReading.level_cm);
+                            snprintf(emergMessageBuf, sizeof(emergMessageBuf), "[MSG:%u] BilgeRise URGENT Alert: Tier 2 Emergency Level %.2f cm", messageTraceId, currentReading.level_cm);
                         } else {
-                            snprintf(emergMessageBuf, sizeof(emergMessageBuf), "[MSG:%u] Boat Monitor Alert: Emergency Level %.2f cm", messageTraceId, currentReading.level_cm);
+                            snprintf(emergMessageBuf, sizeof(emergMessageBuf), "[MSG:%u] BilgeRise Alert: Emergency Level %.2f cm", messageTraceId, currentReading.level_cm);
                         }
                         LOG_EVENT("[STATE] EMERGENCY: Sending alert message: %s", emergMessageBuf);
 

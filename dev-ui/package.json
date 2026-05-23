@@ -1,7 +1,7 @@
 {
   "name": "boat-monitor-dev-ui",
   "version": "1.0.0",
-  "description": "Development UI for ESP32 Boat Monitor",
+  "description": "Development UI for ESP32 BilgeRise",
   "main": "mock-server.js",
   "scripts": {
     "start": "node mock-server.js"

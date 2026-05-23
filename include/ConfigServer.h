@@ -26,7 +26,7 @@
  */
 constexpr const char SENSOR_CALIBRATION_NAMESPACE[] = "sensor_cal";
 constexpr const char EMERGENCY_SETTINGS_NAMESPACE[] = "emergency";
-constexpr const char AP_SSID[] = "ESP32-BoatMonitor-Setup";
+constexpr const char AP_SSID[] = "ESP32-BilgeRise-Setup";
 constexpr unsigned long SERVER_TIMEOUT_MS = 240000;
 constexpr int DNS_PORT = 53; // Standard DNS port for captive portal
 

@@ -51,27 +51,27 @@ To stay informed about updates:
 
 ### 1. Update Available
 ```
-Boat Monitor: Firmware update available v1.0.0 → v1.1.0
+BilgeRise: Firmware update available v1.0.0 → v1.1.0
 ```
 
 ### 2. Installation Starting (Auto-Install)
 ```
-Boat Monitor: Starting firmware update from v1.0.0 to v1.1.0. 
+BilgeRise: Starting firmware update from v1.0.0 to v1.1.0. 
 Device may be offline for 1-2 minutes.
 ```
 
 ### 3. Success
 ```
-Boat Monitor: Firmware updated successfully! v1.0.0 → v1.1.0. System online.
+BilgeRise: Firmware updated successfully! v1.0.0 → v1.1.0. System online.
 ```
 
 ### 4. Failure (with Rollback)
 ```
-Boat Monitor: Firmware update FAILED - {reason}. Still running v1.0.0.
+BilgeRise: Firmware update FAILED - {reason}. Still running v1.0.0.
 ```
 or
 ```
-Boat Monitor: New firmware v1.1.0 failed to boot. Rolled back to v1.0.0. System stable.
+BilgeRise: New firmware v1.1.0 failed to boot. Rolled back to v1.0.0. System stable.
 ```
 
 ## Safety Features

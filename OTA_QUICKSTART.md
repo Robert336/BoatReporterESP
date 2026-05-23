@@ -76,18 +76,18 @@ pio run -e prod
 
 **When update found:**
 ```
-Boat Monitor: Firmware update available v1.0.0 → v1.1.0
+BilgeRise: Firmware update available v1.0.0 → v1.1.0
 ```
 
 **When installing:**
 ```
-Boat Monitor: Starting firmware update from v1.0.0 to v1.1.0. 
+BilgeRise: Starting firmware update from v1.0.0 to v1.1.0. 
 Device may be offline for 1-2 minutes.
 ```
 
 **After successful update:**
 ```
-Boat Monitor: Firmware updated successfully! v1.0.0 → v1.1.0. System online.
+BilgeRise: Firmware updated successfully! v1.0.0 → v1.1.0. System online.
 ```
 
 ## ⚙️ Configuration Options

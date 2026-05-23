@@ -114,7 +114,7 @@ void OTAManager::checkFirstBoot() {
     if (firstBootAfterUpdate && !previousVersion.isEmpty()) {
         char msg[NOTIFICATION_MESSAGE_BUFFER_SIZE];
         snprintf(msg, sizeof(msg), 
-                 "Boat Monitor: Firmware updated successfully! v%s → v%s. System online.",
+                 "BilgeRise: Firmware updated successfully! v%s → v%s. System online.",
                  previousVersion.c_str(), versionInfo.currentVersion.c_str());
         sendNotification(msg);
         LOG_INFO("[OTA] %s", msg);
@@ -122,7 +122,7 @@ void OTAManager::checkFirstBoot() {
     } else if (rollbackOccurred && !previousVersion.isEmpty()) {
         char msg[NOTIFICATION_MESSAGE_BUFFER_SIZE];
         snprintf(msg, sizeof(msg),
-                 "Boat Monitor: New firmware v%s failed to boot. Rolled back to v%s. System stable.",
+                 "BilgeRise: New firmware v%s failed to boot. Rolled back to v%s. System stable.",
                  previousVersion.c_str(), versionInfo.currentVersion.c_str());
         sendNotification(msg);
         LOG_CRITICAL("[OTA] %s", msg);
@@ -257,7 +257,7 @@ bool OTAManager::checkForUpdates() {
     HTTPClient http;
     http.begin(url);
     http.setTimeout(API_TIMEOUT_MS);
-    http.addHeader("User-Agent", "ESP32-BoatMonitor");
+    http.addHeader("User-Agent", "ESP32-BilgeRise");
     
     // Add authorization if token is provided (use Bearer format per GitHub spec)
     if (!config.githubToken.isEmpty()) {
@@ -342,7 +342,7 @@ bool OTAManager::checkForUpdates() {
         
         char msg[SHORT_MESSAGE_BUFFER_SIZE];
         snprintf(msg, sizeof(msg), 
-                 "Boat Monitor: Firmware update available v%s → v%s",
+                 "BilgeRise: Firmware update available v%s → v%s",
                  versionInfo.currentVersion.c_str(), latestVersion.c_str());
         sendNotification(msg);
         
@@ -434,7 +434,7 @@ bool OTAManager::startUpdate(const char* password) {
     
     char msg[NOTIFICATION_MESSAGE_BUFFER_SIZE];
     snprintf(msg, sizeof(msg),
-             "Boat Monitor: Starting firmware update from v%s to v%s. Device may be offline for 1-2 minutes.",
+             "BilgeRise: Starting firmware update from v%s to v%s. Device may be offline for 1-2 minutes.",
              versionInfo.currentVersion.c_str(), versionInfo.availableVersion.c_str());
     bool notificationSent = sendNotification(msg);
     LOG_INFO("[OTA] %s (notification %s)", msg, notificationSent ? "sent" : "FAILED");
@@ -458,7 +458,7 @@ bool OTAManager::startUpdate(const char* password) {
         currentState = OTAState::FAILED;
         
         snprintf(msg, sizeof(msg),
-                 "Boat Monitor: Firmware update FAILED - %s. Still running v%s.",
+                 "BilgeRise: Firmware update FAILED - %s. Still running v%s.",
                  lastError.c_str(), versionInfo.currentVersion.c_str());
         bool failureNotificationSent = sendNotification(msg);
         LOG_CRITICAL("[OTA] %s (notification %s)", msg, failureNotificationSent ? "sent" : "FAILED");

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Remote Over-The-Air (OTA) firmware update capability has been successfully implemented for your ESP32 Boat Monitor. The system allows you to push firmware updates remotely via GitHub Releases with full notification support.
+Remote Over-The-Air (OTA) firmware update capability has been successfully implemented for your ESP32 BilgeRise. The system allows you to push firmware updates remotely via GitHub Releases with full notification support.
 
 > **🚀 NEW: Automatic Updates Enabled by Default & Pre-Configured!**
 > 
@@ -59,11 +59,11 @@ Remote Over-The-Air (OTA) firmware update capability has been successfully imple
 ✅ **Notification System**
 - Integrated with existing SMS (Twilio) and Discord services
 - Notifications sent at key stages:
-  - Update available: `"Boat Monitor: Firmware update available v1.0.0 → v1.1.0"`
-  - Update starting: `"Boat Monitor: Starting firmware update from v1.0.0 to v1.1.0. Device may be offline for 1-2 minutes."`
-  - Update success: `"Boat Monitor: Firmware updated successfully! v1.0.0 → v1.1.0. System online."`
-  - Update failed: `"Boat Monitor: Firmware update FAILED - {reason}. Still running v1.0.0."`
-  - Rollback occurred: `"Boat Monitor: New firmware v1.1.0 failed to boot. Rolled back to v1.0.0. System stable."`
+  - Update available: `"BilgeRise: Firmware update available v1.0.0 → v1.1.0"`
+  - Update starting: `"BilgeRise: Starting firmware update from v1.0.0 to v1.1.0. Device may be offline for 1-2 minutes."`
+  - Update success: `"BilgeRise: Firmware updated successfully! v1.0.0 → v1.1.0. System online."`
+  - Update failed: `"BilgeRise: Firmware update FAILED - {reason}. Still running v1.0.0."`
+  - Rollback occurred: `"BilgeRise: New firmware v1.1.0 failed to boot. Rolled back to v1.0.0. System stable."`
 
 ✅ **Security Features**
 - Optional update password protection
@@ -294,7 +294,7 @@ For your boat monitoring use case:
 
 ## Summary
 
-Your ESP32 Boat Monitor now has enterprise-grade OTA update capability:
+Your ESP32 BilgeRise now has enterprise-grade OTA update capability:
 
 ✅ Remote firmware updates via GitHub
 ✅ Full notification integration (SMS + Discord)  

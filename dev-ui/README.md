@@ -1,4 +1,4 @@
-# ESP32 Boat Monitor - Development UI
+# ESP32 BilgeRise - Development UI
 
 This folder contains a standalone development environment for the web interface. It allows you to develop and test the UI rapidly without needing to compile and upload to the ESP32 every time you make a change.
 
@@ -35,7 +35,7 @@ You should see output like:
 
 ```
 ============================================================
-ESP32 Boat Monitor - Development Mock Server
+ESP32 BilgeRise - Development Mock Server
 ============================================================
 Server running at: http://localhost:3000
 
