@@ -1,6 +1,7 @@
 #include "WaterPressureSensor.h"
 #include "Logger.h"
 #include <Arduino.h>
+#include <Wire.h>
 #include <algorithm>
 
 WaterPressureSensor::WaterPressureSensor(bool mock)
@@ -20,6 +21,7 @@ bool WaterPressureSensor::init() {
 
     // When mocked, don't setup i2c with ADC as this will error
     if (!useMockData) {
+        Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
         ads.begin();
         ads.setGain(GAIN_ONE);
         ads.setDataRate(RATE_ADS1115_32SPS);
