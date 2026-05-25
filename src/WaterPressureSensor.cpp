@@ -8,11 +8,17 @@ WaterPressureSensor::WaterPressureSensor(bool mock)
     : currentReadingIndex(0), useMockData(mock), mockWaterLevel(0),
       adcCalHandle(nullptr), calibrationInitialized(false), zeroReadingVoltage_mv(590),
       secondPointVoltage_mv(0), secondPointLevel_cm(0.0f), twoPointCalibrationActive(false),
-      lastLogTime(0), lastSampleTime(0), lastReading{} {
+      lastLogTime(0), lastSampleTime(0), lastReading{},
+      rateBufferIndex(0), lastRateSampleTime(0) {
     for (int i = 0; i < READINGS_BUFFER_SIZE; i++) {
         readingsBuffer[i].valid = false;
         readingsBuffer[i].level_cm = 0;
         readingsBuffer[i].timestamp = Timestamp{false,0,0};
+    }
+    for (int i = 0; i < RATE_BUFFER_SIZE; i++) {
+        rateBuffer[i].valid = false;
+        rateBuffer[i].level_cm = 0.0f;
+        rateBuffer[i].millis_ts = 0;
     }
 }
 
@@ -153,7 +159,35 @@ SensorReading WaterPressureSensor::readLevel() {
     bufferPush(reading);
     reading.level_cm = calculateMedianFromBuffer();
     lastReading = reading;
+
+    if (reading.valid && (lastRateSampleTime == 0 || millis() - lastRateSampleTime >= RATE_SAMPLE_INTERVAL_MS)) {
+        lastRateSampleTime = millis();
+        rateBufferIndex = (rateBufferIndex + 1) % RATE_BUFFER_SIZE;
+        rateBuffer[rateBufferIndex] = { reading.level_cm, lastRateSampleTime, true };
+    }
+
     return reading;
+}
+
+
+float WaterPressureSensor::getRateOfChange_cm30min() const {
+    const LevelSnapshot* oldest = nullptr;
+    const LevelSnapshot* newest = nullptr;
+
+    for (int i = 0; i < RATE_BUFFER_SIZE; i++) {
+        if (!rateBuffer[i].valid) continue;
+        if (!oldest || rateBuffer[i].millis_ts < oldest->millis_ts) oldest = &rateBuffer[i];
+        if (!newest || rateBuffer[i].millis_ts > newest->millis_ts) newest = &rateBuffer[i];
+    }
+
+    if (!oldest || !newest || oldest == newest) return NAN;
+
+    uint32_t delta_ms = newest->millis_ts - oldest->millis_ts;
+    if (delta_ms < 1000) return NAN;
+
+    float delta_cm = newest->level_cm - oldest->level_cm;
+    float delta_min = delta_ms / 60000.0f;
+    return delta_cm / delta_min * 30.0f;
 }
 
 
