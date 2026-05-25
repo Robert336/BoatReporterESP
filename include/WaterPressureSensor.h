@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cmath>
 #include "TimeManagement.h"
 #include <Adafruit_ADS1X15.h>
 
@@ -19,11 +20,21 @@ static constexpr int READINGS_BUFFER_SIZE = 10;
 static constexpr uint8_t CHANNEL = 0;
 static constexpr int CM_MAX = 100; // Max centimeters the sensor can read
 
+// Rate-of-change tracking: one snapshot every 5 min, 7 slots = 30 min window
+static constexpr int RATE_BUFFER_SIZE = 7;
+static constexpr uint32_t RATE_SAMPLE_INTERVAL_MS = 300000; // 5 minutes
+
 struct SensorReading {
     bool valid;   // Check if the reading is trustworthy
     float level_cm; // Water level in centimeters
     float millivolts; // Millivolts reading according to the ESP's ADC
     Timestamp timestamp;
+};
+
+struct LevelSnapshot {
+    float level_cm;
+    uint32_t millis_ts;
+    bool valid;
 };
 
 class WaterPressureSensor {
@@ -38,7 +49,11 @@ public:
     int getZeroPointMilliVolts(); // Get zero point voltage
     int getSecondPointMilliVolts(); // Get second point voltage
     float getSecondPointLevelCm(); // Get second point level
-    
+
+    // Returns cm change extrapolated to 30 min from oldest→newest snapshot.
+    // Returns NAN when fewer than 2 valid snapshots exist.
+    float getRateOfChange_cm30min() const;
+
     // Made public for unit testing - convert voltage to water level
     float voltageToCentimeters(int voltage_mv);
 
@@ -67,5 +82,9 @@ private:
     uint32_t lastLogTime;    // Throttle debug logging
     uint32_t lastSampleTime; // millis() of last ADC read (1-second gate)
     SensorReading lastReading; // cached result returned between samples
+
+    LevelSnapshot rateBuffer[RATE_BUFFER_SIZE];
+    int rateBufferIndex;
+    uint32_t lastRateSampleTime;
 };
 

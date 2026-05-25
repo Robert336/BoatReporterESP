@@ -392,11 +392,16 @@ void loop() {
                     // Only send notifications if not silenced
                     if (!systemState.notificationsSilenced) {
                         messageTraceId++;
-                        char emergMessageBuf[120];
+                        char ratePart[28] = "";
+                        float rate = waterSensor.getRateOfChange_cm30min();
+                        if (!isnan(rate)) {
+                            snprintf(ratePart, sizeof(ratePart), " (%+.1f cm/30min)", rate);
+                        }
+                        char emergMessageBuf[160];
                         if (systemState.urgentEmergencyConditions) {
-                            snprintf(emergMessageBuf, sizeof(emergMessageBuf), "[MSG:%u] BilgeRise URGENT Alert: Tier 2 Emergency Level %.2f cm", messageTraceId, currentReading.level_cm);
+                            snprintf(emergMessageBuf, sizeof(emergMessageBuf), "[MSG:%u] BilgeRise URGENT Alert: Tier 2 Emergency Level %.2f cm%s", messageTraceId, currentReading.level_cm, ratePart);
                         } else {
-                            snprintf(emergMessageBuf, sizeof(emergMessageBuf), "[MSG:%u] BilgeRise Alert: Emergency Level %.2f cm", messageTraceId, currentReading.level_cm);
+                            snprintf(emergMessageBuf, sizeof(emergMessageBuf), "[MSG:%u] BilgeRise Alert: Emergency Level %.2f cm%s", messageTraceId, currentReading.level_cm, ratePart);
                         }
                         LOG_EVENT("[STATE] EMERGENCY: Sending alert message: %s", emergMessageBuf);
 
