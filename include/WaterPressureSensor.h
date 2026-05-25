@@ -8,6 +8,8 @@
 
 static constexpr int I2C_SDA_PIN = 21;
 static constexpr int I2C_SCL_PIN = 22;
+static constexpr uint8_t ADS1115_I2C_ADDRESS = 0x48;
+static constexpr int BUS_RECOVERY_MAX_ATTEMPTS = 10;
 
 // The usable range of the water sensor in centimeters
 constexpr float WATER_LEVEL_RANGE_MIN_CM = 5.0;
@@ -49,6 +51,7 @@ public:
     int getZeroPointMilliVolts(); // Get zero point voltage
     int getSecondPointMilliVolts(); // Get second point voltage
     float getSecondPointLevelCm(); // Get second point level
+    bool isBusUnrecoverable() const { return busUnrecoverable; }
 
     // Returns cm change extrapolated to 30 min from oldest→newest snapshot.
     // Returns NAN when fewer than 2 valid snapshots exist.
@@ -78,10 +81,13 @@ private:
     
     void bufferPush(SensorReading newReading);
     float calculateMedianFromBuffer(); // Calculate rolling median of buffer
+    void recoverBus();
 
     uint32_t lastLogTime;    // Throttle debug logging
     uint32_t lastSampleTime; // millis() of last ADC read (1-second gate)
     SensorReading lastReading; // cached result returned between samples
+    int busRecoveryAttempts;
+    bool busUnrecoverable;
 
     LevelSnapshot rateBuffer[RATE_BUFFER_SIZE];
     int rateBufferIndex;

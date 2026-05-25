@@ -9,6 +9,7 @@ WaterPressureSensor::WaterPressureSensor(bool mock)
       adcCalHandle(nullptr), calibrationInitialized(false), zeroReadingVoltage_mv(590),
       secondPointVoltage_mv(0), secondPointLevel_cm(0.0f), twoPointCalibrationActive(false),
       lastLogTime(0), lastSampleTime(0), lastReading{},
+      busRecoveryAttempts(0), busUnrecoverable(false),
       rateBufferIndex(0), lastRateSampleTime(0) {
     for (int i = 0; i < READINGS_BUFFER_SIZE; i++) {
         readingsBuffer[i].valid = false;
@@ -142,6 +143,29 @@ SensorReading WaterPressureSensor::readLevel() {
         }
         lastSampleTime = millis();
 
+        if (busUnrecoverable) {
+            reading.valid = false;
+            reading.timestamp = TimeManagement::getInstance().getCurrentTimestamp();
+            lastReading = reading;
+            return reading;
+        }
+
+        Wire.beginTransmission(ADS1115_I2C_ADDRESS);
+        if (Wire.endTransmission() != 0) {
+            busRecoveryAttempts++;
+            LOG_CRITICAL("WaterPressureSensor: I2C bus error, recovery attempt %d/%d", busRecoveryAttempts, BUS_RECOVERY_MAX_ATTEMPTS);
+            if (busRecoveryAttempts >= BUS_RECOVERY_MAX_ATTEMPTS) {
+                busUnrecoverable = true;
+                LOG_CRITICAL("WaterPressureSensor: I2C bus unrecoverable after %d attempts", BUS_RECOVERY_MAX_ATTEMPTS);
+            } else {
+                recoverBus();
+            }
+            reading.valid = false;
+            reading.timestamp = TimeManagement::getInstance().getCurrentTimestamp();
+            lastReading = reading;
+            return reading;
+        }
+
         int16_t rawADC = ads.getLastConversionResults();
         reading.millivolts = ads.computeVolts(rawADC) * 1000;
         float computedVolts = ads.computeVolts(rawADC);
@@ -200,6 +224,36 @@ void WaterPressureSensor::bufferPush(SensorReading newReading) {
     }
     this->readingsBuffer[currentReadingIndex] = newReading;
 }
+
+void WaterPressureSensor::recoverBus() {
+    // Clock SCL 9 times to release a slave holding SDA low mid-transaction
+    pinMode(I2C_SCL_PIN, OUTPUT);
+    pinMode(I2C_SDA_PIN, OUTPUT);
+    digitalWrite(I2C_SDA_PIN, HIGH);
+    for (int i = 0; i < 9; i++) {
+        digitalWrite(I2C_SCL_PIN, HIGH);
+        delayMicroseconds(5);
+        digitalWrite(I2C_SCL_PIN, LOW);
+        delayMicroseconds(5);
+    }
+    // Issue STOP condition: SDA low -> SCL high -> SDA high
+    digitalWrite(I2C_SDA_PIN, LOW);
+    delayMicroseconds(5);
+    digitalWrite(I2C_SCL_PIN, HIGH);
+    delayMicroseconds(5);
+    digitalWrite(I2C_SDA_PIN, HIGH);
+    delayMicroseconds(5);
+
+    Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+    Wire.setClock(100000);
+    if (ads.begin()) {
+        ads.setGain(GAIN_ONE);
+        ads.setDataRate(RATE_ADS1115_32SPS);
+        ads.startADCReading(MUX_BY_CHANNEL[CHANNEL], /*continuous=*/true);
+        LOG_INFO("WaterPressureSensor: I2C bus recovered");
+    }
+}
+
 
 float WaterPressureSensor::calculateMedianFromBuffer() {
     // Create a temporary array of valid readings from the buffer
