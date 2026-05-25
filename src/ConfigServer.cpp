@@ -294,6 +294,10 @@ void ConfigServer::handleInit() {
         if (reading.valid) {
             json += ",\"level_cm\":" + String(reading.level_cm, 2);
         }
+        float rate = waterSensor->getRateOfChange_cm30min();
+        if (!isnan(rate)) {
+            json += ",\"rate_cm_30min\":" + String(rate, 2);
+        }
     }
     json += "},";
 
@@ -1065,6 +1069,10 @@ void ConfigServer::handleGetReading() {
     json += "\"millivolts\":" + String(reading.millivolts, 2);
     if (reading.valid) {
         json += ",\"level_cm\":" + String(reading.level_cm, 2);
+    }
+    float rate = waterSensor->getRateOfChange_cm30min();
+    if (!isnan(rate)) {
+        json += ",\"rate_cm_30min\":" + String(rate, 2);
     }
     json += "}";
 
