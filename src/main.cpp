@@ -236,6 +236,18 @@ void loop() {
         LOG_EVENT("[EVENT] Sensor error cleared");
     }
 
+    static bool busUnrecoverableNotified = false;
+    if (!busUnrecoverableNotified && waterSensor.isBusUnrecoverable()) {
+        busUnrecoverableNotified = true;
+        LOG_CRITICAL("[SENSOR] I2C bus permanently unrecoverable after %d attempts", BUS_RECOVERY_MAX_ATTEMPTS);
+        if (!USE_MOCK) {
+            messageTraceId++;
+            char busMsg[120];
+            snprintf(busMsg, sizeof(busMsg), "[MSG:%u] BilgeRise: I2C sensor bus unrecoverable. Device requires inspection.", messageTraceId);
+            notifier.enqueue(busMsg);
+        }
+    }
+
     static bool lastConfigCommandReceived = false;
     if (systemState.configCommandReceived && !lastConfigCommandReceived) {
         LOG_EVENT("[EVENT] Button pressed - config command received");
