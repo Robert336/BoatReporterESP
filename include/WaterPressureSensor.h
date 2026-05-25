@@ -5,8 +5,8 @@
 #include <Adafruit_ADS1X15.h>
 
 
-static constexpr int I2C_SDA_PIN = 16;
-static constexpr int I2C_SCL_PIN = 17;
+static constexpr int I2C_SDA_PIN = 21;
+static constexpr int I2C_SCL_PIN = 22;
 
 // The usable range of the water sensor in centimeters
 constexpr float WATER_LEVEL_RANGE_MIN_CM = 5.0;
