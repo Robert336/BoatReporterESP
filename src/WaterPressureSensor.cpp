@@ -22,7 +22,11 @@ bool WaterPressureSensor::init() {
     // When mocked, don't setup i2c with ADC as this will error
     if (!useMockData) {
         Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
-        ads.begin();
+        Wire.setClock(100000); // 100kHz — ADS1115 can time out at 400kHz default
+        if (!ads.begin()) {
+            LOG_CRITICAL("WaterPressureSensor: ADS1115 not found on I2C bus (SDA=%d SCL=%d)", I2C_SDA_PIN, I2C_SCL_PIN);
+            return false;
+        }
         ads.setGain(GAIN_ONE);
         ads.setDataRate(RATE_ADS1115_32SPS);
         ads.startADCReading(MUX_BY_CHANNEL[CHANNEL], /*continuous=*/true);
