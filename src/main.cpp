@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <nvs_flash.h>
+#include <esp_task_wdt.h>
 #include "Logger.h"
 #include "MQTTService.h"
 #include "TimeManagement.h"
@@ -62,6 +63,11 @@ static constexpr int LIGHT_PIN = 12;
 
 // Emergency timeout before transitioning to EMERGENCY state
 static constexpr int EMERGENCY_TIMEOUT_MS = 5000;
+
+// Task watchdog: reboot if loop() stalls this long. Sized above the 30s OTA
+// version-check HTTP GET (the longest single blocking call in loop); the OTA
+// download loop feeds the dog itself.
+static constexpr uint32_t WDT_TIMEOUT_S = 60;
 
 volatile bool buttonPressed = false;
 volatile unsigned long lastButtonPress = 0;
@@ -180,9 +186,17 @@ void setup() {
             LOG_SETUP("IP address: %s", WiFi.localIP().toString().c_str());
         }
     }
+
+    // Enable the task watchdog last, once boot-time blocking work (WiFi connect)
+    // is done. panic=true reboots the device if loop() ever stops feeding it.
+    esp_task_wdt_init(WDT_TIMEOUT_S, true);
+    esp_task_wdt_add(NULL); // Register the loop task (setup/loop share one task)
+    LOG_SETUP("[SETUP] Task watchdog armed (%us timeout)", WDT_TIMEOUT_S);
 }
 
 void loop() {
+
+    esp_task_wdt_reset(); // Feed the watchdog; a stalled loop will trigger reboot
 
     mqtt.loop();
     rtc.sync();
@@ -418,7 +432,10 @@ void loop() {
                         LOG_EVENT("[STATE] EMERGENCY: Sending alert message: %s", emergMessageBuf);
 
                         if (!USE_MOCK) {
-                            notifier.enqueue(emergMessageBuf);
+                            // Latest-wins mailbox: if a prior emergency alert is still
+                            // undelivered (e.g. WiFi outage), this replaces it so the
+                            // owner gets the current level, not a backlog of stale ones.
+                            notifier.enqueueEmergency(emergMessageBuf);
                         } else {
                             LOG_EVENT("[MOCK] Skipping SMS/Discord send (TraceID:%u)", messageTraceId);
                         }
