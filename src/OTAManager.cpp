@@ -3,6 +3,7 @@
 #include "Version.h"
 #include <WiFi.h>
 #include <esp_ota_ops.h>
+#include <esp_task_wdt.h>
 
 OTAManager::OTAManager(SendSMS* sms, SendDiscord* discord)
     : smsService(sms), discordService(discord), currentState(OTAState::IDLE),
@@ -546,6 +547,7 @@ bool OTAManager::downloadAndInstall(const String& url, size_t expectedSize) {
     unsigned long lastDataTime = millis();
     
     while (http.connected() && written < contentLength) {
+        esp_task_wdt_reset(); // Download runs on the loop task; keep feeding the dog
         // Check overall download timeout
         if (millis() - downloadStart > DOWNLOAD_TIMEOUT_MS) {
             lastError = "Download timeout - exceeded 5 minutes";
