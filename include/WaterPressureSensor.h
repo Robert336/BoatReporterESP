@@ -16,6 +16,15 @@ constexpr float WATER_LEVEL_RANGE_MIN_CM = 5.0;
 constexpr float WATER_LEVEL_RANGE_MAX_CM = 100.0;
 static constexpr int READING_ERROR_MARGIN_MV = 15;
 
+// Reject readings above the sensor's physical span — a level higher than this
+// means an electrical fault (e.g. signal line shorted to rail), not real water.
+static constexpr float READING_OVERRANGE_MARGIN_CM = 10.0f;
+
+// Flatline guard: a live ADS1115 jitters by >=1 LSB on any real analog input,
+// so this many byte-identical raw samples (sampled ~1 Hz) indicates a frozen
+// line or dead transducer rather than genuinely still water.
+static constexpr int STUCK_SAMPLE_THRESHOLD = 180; // ~3 minutes at 1 Hz
+
 // Size of the circular buffer for smoothing readings
 static constexpr int READINGS_BUFFER_SIZE = 10; 
 
@@ -92,5 +101,8 @@ private:
     LevelSnapshot rateBuffer[RATE_BUFFER_SIZE];
     int rateBufferIndex;
     uint32_t lastRateSampleTime;
+
+    int16_t lastStuckRawADC;    // last raw code, for flatline comparison
+    uint32_t stuckSampleCount;  // consecutive identical raw codes
 };
 
