@@ -10,7 +10,8 @@ WaterPressureSensor::WaterPressureSensor(bool mock)
       secondPointVoltage_mv(0), secondPointLevel_cm(0.0f), twoPointCalibrationActive(false),
       lastLogTime(0), lastSampleTime(0), lastReading{},
       busRecoveryAttempts(0), busUnrecoverable(false),
-      rateBufferIndex(0), lastRateSampleTime(0) {
+      rateBufferIndex(0), lastRateSampleTime(0),
+      lastStuckRawADC(0), stuckSampleCount(0) {
     for (int i = 0; i < READINGS_BUFFER_SIZE; i++) {
         readingsBuffer[i].valid = false;
         readingsBuffer[i].level_cm = 0;
@@ -177,6 +178,27 @@ SensorReading WaterPressureSensor::readLevel() {
         }
         reading.level_cm = voltageToCentimeters(reading.millivolts);
         if (reading.millivolts < (zeroReadingVoltage_mv - READING_ERROR_MARGIN_MV)) reading.valid = false;
+
+        // Over-range guard: the sensor can't physically read past its span, so a
+        // higher computed level means an electrical fault, not rising water.
+        if (reading.level_cm > WATER_LEVEL_RANGE_MAX_CM + READING_OVERRANGE_MARGIN_CM) {
+            reading.valid = false;
+        }
+
+        // Flatline guard: identical raw codes for minutes => frozen/dead sensor.
+        if (rawADC == lastStuckRawADC) {
+            stuckSampleCount++;
+            if (stuckSampleCount == (uint32_t)STUCK_SAMPLE_THRESHOLD) {
+                LOG_CRITICAL("WaterPressureSensor: flatline detected — raw ADC %d unchanged for %d samples",
+                             rawADC, STUCK_SAMPLE_THRESHOLD);
+            }
+        } else {
+            stuckSampleCount = 0;
+            lastStuckRawADC = rawADC;
+        }
+        if (stuckSampleCount >= (uint32_t)STUCK_SAMPLE_THRESHOLD) {
+            reading.valid = false;
+        }
     }
 
     reading.timestamp = TimeManagement::getInstance().getCurrentTimestamp();
