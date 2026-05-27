@@ -35,12 +35,15 @@ struct SystemState {
     uint32_t emergencyConditionsFalseTime; // When emergency conditions became false (Tier 1)
     uint32_t lastEmergencyMessageTime;
     uint32_t lastHornToggleTime;           // For horn pulsing pattern (Tier 2)
-    
+    uint32_t sensorErrorTrueTime;          // When sensorError last went false->true
+    uint32_t lastSensorErrorNotifyTime;    // Last sustained-failure notification
+
     // Event flags
     bool emergencyConditions;              // Tier 1 threshold exceeded
     bool urgentEmergencyConditions;        // Tier 2 threshold exceeded
     bool hornCurrentlyOn;                  // Tracks horn state for pulsing
     bool sensorError;
+    bool sensorErrorNotified;              // Owner alerted about the current failure episode
     volatile bool configCommandReceived;
     bool notificationsSilenced;            // Tracks if emergency alerts are silenced
 };
@@ -63,6 +66,13 @@ static constexpr int LIGHT_PIN = 12;
 
 // Emergency timeout before transitioning to EMERGENCY state
 static constexpr int EMERGENCY_TIMEOUT_MS = 5000;
+
+// Sensor-failure notification: wait this long of *continuous* sensor error
+// before alerting, so brief single-sample glitches (which intentionally trip
+// ERROR) don't spam the owner. Re-alert at the repeat interval while it stays
+// down. The ERROR state transition itself is unchanged and still immediate.
+static constexpr uint32_t SENSOR_ERROR_NOTIFY_DELAY_MS  = 60000;   // 1 min sustained
+static constexpr uint32_t SENSOR_ERROR_NOTIFY_REPEAT_MS = 1800000; // 30 min reminder
 
 // Task watchdog: reboot if loop() stalls this long. Sized above the 30s OTA
 // version-check HTTP GET (the longest single blocking call in loop); the OTA
@@ -126,11 +136,14 @@ void setup() {
     systemState.emergencyConditionsFalseTime = millis();
     systemState.lastEmergencyMessageTime = 0;
     systemState.lastHornToggleTime = 0;
-    
+    systemState.sensorErrorTrueTime = millis();
+    systemState.lastSensorErrorNotifyTime = 0;
+
     // Initialize system state flags
     systemState.emergencyConditions = false;
     systemState.urgentEmergencyConditions = false;
     systemState.hornCurrentlyOn = false;
+    systemState.sensorErrorNotified = false;
     systemState.notificationsSilenced = false;
     
     // Initialize MQTT early so all subsequent LOG_* calls can be queued for delivery
@@ -246,8 +259,44 @@ void loop() {
     
     if (systemState.sensorError && !previousSensorError) {
         LOG_EVENT("[EVENT] Sensor error detected!");
+        systemState.sensorErrorTrueTime = millis();
     } else if (!systemState.sensorError && previousSensorError) {
         LOG_EVENT("[EVENT] Sensor error cleared");
+        // Only tell the owner it recovered if we'd alerted them it failed.
+        if (systemState.sensorErrorNotified) {
+            systemState.sensorErrorNotified = false;
+            if (!USE_MOCK) {
+                messageTraceId++;
+                char recoverMsg[120];
+                snprintf(recoverMsg, sizeof(recoverMsg),
+                         "[MSG:%u] BilgeRise: Sensor recovered — water-level monitoring restored.", messageTraceId);
+                notifier.enqueue(recoverMsg);
+            }
+        }
+    }
+
+    // Notify on a *sustained* sensor failure (past the glitch debounce). The
+    // I2C-bus-unrecoverable path sends its own distinct alert, so skip here.
+    if (systemState.sensorError && !waterSensor.isBusUnrecoverable()) {
+        uint32_t now = millis();
+        bool dueFirst  = !systemState.sensorErrorNotified &&
+                         (now - systemState.sensorErrorTrueTime >= SENSOR_ERROR_NOTIFY_DELAY_MS);
+        bool dueRepeat = systemState.sensorErrorNotified &&
+                         (now - systemState.lastSensorErrorNotifyTime >= SENSOR_ERROR_NOTIFY_REPEAT_MS);
+        if (dueFirst || dueRepeat) {
+            systemState.sensorErrorNotified = true;
+            systemState.lastSensorErrorNotifyTime = now;
+            uint32_t downSecs = (now - systemState.sensorErrorTrueTime) / 1000;
+            LOG_CRITICAL("[SENSOR] Sustained sensor failure (%us) — notifying owner", downSecs);
+            if (!USE_MOCK) {
+                messageTraceId++;
+                char failMsg[150];
+                snprintf(failMsg, sizeof(failMsg),
+                         "[MSG:%u] BilgeRise: Sensor failure — no valid reading for %us. Flood detection is OFFLINE; device needs inspection.",
+                         messageTraceId, downSecs);
+                notifier.enqueue(failMsg);
+            }
+        }
     }
 
     static bool busUnrecoverableNotified = false;
@@ -349,8 +398,6 @@ void loop() {
                 systemState.currentState = CONFIG;
                 systemState.lastStateChangeTime = millis();
             }
-            
-            // send message about sensor failure?
             break;
         case NORMAL:
             if (systemState.sensorError == true) {
