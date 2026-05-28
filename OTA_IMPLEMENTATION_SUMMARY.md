@@ -69,6 +69,7 @@ Remote Over-The-Air (OTA) firmware update capability has been successfully imple
 - Optional update password protection
 - HTTPS-only downloads
 - Firmware size verification
+- Signal strength pre-flight check (blocks download below -70 dBm)
 - Automatic rollback on boot failure (ESP32 bootloader)
 
 ✅ **Configuration Storage (NVS)**
@@ -246,8 +247,12 @@ For your boat monitoring use case:
 ### Update Blocking
 - Updates only run in NORMAL state (not during emergencies)
 - Password protection available
-- User confirmation required before installation
-- Firmware size verified before installation
+- User confirmation required before installation (manual mode)
+- Pre-flight checks before any bytes are downloaded:
+  - Firmware size bounds (64 KB – 4 MB)
+  - Available flash space (firmware size + 5% margin)
+  - Available heap (≥ 2 KB)
+  - WiFi signal strength (≥ -70 dBm) — blocks download on weak connections to prevent mid-flash dropout
 
 ### Recovery Options
 - USB serial flashing always available as fallback

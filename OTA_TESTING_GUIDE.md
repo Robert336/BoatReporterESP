@@ -250,6 +250,13 @@ void setup() {
 2. Try to install update with wrong password
 3. **Expected**: "Invalid password" error, update blocked
 
+### 8.4 Weak WiFi Signal
+
+1. Move the ESP32 to a location with poor signal (or temporarily lower your router's transmit power)
+2. Verify RSSI is below -70 dBm (check serial monitor: `[WIFI] RSSI=...`)
+3. Trigger an update install
+4. **Expected**: Update aborted in FAILED state, critical log entry showing measured RSSI vs. threshold, no "starting update" notification sent
+
 ### 8.4 No firmware.bin in Release
 
 1. Create release without uploading firmware.bin
@@ -265,6 +272,7 @@ void setup() {
 - [ ] Success notification received
 - [ ] Automatic update checks work on schedule
 - [ ] Update password protection works (if enabled)
+- [ ] Weak signal check blocks install below -70 dBm
 - [ ] Rollback works for bad firmware
 - [ ] Rollback notification received
 - [ ] Error handling works for various failure scenarios

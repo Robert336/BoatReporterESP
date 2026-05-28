@@ -78,6 +78,15 @@ BilgeRise: New firmware v1.1.0 failed to boot. Rolled back to v1.0.0. System sta
 
 ## Safety Features
 
+### Signal Strength Pre-flight Check
+
+Before committing to a download, the device checks that WiFi signal is strong enough to complete it reliably:
+
+- Threshold: **-70 dBm** (constant `OTA_MIN_RSSI_DBM` in `OTAManager.h`)
+- If RSSI is below the threshold, the update is aborted in FAILED state and logged — the "starting update" notification is **not** sent, so you won't receive a start message followed by a failure
+- The check runs after heap/flash/size validation but before any bytes are downloaded
+- The version-check API call (lightweight HTTPS GET) is not gated by RSSI — only the download commit is blocked
+
 ### Automatic Rollback Protection
 
 If a new firmware fails to boot properly:

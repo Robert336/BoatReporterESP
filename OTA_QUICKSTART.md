@@ -109,6 +109,7 @@ BilgeRise: Firmware updated successfully! v1.0.0 → v1.1.0. System online.
 
 - ✅ **Automatic Rollback**: If update fails, device reverts to previous version
 - ✅ **Automatic Installation**: Updates install without physical access (configurable)
+- ✅ **Signal Strength Check**: Download is blocked if WiFi RSSI is below -70 dBm — prevents a mid-flash dropout on a weak connection
 - ✅ **Password Protection**: Optional password for manual installations
 - ✅ **Notifications**: Always know what's happening with your device
 
