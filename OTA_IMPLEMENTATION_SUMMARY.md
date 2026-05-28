@@ -83,18 +83,25 @@ Remote Over-The-Air (OTA) firmware update capability has been successfully imple
 
 ### 3. Modified Files
 
-**New Files:**
-- `include/Version.h` - Firmware version definition
-- `include/OTAManager.h` - OTA manager header
-- `src/OTAManager.cpp` - OTA manager implementation
-- `OTA_TESTING_GUIDE.md` - Comprehensive testing instructions
-- `OTA_IMPLEMENTATION_SUMMARY.md` - This file
+**New Files (OTA feature):**
+- `include/Version.h` — Firmware version definition
+- `include/OTAManager.h` — OTA manager header
+- `src/OTAManager.cpp` — OTA manager implementation
+- `src/html/ota.html` — OTA settings page (gzipped at build time)
+- `OTA_TESTING_GUIDE.md` — Comprehensive testing instructions
+- `OTA_IMPLEMENTATION_SUMMARY.md` — This file
+
+**Other significant additions (same release):**
+- `include/MQTTService.h` / `src/MQTTService.cpp` — MQTT log transport
+- `include/NotificationWorker.h` / `src/NotificationWorker.cpp` — Core 0 notification task
+- `scripts/compress_html.py` — Build-time HTML gzip pipeline
+- `partitions.csv` — OTA-capable partition table (2 × 1.9 MB app slots)
 
 **Modified Files:**
-- `platformio.ini` - Added ArduinoJson library, OTA partition scheme, version build flag
-- `include/ConfigServer.h` - Added OTAManager member and handler declarations
-- `src/ConfigServer.cpp` - Added OTA endpoints, handlers, and web page
-- `src/main.cpp` - Integrated OTAManager initialization and loop
+- `platformio.ini` — Added ArduinoJson + PubSubClient libraries, OTA partition scheme, version build flag, named build environments (`dev`/`prod`/`mock`/`native`/`esp32-test`)
+- `include/ConfigServer.h` — Added OTAManager + MQTTService members, handler declarations
+- `src/ConfigServer.cpp` — Added OTA, MQTT, WiFi management endpoints; switched from inline HTML strings to gzip-served pages
+- `src/main.cpp` — Integrated OTAManager, NotificationWorker, MQTTService, task watchdog, two-tier emergency, I2C recovery, sustained sensor-failure notifications
 
 ## Memory Usage Analysis
 
@@ -134,11 +141,11 @@ graph TD
     L -->|No| I
     L -->|Yes| M[Send Update Available Notification]
     
-    M --> N{Auto-Install Enabled?}
-    N -->|Yes| P[Send Starting Notification]
-    N -->|No| O[Display in Web Interface]
+    M --> N{Auto-Install Enabled?\nDefault: YES}
+    N -->|Yes - default| P[Send Starting Notification]
+    N -->|No - manual mode| O[Display in Web Interface]
     
-    O --> Q{User Installs?}
+    O --> Q{User Clicks Install?}
     Q -->|No| I
     Q -->|Yes| P
     
@@ -183,7 +190,7 @@ graph TD
 
 1. **Build and Upload Current Firmware**
    ```bash
-   cd c:\Users\Robert\Documents\PlatformIO\Projects\BoatReporterESP
+   # From the project root
    pio run -e prod --target upload
    ```
 
@@ -251,8 +258,8 @@ For your boat monitoring use case:
 
 1. **Network Requirement**: Device must have internet access to check for/download updates
 2. **Single Update at a Time**: Cannot queue multiple updates
-3. **Manual Installation**: Auto-check finds updates, but user must approve installation
-4. **GitHub Dependency**: Requires GitHub for hosting (could be extended to other sources)
+3. **GitHub Dependency**: Requires GitHub for hosting (could be extended to other sources)
+4. **Fork configuration**: The default GitHub repo (`Robert336/BoatReporterESP`) is hardcoded in NVS defaults. Forks must update this via the OTA settings page before first deployment.
 
 ## Future Enhancements (Optional)
 

@@ -4,10 +4,13 @@ This folder contains a standalone development environment for the web interface.
 
 ## What's Inside
 
-- **index.html** - Main WiFi configuration page
-- **debug.html** - Debug and calibration interface
-- **mock-server.js** - Node.js server that mimics the ESP32's API endpoints
-- **package.json** - Node.js dependencies
+- **index.html** — Main dashboard page
+- **wifi-config.html** — WiFi network configuration page
+- **notifications.html** — Notification settings (SMS, Discord, MQTT)
+- **settings.html** — Settings hub page
+- **debug.html** — Debug and calibration interface
+- **mock-server.js** — Node.js server that mimics all ESP32 API endpoints
+- **package.json** — Node.js dependencies
 
 ## Quick Start
 
@@ -49,13 +52,18 @@ Available pages:
 ### 4. Open in Browser
 
 Navigate to:
-- **Main page**: http://localhost:3000/
-- **Debug page**: http://localhost:3000/debug.html
+- **Main dashboard**: http://localhost:3000/
+- **WiFi config**: http://localhost:3000/wifi-config
+- **Notifications**: http://localhost:3000/notifications-page
+- **Settings**: http://localhost:3000/settings
+- **Debug page**: http://localhost:3000/debug
+
+Note: page URLs match the routes served by the real ESP32 — no `.html` extension.
 
 ### 5. Develop!
 
 Now you can:
-- Edit `index.html` or `debug.html` in your code editor
+- Edit any of the HTML files in `dev-ui/` in your code editor
 - Save the file
 - Refresh your browser to see changes immediately
 - No compilation or ESP32 upload needed!
@@ -73,37 +81,60 @@ The `mock-server.js` creates a local web server that:
 
 ### API Endpoints Implemented
 
-All the ESP32 endpoints are mocked:
+All ESP32 endpoints are mocked. These match the routes registered in `src/ConfigServer.cpp`:
+
+**Pages (GET — served by mock as HTML files):**
+- `GET /` — Main dashboard (`index.html`)
+- `GET /wifi-config` — WiFi config page
+- `GET /notifications-page` — Notifications page
+- `GET /settings` — Settings hub
+- `GET /debug` — Debug & calibration page
+
+**Init (merged JSON for fast page load):**
+- `GET /init` — Dashboard init data; includes `sensor.rate_cm_30min` (conditionally — omitted until 5+ minutes of readings exist, i.e. at least 2 snapshots in the rate buffer)
+- `GET /settings/init` — Settings init data
+- `GET /debug/init` — Debug init data; also includes `rate_cm_30min` when available
 
 **Sensor & Calibration:**
-- `GET /read` - Current sensor reading (simulated)
-- `GET /calibration` - Calibration settings
-- `POST /calibrate/zero` - Set zero point
-- `POST /calibrate/point2` - Set second calibration point
+- `GET /read` — Current sensor reading (simulated)
+- `GET /calibration` — Calibration settings
+- `POST /calibrate/zero` — Set zero point
+- `POST /calibrate/point2` — Set second calibration point
 
 **Emergency Settings:**
-- `GET /emergency-settings` - Current emergency thresholds
-- `POST /calibration/emergency-level` - Set Tier 1 threshold
-- `POST /emergency/urgent-level` - Set Tier 2 threshold
-- `POST /emergency/test-pin` - Test emergency pin
+- `GET /emergency-settings` — Current thresholds
+- `POST /calibration/emergency-level` — Set Tier 1 threshold
+- `POST /emergency/urgent-level` — Set Tier 2 threshold
+- `POST /emergency/test-pin` — Test emergency pin
 
 **Notifications:**
-- `GET /notifications` - Current notification settings
-- `POST /notifications/phone` - Save phone number
-- `POST /notifications/discord` - Save Discord webhook
-- `POST /notifications/emergency-freq` - Set notification frequency
-- `POST /notifications/test/sms` - Test SMS (simulated)
-- `POST /notifications/test/discord` - Test Discord (simulated)
+- `GET /notifications` — Current notification settings
+- `POST /notifications/phone` — Save phone number
+- `POST /notifications/discord` — Save Discord webhook
+- `POST /notifications/mqtt` — Configure MQTT broker
+- `POST /notifications/emergency-freq` — Set notification frequency
+- `POST /notifications/test/sms` — Test SMS (simulated)
+- `POST /notifications/test/discord` — Test Discord (simulated)
+- `POST /notifications/test/mqtt` — Test MQTT (simulated)
 
 **WiFi:**
-- `GET /status` - WiFi connection status
-- `POST /config` - Save WiFi credentials
+- `GET /status` — WiFi connection status
+- `GET /wifi/networks` — List stored networks
+- `POST /config` — Save WiFi credentials
+- `POST /wifi/remove` — Remove a stored network
+
+**OTA (not in mock-server — see `src/html/ota.html` and `src/ConfigServer.cpp`):**
+- `GET /ota-settings` — OTA settings page
+- `GET /ota/status` — Current OTA state JSON
+- `GET /ota/check` — Trigger update check
+- `POST /ota/update` — Start firmware install
+- `POST /ota/settings` — Save OTA configuration
 
 ## Development Workflow
 
 ### Making UI Changes
 
-1. **Edit HTML/CSS/JavaScript** in `index.html` or `debug.html`
+1. **Edit HTML/CSS/JavaScript** in any of the `dev-ui/*.html` files (or `src/html/ota.html`)
 2. **Save** the file
 3. **Refresh** your browser (F5 or Ctrl+R)
 4. **See changes immediately**
@@ -126,38 +157,36 @@ You can now use full browser developer tools:
 
 ## Deploying Changes to ESP32
 
-When you're happy with your UI changes:
+When you're happy with your UI changes, just build the firmware — the pipeline handles the rest automatically.
 
-### Option A: Manual Copy-Paste
+### How the Build Pipeline Works
 
-1. Open `ConfigServer.cpp` in your editor
-2. Find the `getConfigPage()` function (around line 236)
-3. Replace the content inside `R"HTML(...HTML")` with your `index.html` content
-4. Find the `getDebugPage()` function (around line 796)
-5. Replace the content inside `R"HTML(...HTML")` with your `debug.html` content
-6. Compile and upload to ESP32
+`scripts/compress_html.py` runs as a PlatformIO pre-script (via `extra_scripts` in `platformio.ini`) before every compile. It:
 
-### Option B: Build Script (Future Enhancement)
+1. Reads each HTML file from `dev-ui/` and `src/html/` (for `ota.html`)
+2. Gzip-compresses each file at level 9
+3. Writes them as `const uint8_t` arrays into `src/compressed_pages.h`
+4. `ConfigServer.cpp` reads these arrays and serves them with `Content-Encoding: gzip`
 
-You could create a Python or Node script to automatically convert the HTML files to C++ raw strings. This would go in the project root (not in dev-ui).
+### Deploying
 
-Example Python script (not included, but you could create):
-
-```python
-def html_to_cpp(html_file, function_name):
-    with open(html_file, 'r') as f:
-        html = f.read()
-    
-    print(f"String {function_name}() {{")
-    print(f'    String html = R"HTML(')
-    print(html)
-    print('    )HTML";')
-    print('    return html;')
-    print('}')
-
-# Usage:
-# python build_html.py
+```bash
+# Edit dev-ui/*.html, then:
+pio run -e prod --target upload   # compress, compile, upload in one step
 ```
+
+No manual copy-paste or conversion needed. The HTML files in `dev-ui/` are the single source of truth for all pages except `ota.html` which lives in `src/html/`.
+
+### Which file to edit?
+
+| Page | Source file |
+|------|-------------|
+| Main dashboard | `dev-ui/index.html` |
+| WiFi config | `dev-ui/wifi-config.html` |
+| Notifications | `dev-ui/notifications.html` |
+| Settings hub | `dev-ui/settings.html` |
+| Debug & calibration | `dev-ui/debug.html` |
+| OTA settings | `src/html/ota.html` |
 
 ## Customizing the Mock Data
 
@@ -168,6 +197,7 @@ You can modify `mock-server.js` to change the mock data:
 currentMillivolts: 1234.56,  // Change this
 currentLevel_cm: 25.3,        // Change this
 ```
+
 
 **Calibration values:**
 ```javascript

@@ -9,14 +9,21 @@ An ESP32-based water level monitoring and alert system for boats. Automatically 
 Project by: Robert Mazza and David Miller
 ## Features
 
-- **Real-time Water Level Monitoring** - Uses a pressure sensor with ADS1115 16-bit ADC for accurate readings
-- **Emergency Alerts** - Automatic SMS (via Twilio) and Discord notifications when water levels exceed threshold (May add more webhook integrations later)
-- **Web Configuration Interface** - Easy setup via WiFi access point captive protal
+- **Real-time Water Level Monitoring** - Uses a pressure sensor with ADS1115 16-bit ADC (I2C, 100 kHz, address 0x48) for accurate readings; usable range 5–100 cm
+- **Two-Tier Emergency System** - Tier 1 (configurable threshold, default 30 cm) sends SMS and Discord alerts; Tier 2 (urgent threshold, default 50 cm) activates a pulsing horn/relay on GPIO 19
+- **Emergency Alerts** - Automatic SMS (via Twilio) and Discord notifications including current water level and rate-of-change (cm/30 min)
+- **Rate-of-Change Display** - Main dashboard shows water level trend (e.g. `+2.1 cm / 30 min`) once 5+ minutes of readings are available; also included in emergency alert messages
+- **Notification Worker** - SMS/Discord HTTP calls run on a dedicated FreeRTOS task (Core 0); latest-wins coalescing prevents stale-message backlogs after WiFi outages
+- **Web Configuration Interface** - 5-page UI (dashboard, WiFi, notifications, settings, debug/calibration) served as gzip-compressed HTML via captive portal
+- **OTA Firmware Updates** - Remote updates via GitHub Releases; automatic checking and installation enabled by default
+- **MQTT Logging** - Streams all log output to a configurable MQTT broker; LWT availability topic for Home Assistant integration
 - **Two-Point Calibration** - Accurate sensor calibration for your specific setup
-- **Multiple System States** - NORMAL, ERROR, EMERGENCY, and CONFIG modes with LED indicators
+- **Multiple System States** - NORMAL, ERROR, EMERGENCY, and CONFIG modes with LED indicators (including WiFi-disconnected double-blink)
+- **Sensor Hardening** - I2C bus auto-recovery, stuck/over-range reading detection, and sustained sensor-failure owner notifications
+- **Task Watchdog** - Automatic reboot if the main loop stalls (60-second timeout)
 - **NTP Time Synchronization** - Accurate timestamping of events
 - **Persistent Storage** - WiFi credentials, calibration, and notification settings saved to NVS (Non-Volatile Storage)
-- **Mock Mode** - Test the system without physical sensors
+- **Mock Sensor Mode** - Full firmware with simulated sensor data via the `env:mock` build environment (no hardware required)
 
 ### Web Configuration Interface Pages
 <img width="700" alt="Web-config-pages" src="https://github.com/user-attachments/assets/bb7b6dad-d5b2-42a6-acda-cb48fb81073b" />
@@ -79,19 +86,29 @@ cp include/secrets.h.example include/secrets.h
 ```cpp
 constexpr const char* TWILIO_ACCOUNT_SID = "your_account_sid_here";
 constexpr const char* TWILIO_AUTH_TOKEN = "your_auth_token_here";
+constexpr const char* TWILIO_MESSAGING_SERVICE_SID = "your_messaging_service_sid_here";
 ```
 
-**Note:** Phone numbers and Discord webhook URL are configured through the web interface (not in secrets.h)
+**Note:** Phone number, Discord webhook URL, and MQTT broker settings are configured through the web interface (not in secrets.h) and saved to NVS.
 
-4. Build and upload to your ESP32:
+4. Build and upload to your ESP32. Choose the appropriate environment:
 ```bash
-pio run --target upload
+# Production build (only critical logs — use this on the boat)
+pio run -e prod --target upload
+
+# Development build (all logs enabled — for debugging)
+pio run -e dev --target upload
+
+# Mock sensor build (full firmware with simulated sensor data, no hardware needed)
+pio run -e mock --target upload
 ```
 
 5. Monitor serial output (115200 baud):
 ```bash
 pio device monitor
 ```
+
+> **Build pipeline note:** When any build runs, `scripts/compress_html.py` automatically gzips all pages from `dev-ui/` and `src/html/` into `src/compressed_pages.h`, which `ConfigServer.cpp` serves directly. You do not need to manually embed HTML.
 
 ## Getting API Credentials
 
@@ -120,7 +137,8 @@ Using a Twilio trail should be more than enough.
 On first boot (or when no WiFi credentials are saved), the device automatically enters CONFIG mode:
 
 1. The built-in LED will **slow blink** indicating CONFIG mode
-2. Connect to the WiFi access point: `BilgeRise-Setup`
+2. Connect to the WiFi access point: `ESP32-BilgeRise-Setup`
+   - The AP password is **unique per device**, derived from the chip ID. It is printed to the serial monitor on boot (115200 baud) at startup inside a labelled banner.
 3. Open a web browser and navigate to `http://192.168.4.1` or any `http://...` domain (`https://...` will not work since the site does not use SSL) as the captive portal should automatically open `http://192.168.4.1`
 4. You'll see the configuration web interface
 
@@ -199,10 +217,15 @@ If you calibrated earlier with a multimeter, then you will see that the software
 
 ### Emergency Threshold Configuration
 
-Set your desired water level threshold in the web interface:
-- Default: 30cm
-- Recommended: Set based on your bilge depth and comfort level
-- When water exceeds this level for more than 1 second (configurable in code), EMERGENCY state triggers
+The system uses two independently configurable thresholds, both set via the web interface:
+
+**Tier 1 — Message Notifications (default: 30 cm)**
+- When water exceeds this level for more than 5 seconds continuously, EMERGENCY state triggers
+- Sends SMS and Discord alerts at the configured notification frequency (default: 15 minutes)
+
+**Tier 2 — Horn/Relay Alarm (default: 50 cm)**
+- When water reaches this higher threshold, GPIO 19 pulses (default: 1 s on / 1 s off)
+- Both tiers activate simultaneously if water is above the Tier 2 threshold
 
 > **Note:** The **EMERGENCY** mode is designed as a critical alert—when the threshold is reached, the device will activate the alert output and send emergency notifications.   
 > **Only set the emergency threshold high enough to indicate actual danger.**  
@@ -219,7 +242,8 @@ Set your desired water level threshold in the web interface:
 
 | Pattern | State | Meaning |
 |---------|-------|---------|
-| **OFF** | NORMAL | Normal operation, water level OK |
+| **OFF** | NORMAL | Normal operation, water level OK, WiFi connected |
+| **Double Blink** | NORMAL | Normal operation but WiFi is disconnected |
 | **Slow Blink** | CONFIG | Configuration mode active (web interface available) |
 | **Fast Blink** | ERROR | Sensor error detected (check wiring/sensor) |
 | **Solid ON** | EMERGENCY | Water level exceeded threshold! Sending alerts |
@@ -245,17 +269,18 @@ The device operates in four states:
 
 ### Button Functions
 
-- **Single Press** (from NORMAL or ERROR) - Enter configuration mode
-- Button is connected to GPIO 23 with internal pull-up (press to GND)
+- **Single Press** (from NORMAL or ERROR) — Enter configuration mode
+- **5-Second Hold** (during EMERGENCY) — Toggle notification silence. When silenced, SMS/Discord alerts and the horn are suppressed; pressing again re-enables them. Silence is automatically cleared when the emergency ends.
+- Button is connected to GPIO 23 with internal pull-up (press to GND). Pressing the button while in EMERGENCY (short press) is ignored to prevent accidental CONFIG entry.
 
 ### Alert Behavior
 
 When in EMERGENCY state:
-- GPIO 19 goes HIGH (can drive relay, buzzer, etc.)
-- SMS sent via Twilio
-- Discord webhook message sent
-- Alerts repeat every 30 seconds (configurable in code: `EMERGENCY_MESSAGE_TIMEOUT_MS`)
-- Serial monitor logs all events
+- **Tier 1** (water ≥ emergency threshold): SMS and Discord notifications sent with current water level and rate-of-change (e.g. `+3.2 cm/30min`, omitted if fewer than two 5-minute snapshots exist yet). Repeats at a configurable interval (default **15 minutes**, set via web UI).
+- **Tier 2** (water ≥ urgent threshold): GPIO 19 pulses the alert output (default 1 second ON / 1 second OFF). Configure horn durations via web UI.
+- Notification delivery is handled by a background FreeRTOS task (Core 0). If a prior emergency alert is undelivered when the next one fires (e.g. WiFi outage), the older message is replaced so the owner receives the most current water level — not a backlog of stale readings.
+- Silence toggle (5-second button hold) suppresses both the horn and message notifications. The alert output is shut off immediately on silence.
+- Serial monitor logs all events at 115200 baud; logs also stream to the MQTT broker if configured.
 
 ## Customization
 
@@ -263,30 +288,35 @@ When in EMERGENCY state:
 
 ```cpp
 static constexpr int BUTTON_PIN = 23;              // Config button GPIO
-static constexpr int ALERT_PIN = 19;               // Alert output GPIO
-static constexpr int SENSOR_PIN = 32;              // ADC pin (not used with ADS1115)
-static constexpr bool USE_MOCK = true;             // Set to false for real sensor
+static constexpr int ALERT_PIN = 19;               // Alert output GPIO (pulses in Tier 2 emergency)
+static constexpr int LIGHT_PIN = 12;               // Status LED GPIO
 
-float EMERGENCY_WATER_LEVEL_CM = 30;               // Emergency threshold (cm)
-int EMERGENCY_TIMEOUT_MS = 1000;                   // Delay before state change (ms)
-int EMERGENCY_MESSAGE_TIMEOUT_MS = 1000 * 30;      // Time between alert messages (30 sec)
+static constexpr int EMERGENCY_TIMEOUT_MS = 5000;  // Sustained time before EMERGENCY state triggers (5 s)
+
+static constexpr uint32_t SENSOR_ERROR_NOTIFY_DELAY_MS  = 60000;   // 1 min sustained failure before owner SMS
+static constexpr uint32_t SENSOR_ERROR_NOTIFY_REPEAT_MS = 1800000; // 30 min repeat reminder while still down
+
+static constexpr uint32_t WDT_TIMEOUT_S = 60;     // Task watchdog — reboot if loop stalls
 ```
+
+Emergency notification frequency, Tier 1 threshold, Tier 2 threshold, and horn durations are configured at runtime through the web interface and saved to NVS — no recompile required.
 
 ### Mock Mode for Testing
 
-To test the system without physical sensors:
+To test the system without physical sensors, build and upload the `env:mock` environment:
 
-1. In `main.cpp`, ensure `USE_MOCK = true`
-2. Upload to ESP32
-3. The system will generate simulated water level readings
-4. Use the web interface to test configuration and alerts
+```bash
+pio run -e mock --target upload
+```
 
-**Set `USE_MOCK = false` when deploying to actual boat!**
+The mock build (`-D ENABLE_MOCK_MODE`) generates simulated water level readings. All other firmware features (WiFi, web interface, MQTT, OTA, notifications) work normally.
+
+**Always use `-e prod` or `-e dev` when deploying with a real sensor.**
 
 ## Troubleshooting
 
 ### Device won't connect to WiFi
-- **Solution 1**: Press button to enter CONFIG mode, reconnect to `BilgeRise-Setup` AP, reconfigure WiFi
+- **Solution 1**: Press button to enter CONFIG mode, reconnect to `ESP32-BilgeRise-Setup` AP (password printed to serial on boot), reconfigure WiFi
 - **Solution 2**: Check WiFi signal strength near installation location
 - **Solution 3**: Verify WiFi password is correct (check serial monitor for connection errors)
 
@@ -319,7 +349,7 @@ To test the system without physical sensors:
 
 ### Web interface not accessible
 - Verify device is in CONFIG mode (LED slow blinking)
-- Check you're connected to `BilgeRise-Setup` WiFi network
+- Check you're connected to `ESP32-BilgeRise-Setup` WiFi network (password printed to serial on boot)
 - Try `http://192.168.4.1` instead of hostname
 - Check firewall settings on your phone/computer
 - Serial monitor will show "Starting configuration server" message
@@ -352,26 +382,57 @@ pio run --target upload --upload-port /dev/ttyUSB0  # Linux
 
 ### Dependencies
 
-Managed automatically by PlatformIO:
-- Adafruit ADS1X15 Library (v2.3.2) - For ADS1115 ADC communication
+Managed automatically by PlatformIO (defined in `platformio.ini`):
+- `adafruit/Adafruit ADS1X15@^2.3.2` — ADS1115 ADC communication
+- `bblanchon/ArduinoJson@^6.21.3` — GitHub API JSON parsing for OTA
+- `knolleary/PubSubClient@^2.8` — MQTT client
 
 ### Adding New Features
 
 The codebase is modular. Key areas:
 
-- **State Machine**: `main.cpp` loop() function
-- **Sensor Interface**: `WaterPressureSensor.cpp` - Add new sensor types here
-- **Web UI**: `ConfigServer.cpp` - HTML is embedded as strings
-- **Notifications**: `SendSMS.cpp` and `SendDiscord.cpp` - Add new notification methods
-- **Calibration**: `WaterPressureSensor.cpp` - `voltageToCentimeters()` function
+- **State Machine**: `main.cpp` `loop()` function — inlined switch; `include/StateMachine.h` contains a testable extracted version used by unit tests
+- **Sensor Interface**: `WaterPressureSensor.cpp` — sensor reads, I2C recovery, stuck/over-range detection, median buffer, rate-of-change
+- **Web UI**: Edit HTML in `dev-ui/*.html` (or `src/html/ota.html`), then build — `scripts/compress_html.py` auto-gzips and embeds into `src/compressed_pages.h`
+- **Notifications**: `NotificationWorker.cpp` (FIFO + emergency mailbox) → `SendSMS.cpp`, `SendDiscord.cpp` — add new channels here
+- **MQTT Logging**: `MQTTService.cpp` — configure broker host/port/topic via web UI or `MQTTService::updateBroker()`
+- **OTA Updates**: `OTAManager.cpp` — GitHub Releases API, auto-check/install, rollback detection
+- **Calibration**: `WaterPressureSensor.cpp` — `voltageToCentimeters()` function
 
 ### Code Style
 
-- Uses Arduino framework conventions
+- Uses Arduino framework with FreeRTOS (NotificationWorker task runs on Core 0)
 - State machine pattern for main logic
-- Singleton pattern for managers (WiFiManager, TimeManagement)
-- NVS (Non-Volatile Storage) for persistence
-- Median filtering for sensor stability (10-reading buffer)
+- Singleton pattern for managers (`WiFiManager`, `TimeManagement`)
+- NVS (`Preferences`) for all persistent configuration
+- Median filtering for sensor stability (10-reading circular buffer)
+- All HTML gzip-compressed at build time via pre-script (`extra_scripts` in `platformio.ini`)
+
+## MQTT Logging
+
+The device streams all log output to an MQTT broker (in addition to serial). This enables live monitoring without a physical serial connection — useful for a boat at a marina.
+
+**Configuration** — set via the web interface Notifications page (NVS-backed):
+- Broker host / port (default fallback: `192.168.2.41:1883` — override this for your network)
+- Optional username / password
+- Base topic (default: `boat/<mac>`)
+
+**Topics published:**
+- `<baseTopic>/log` — plaintext log lines (all `LOG_*` macros)
+- `<baseTopic>/availability` — `"online"` on connect, `"offline"` as LWT
+
+The log queue is a 16-slot ring buffer (~4 KB RAM). Messages dropped during a slow/blocked connection are counted and reported in the periodic status log.
+
+## Remote Firmware Updates (OTA)
+
+The device checks GitHub Releases for new firmware and installs updates automatically. See [`OTA_QUICKSTART.md`](OTA_QUICKSTART.md) for the full walkthrough.
+
+**Defaults (pre-configured):**
+- GitHub repository: `Robert336/BoatReporterESP` — **forks must change this** via the OTA settings page before first deployment
+- Auto-check: enabled, every 24 hours
+- Auto-install: enabled — updates install without user action
+
+Updates only run in NORMAL state (not during emergencies or config mode). Failed updates trigger automatic rollback to the previous firmware partition. The device sends SMS/Discord notifications at each stage (found, installing, success/failure).
 
 ## Safety and Deployment
 
@@ -439,6 +500,8 @@ For issues, questions, or suggestions:
 
 ## Version History
 
-No versions released yet
+| Version | Notes |
+|---------|-------|
+| 1.0.0 | Initial release — two-tier emergency, OTA, MQTT logging, NotificationWorker, I2C recovery, rate-of-change, task watchdog |
 
 ---

@@ -152,7 +152,7 @@ OK
 ### State Machine Tests (30+ tests)
 
 #### State Transitions
-- ✅ NORMAL → EMERGENCY (with 1-second timeout)
+- ✅ NORMAL → EMERGENCY (with 1-second timeout per `StateMachine.h` — **note:** production `main.cpp` uses 5 seconds; see divergence note below)
 - ✅ NORMAL → ERROR (sensor failure)
 - ✅ NORMAL → CONFIG (button press)
 - ✅ EMERGENCY → NORMAL (conditions cleared)
@@ -318,9 +318,19 @@ void setUp(void) {
 2. Make methods protected and use friend class
 3. Extract logic to separate testable functions
 
+## Known Divergence: StateMachine.h vs. main.cpp
+
+The unit tests run against the extracted `include/StateMachine.h` state machine (a pure-function, testable version). Production `main.cpp` has its own inlined state machine switch that is **not** covered by these tests. Two known differences exist:
+
+| Constant | `StateMachine.h` (tests) | `main.cpp` (production) |
+|----------|--------------------------|-------------------------|
+| `EMERGENCY_TIMEOUT_MS` | 1000 ms (1 s) | 5000 ms (5 s) |
+
+Changes to state machine behaviour in `main.cpp` must be manually mirrored in `StateMachine.h` (and vice versa) for the tests to remain meaningful. A future cleanup task should collapse these to a single shared constant.
+
 ## Integration with Main Code
 
-The state machine has been extracted into [`include/StateMachine.h`](../include/StateMachine.h) to be testable. To use it in `main.cpp`:
+The state machine has been extracted into [`include/StateMachine.h`](../include/StateMachine.h) to be testable. That header is used exclusively by the test suite. The production state machine lives inline in `main.cpp`'s `loop()` and `switch (systemState.currentState)`. To wire `main.cpp` to use the extracted version (bringing full test coverage to production), you would:
 
 ```cpp
 #include "StateMachine.h"
