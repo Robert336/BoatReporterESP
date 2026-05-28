@@ -11,6 +11,7 @@
 constexpr const char OTA_PREFERENCES_NAMESPACE[] = "ota_config";
 constexpr unsigned long DEFAULT_CHECK_INTERVAL_MS = 86400000; // 24 hours
 constexpr int OTA_BUFFER_SIZE = 1024; // Download buffer size
+constexpr int OTA_MIN_RSSI_DBM = -70; // Minimum signal strength required before starting a download
 
 // Time constants
 constexpr unsigned long MS_PER_HOUR = 3600000; // Milliseconds in one hour
@@ -107,6 +108,7 @@ private:
     bool validateFirmwareSize(size_t size);
     bool checkFlashSpace(size_t requiredSize);
     bool checkHeapAvailable(size_t requiredSize);
+    bool checkSignalStrength();
     
 public:
     OTAManager(SendSMS* sms = nullptr, SendDiscord* discord = nullptr);

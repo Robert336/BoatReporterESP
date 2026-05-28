@@ -432,7 +432,14 @@ bool OTAManager::startUpdate(const char* password) {
         currentState = OTAState::FAILED;
         return false;
     }
-    
+
+    if (!checkSignalStrength()) {
+        lastError = "WiFi signal too weak for reliable download";
+        LOG_CRITICAL("[OTA] %s - RSSI: %d dBm (minimum: %d dBm)", lastError.c_str(), WiFi.RSSI(), OTA_MIN_RSSI_DBM);
+        currentState = OTAState::FAILED;
+        return false;
+    }
+
     char msg[NOTIFICATION_MESSAGE_BUFFER_SIZE];
     snprintf(msg, sizeof(msg),
              "BilgeRise: Starting firmware update from v%s to v%s. Device may be offline for 1-2 minutes.",
@@ -658,15 +665,29 @@ bool OTAManager::checkFlashSpace(size_t requiredSize) {
 
 bool OTAManager::checkHeapAvailable(size_t requiredSize) {
     uint32_t freeHeap = ESP.getFreeHeap();
-    
+
     if (freeHeap < requiredSize) {
         LOG_CRITICAL("[OTA] Insufficient heap: need %u bytes, have %u bytes",
                   requiredSize, freeHeap);
         return false;
     }
-    
+
     LOG_INFO("[OTA] Heap check passed: %u bytes available (need %u)",
               freeHeap, requiredSize);
+    return true;
+}
+
+bool OTAManager::checkSignalStrength() {
+    int rssi = WiFi.RSSI();
+
+    if (rssi < OTA_MIN_RSSI_DBM) {
+        LOG_CRITICAL("[OTA] Signal strength check FAILED: %d dBm (minimum: %d dBm)",
+                  rssi, OTA_MIN_RSSI_DBM);
+        return false;
+    }
+
+    LOG_INFO("[OTA] Signal strength check passed: %d dBm (minimum: %d dBm)",
+              rssi, OTA_MIN_RSSI_DBM);
     return true;
 }
 
