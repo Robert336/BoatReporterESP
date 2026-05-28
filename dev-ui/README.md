@@ -93,7 +93,7 @@ All ESP32 endpoints are mocked. These match the routes registered in `src/Config
 **Init (merged JSON for fast page load):**
 - `GET /init` — Dashboard init data; includes `sensor.rate_cm_30min` (conditionally — omitted until 5+ minutes of readings exist, i.e. at least 2 snapshots in the rate buffer)
 - `GET /settings/init` — Settings init data
-- `GET /debug/init` — Debug init data; also includes `rate_cm_30min` when available
+- `GET /debug/init` — Combined load for debug page: `{ reading: {...}, calibration: {...} }`
 
 **Sensor & Calibration:**
 - `GET /read` — Current sensor reading (simulated)

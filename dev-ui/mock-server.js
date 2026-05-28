@@ -27,6 +27,7 @@ let mockState = {
     currentMillivolts: 1234.56,
     currentLevel_cm: 25.3,
     sensorValid: true,
+    rate_cm_30min: 1.2,  // pre-seeded — real device needs 5+ min to compute this
 
     // Emergency settings
     emergencyWaterLevel_cm: 30.0,
@@ -61,6 +62,11 @@ setInterval(() => {
         mockState.currentLevel_cm = (mockState.currentMillivolts - mockState.zeroPoint_mv) * defaultSlope;
     }
     mockState.currentLevel_cm = Math.max(0, Math.min(100, mockState.currentLevel_cm));
+
+    // Slowly drift rate-of-change to simulate realistic trend changes
+    mockState.rate_cm_30min += (Math.random() - 0.5) * 0.2;
+    mockState.rate_cm_30min = Math.max(-5.0, Math.min(5.0, mockState.rate_cm_30min));
+    mockState.rate_cm_30min = Math.round(mockState.rate_cm_30min * 100) / 100;
 }, 2000);
 
 // ============================================================================
@@ -89,6 +95,7 @@ app.get('/init', (req, res) => {
             sensorAvailable: true,
             valid: mockState.sensorValid,
             level_cm: mockState.currentLevel_cm,
+            rate_cm_30min: mockState.rate_cm_30min,
         },
         thresholds: {
             emergencyWaterLevel_cm: mockState.emergencyWaterLevel_cm,
@@ -120,6 +127,30 @@ app.post('/config', (req, res) => {
 });
 
 // ============================================================================
+// DEBUG INIT ENDPOINT (combined load for debug/calibration page)
+// ============================================================================
+
+app.get('/debug/init', (req, res) => {
+    const calibration = {
+        zeroPoint_mv: mockState.zeroPoint_mv,
+        hasTwoPointCalibration: mockState.hasTwoPointCalibration,
+    };
+    if (mockState.hasTwoPointCalibration) {
+        calibration.secondPoint_mv = mockState.secondPoint_mv;
+        calibration.secondPoint_cm = mockState.secondPoint_cm;
+    }
+    res.json({
+        reading: {
+            sensorAvailable: true,
+            valid: mockState.sensorValid,
+            millivolts: mockState.currentMillivolts,
+            level_cm: mockState.currentLevel_cm,
+        },
+        calibration,
+    });
+});
+
+// ============================================================================
 // SENSOR READING ENDPOINTS
 // ============================================================================
 
@@ -129,6 +160,7 @@ app.get('/read', (req, res) => {
         valid: mockState.sensorValid,
         millivolts: mockState.currentMillivolts,
         level_cm: mockState.currentLevel_cm,
+        rate_cm_30min: mockState.rate_cm_30min,
     });
 });
 
