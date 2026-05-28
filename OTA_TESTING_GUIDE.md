@@ -34,7 +34,7 @@ pio device monitor -b 115200
 
 ### 1.3 Configure Device
 
-1. Connect to WiFi AP: `ESP32-BilgeRise-Setup` (password shown in serial output)
+1. Connect to WiFi AP: `ESP32-BilgeRise-Setup` (password is unique per device — shown in the startup banner in the serial monitor at 115200 baud)
 2. Navigate to `192.168.4.1` in browser
 3. Configure WiFi network credentials
 4. Set up SMS/Discord notifications (for OTA alerts)
@@ -65,13 +65,15 @@ pio device monitor -b 115200
 
 ### 3.1 Update Version Number
 
+Update in **both** locations (they must stay in sync):
+
 Edit `include/Version.h`:
 
 ```cpp
 #define FIRMWARE_VERSION "1.1.0"
 ```
 
-Edit `platformio.ini`:
+Edit `platformio.ini` (the build flag is what the `-e prod` binary actually embeds):
 
 ```ini
 [env:prod]

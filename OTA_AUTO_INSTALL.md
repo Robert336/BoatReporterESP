@@ -25,6 +25,8 @@ When automatic installation is enabled:
 
 **Note:** Automatic updates are **enabled by default** and the GitHub repository is **pre-configured** to `Robert336/BoatReporterESP`.
 
+> **Forks:** If you forked this repository, change the owner/repo on the OTA settings page before the device first connects to the internet. Otherwise it will attempt to pull releases from the upstream repo.
+
 Your device is ready to receive updates out of the box! To verify or modify settings:
 
 1. Open your ESP32 web interface
@@ -86,11 +88,12 @@ If a new firmware fails to boot properly:
 
 ### No Password Required
 
-When auto-install is enabled, updates proceed without password verification. This is intentional for unattended operation. If you need security:
+When auto-install is enabled, updates proceed without password verification. This is intentional for unattended operation.
 
-- Use a **private GitHub repository** with a token
-- Only you can publish releases that will be installed
-- The update password is only used for manual installations via web interface
+> **Security consideration:** Without a password, any POST to `/ota/update` from a device on the same LAN (while in CONFIG mode) can trigger an install. For production deployments:
+> - Use a **private GitHub repository** with a token so only your releases are installable
+> - Set an update password if you want to require confirmation for manual installs via the web interface
+> - The update password applies only to the manual "Install Update" button — auto-install bypasses it by design
 
 ## Use Cases
 

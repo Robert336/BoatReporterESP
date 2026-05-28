@@ -11,7 +11,9 @@ pio run -e prod --target upload
 
 ### 2. Configure OTA Settings (Optional)
 
-**Note:** Automatic updates are **enabled by default** and pre-configured to check `Robert336/BoatReporterESP`!
+**Note:** Automatic updates are **enabled by default** and pre-configured to check `Robert336/BoatReporterESP`.
+
+> **Forks:** If you forked this repository, you must change the GitHub owner/repo on the OTA settings page (or via NVS) before first deployment. Otherwise your device will attempt to pull updates from the upstream repo.
 
 The device is ready to receive updates out of the box. Optionally, you can verify settings:
 
@@ -26,12 +28,14 @@ The device is ready to receive updates out of the box. Optionally, you can verif
 
 #### Update version in code:
 
+Update the version string in **both** locations (they must match):
+
 **`include/Version.h`:**
 ```cpp
 #define FIRMWARE_VERSION "1.1.0"
 ```
 
-**`platformio.ini`:**
+**`platformio.ini`** (the `[env:prod]` build flag wins at compile time for production builds, but `Version.h` is used by other environments):
 ```ini
 [env:prod]
 build_flags = 
