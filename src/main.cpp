@@ -46,6 +46,12 @@ struct SystemState {
     bool sensorErrorNotified;              // Owner alerted about the current failure episode
     volatile bool configCommandReceived;
     bool notificationsSilenced;            // Tracks if emergency alerts are silenced
+
+    // Last reading where valid=true. Used as the displayed level in emergency
+    // notifications when the current sample is invalid, so the owner sees the
+    // last trustworthy value instead of a garbage ADC reading.
+    float lastValidLevel_cm;
+    bool  hasValidLevel;
 };
 
 SystemState systemState; // Tracks current device state
@@ -145,6 +151,8 @@ void setup() {
     systemState.hornCurrentlyOn = false;
     systemState.sensorErrorNotified = false;
     systemState.notificationsSilenced = false;
+    systemState.lastValidLevel_cm = 0.0f;
+    systemState.hasValidLevel = false;
     
     // Initialize MQTT early so all subsequent LOG_* calls can be queued for delivery
     g_mqtt = &mqtt;
@@ -349,37 +357,47 @@ void loop() {
     }
     lastButtonState = buttonCurrentlyPressed;
 
-    // Check Tier 1 emergency conditions (message notifications)
-    bool previousEmergencyConditions = systemState.emergencyConditions;
-    float emergencyThreshold = configServer->getEmergencyWaterLevel();
-    if (currentReading.level_cm >= emergencyThreshold) {
-        systemState.emergencyConditions = true;
-        if (!previousEmergencyConditions) {
-            systemState.emergencyConditionsTrueTime = millis(); // Update timer when conditions START
-            LOG_EVENT("[EVENT] Tier 1 Emergency conditions detected! level=%.2f cm (threshold=%.2f cm)",
-                          currentReading.level_cm, emergencyThreshold);
+    // Only evaluate thresholds against valid readings — an invalid sample's
+    // level_cm is stale/garbage and would spuriously set or clear the debounce
+    // timers. We're already heading to ERROR via sensorError set above, so
+    // freezing the flags at their last-known-good values is the safe choice.
+    if (currentReading.valid) {
+        // Remember last trustworthy level for emergency messaging during sensor faults.
+        systemState.lastValidLevel_cm = currentReading.level_cm;
+        systemState.hasValidLevel = true;
+
+        // Check Tier 1 emergency conditions (message notifications)
+        bool previousEmergencyConditions = systemState.emergencyConditions;
+        float emergencyThreshold = configServer->getEmergencyWaterLevel();
+        if (currentReading.level_cm >= emergencyThreshold) {
+            systemState.emergencyConditions = true;
+            if (!previousEmergencyConditions) {
+                systemState.emergencyConditionsTrueTime = millis(); // Update timer when conditions START
+                LOG_EVENT("[EVENT] Tier 1 Emergency conditions detected! level=%.2f cm (threshold=%.2f cm)",
+                              currentReading.level_cm, emergencyThreshold);
+            }
+        } else {
+            systemState.emergencyConditions = false;
+            if (previousEmergencyConditions) {
+                systemState.emergencyConditionsFalseTime = millis(); // Update timer when conditions CLEAR
+                LOG_EVENT("[EVENT] Tier 1 Emergency conditions cleared. level=%.2f cm", currentReading.level_cm);
+            }
         }
-    } else {
-        systemState.emergencyConditions = false;
-        if (previousEmergencyConditions) {
-            systemState.emergencyConditionsFalseTime = millis(); // Update timer when conditions CLEAR
-            LOG_EVENT("[EVENT] Tier 1 Emergency conditions cleared. level=%.2f cm", currentReading.level_cm);
-        }
-    }
-    
-    // Check Tier 2 urgent emergency conditions (horn alarm)
-    bool previousUrgentEmergencyConditions = systemState.urgentEmergencyConditions;
-    float urgentEmergencyThreshold = configServer->getUrgentEmergencyWaterLevel();
-    if (currentReading.level_cm >= urgentEmergencyThreshold) {
-        systemState.urgentEmergencyConditions = true;
-        if (!previousUrgentEmergencyConditions) {
-            LOG_EVENT("[EVENT] Tier 2 URGENT Emergency conditions detected! level=%.2f cm (threshold=%.2f cm)",
-                          currentReading.level_cm, urgentEmergencyThreshold);
-        }
-    } else {
-        systemState.urgentEmergencyConditions = false;
-        if (previousUrgentEmergencyConditions) {
-            LOG_EVENT("[EVENT] Tier 2 URGENT Emergency conditions cleared. level=%.2f cm", currentReading.level_cm);
+
+        // Check Tier 2 urgent emergency conditions (horn alarm)
+        bool previousUrgentEmergencyConditions = systemState.urgentEmergencyConditions;
+        float urgentEmergencyThreshold = configServer->getUrgentEmergencyWaterLevel();
+        if (currentReading.level_cm >= urgentEmergencyThreshold) {
+            systemState.urgentEmergencyConditions = true;
+            if (!previousUrgentEmergencyConditions) {
+                LOG_EVENT("[EVENT] Tier 2 URGENT Emergency conditions detected! level=%.2f cm (threshold=%.2f cm)",
+                              currentReading.level_cm, urgentEmergencyThreshold);
+            }
+        } else {
+            systemState.urgentEmergencyConditions = false;
+            if (previousUrgentEmergencyConditions) {
+                LOG_EVENT("[EVENT] Tier 2 URGENT Emergency conditions cleared. level=%.2f cm", currentReading.level_cm);
+            }
         }
     }
 
@@ -405,12 +423,15 @@ void loop() {
                 systemState.currentState = ERROR;
                 systemState.lastStateChangeTime = millis();
             }
-            else if (systemState.emergencyConditions && 
+            else if (systemState.emergencyConditions &&
                 (millis() - systemState.emergencyConditionsTrueTime) >= EMERGENCY_TIMEOUT_MS) {
-                LOG_EVENT("[STATE] Transitioning to EMERGENCY state - WiFi connected: %d, IP: %s, water level: %.2f cm", 
+                LOG_EVENT("[STATE] Transitioning to EMERGENCY state - WiFi connected: %d, IP: %s, water level: %.2f cm",
                               wifiMgr.isConnected(), WiFi.localIP().toString().c_str(), currentReading.level_cm);
                 systemState.currentState = EMERGENCY;
                 systemState.lastStateChangeTime = millis();
+                // Drop any pending config-button press so post-emergency NORMAL
+                // doesn't immediately fall into CONFIG.
+                systemState.configCommandReceived = false;
             }
             else if (systemState.configCommandReceived) {
                 LOG_STATE("[STATE] Transitioning from %s to CONFIG (button pressed)", stateToString(systemState.currentState));
@@ -437,11 +458,6 @@ void loop() {
             }
             break;
         case EMERGENCY:
-            // Clear stale config command when entering emergency state (prevents unwanted CONFIG entry when emergency clears)
-            if (previousState != EMERGENCY) {
-                systemState.configCommandReceived = false;
-            }
-            
             if (systemState.emergencyConditions == false && (millis() - systemState.emergencyConditionsFalseTime) >= EMERGENCY_TIMEOUT_MS) {
                 LOG_EVENT("[STATE] Transitioning from %s to NORMAL (emergency cleared)", stateToString(systemState.currentState));
                 systemState.currentState = NORMAL;
@@ -465,16 +481,27 @@ void loop() {
                     // Only send notifications if not silenced
                     if (!systemState.notificationsSilenced) {
                         messageTraceId++;
+                        // If the current sample is invalid, fall back to the last
+                        // trustworthy level and flag the fault so the owner knows
+                        // monitoring is degraded even while EMERGENCY is active.
+                        float displayLevel = currentReading.valid
+                                                ? currentReading.level_cm
+                                                : systemState.lastValidLevel_cm;
+                        const char* sensorNote = systemState.sensorError
+                                                    ? " — SENSOR FAULT (level stale)"
+                                                    : "";
                         char ratePart[28] = "";
-                        float rate = waterSensor.getRateOfChange_cm30min();
-                        if (!isnan(rate)) {
-                            snprintf(ratePart, sizeof(ratePart), " (%+.1f cm/30min)", rate);
+                        if (!systemState.sensorError) {
+                            float rate = waterSensor.getRateOfChange_cm30min();
+                            if (!isnan(rate)) {
+                                snprintf(ratePart, sizeof(ratePart), " (%+.1f cm/30min)", rate);
+                            }
                         }
-                        char emergMessageBuf[160];
+                        char emergMessageBuf[180];
                         if (systemState.urgentEmergencyConditions) {
-                            snprintf(emergMessageBuf, sizeof(emergMessageBuf), "[MSG:%u] BilgeRise URGENT Alert: Tier 2 Emergency Level %.2f cm%s", messageTraceId, currentReading.level_cm, ratePart);
+                            snprintf(emergMessageBuf, sizeof(emergMessageBuf), "[MSG:%u] BilgeRise URGENT Alert: Tier 2 Emergency Level %.2f cm%s%s", messageTraceId, displayLevel, ratePart, sensorNote);
                         } else {
-                            snprintf(emergMessageBuf, sizeof(emergMessageBuf), "[MSG:%u] BilgeRise Alert: Emergency Level %.2f cm%s", messageTraceId, currentReading.level_cm, ratePart);
+                            snprintf(emergMessageBuf, sizeof(emergMessageBuf), "[MSG:%u] BilgeRise Alert: Emergency Level %.2f cm%s%s", messageTraceId, displayLevel, ratePart, sensorNote);
                         }
                         LOG_EVENT("[STATE] EMERGENCY: Sending alert message: %s", emergMessageBuf);
 
