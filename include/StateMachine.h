@@ -107,9 +107,17 @@ struct StateMachineOutput {
 constexpr uint32_t EMERGENCY_TIMEOUT_MS = 1000;
 
 // Pure function: Update emergency condition flags based on sensor reading
-inline void updateEmergencyConditions(StateMachineContext& ctx, 
+inline void updateEmergencyConditions(StateMachineContext& ctx,
                                       const StateMachineSensorReading& reading,
                                       uint32_t currentTime) {
+    // Only evaluate thresholds against valid readings — an invalid sample's
+    // level_cm is stale/garbage and would spuriously toggle the debounce
+    // timers. Freeze the flags at their last-known-good values; sensorError
+    // handling drives the ERROR transition separately.
+    if (!reading.valid) {
+        return;
+    }
+
     // Check Tier 1 emergency conditions (message notifications)
     bool previousEmergencyConditions = ctx.emergencyConditions;
     if (reading.level_cm >= ctx.emergencyWaterLevel_cm) {
@@ -123,7 +131,7 @@ inline void updateEmergencyConditions(StateMachineContext& ctx,
             ctx.emergencyConditionsFalseTime = currentTime;
         }
     }
-    
+
     // Check Tier 2 urgent emergency conditions (horn alarm)
     bool previousUrgentEmergencyConditions = ctx.urgentEmergencyConditions;
     if (reading.level_cm >= ctx.urgentEmergencyWaterLevel_cm) {
@@ -246,9 +254,15 @@ inline StateMachineOutput updateStateMachine(StateMachineContext& ctx,
             // Auto-clear silence flag when returning to normal
             ctx.notificationsSilenced = false;
         }
-        
+
         if (nextState == NORMAL && ctx.configCommandReceived) {
             // Clear config command when entering normal
+            ctx.configCommandReceived = false;
+        }
+
+        if (nextState == EMERGENCY && ctx.configCommandReceived) {
+            // Drop any pending config-button press so post-emergency NORMAL
+            // doesn't immediately fall into CONFIG.
             ctx.configCommandReceived = false;
         }
     }
