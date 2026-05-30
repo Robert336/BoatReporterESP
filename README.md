@@ -38,6 +38,9 @@ Project by: Robert Mazza and David Miller
 - **[4-20ma Water Depth Sensor 0-100cm](https://www.amazon.ca/Submersible-Pressure-Sensors-Transmitter-Detector/dp/B0C44QLSZ1/ref=sr_1_7?crid=1K5513YCPL38O&dib=eyJ2IjoiMSJ9.y-nvCIamXo4xDCL33x6hS-2Ky0SKl_I2GCQ_zCnFToRtf9Nh2xxpMwkE9rONtwJoh-KzvJ8LSEhVc4etItkUrqLWxX1ZGQoZkyUscAtsb8Y_32fTWrtgGhpll6Xbe1suPN7N1ndSGU39bIeK-raDdgWnN9nhORawzQJR8YQnvx4G3xvaLpDFFRXrCUXAncvQ12yrWj7ep3A4VRjYeBkOJgKDfh27Dayd-5qGhbyDcf935LRWDa-e0-91IDIcRBSpuxsmgnPR-dPxe65oAZxO3PEnfrvWaUS69K_SdnPzRCA.uWzE4aHakeb72LPy8j7bgnf31zuu1Ne5Gfd540cDdno&dib_tag=se&keywords=4-20ma%2Bwater%2Bpressure%2Bsensor&qid=1766943748&sprefix=4-20ma%2Bwater%2Bpressure%2Bsenso%2Caps%2C114&sr=8-7&th=1)** - For measuring the depth of water via the difference between atmosphere pressure and the pressure of where the probe is.
 - **[Current-to-Voltage Converter](https://www.amazon.ca/Current-Converter-Conversion-Transmitter-Adjustable/dp/B099FJ4GFZ/ref=sr_1_5_mod_primary_new?crid=1CIY3VJ3OZQ94&dib=eyJ2IjoiMSJ9.7-5yGM-pgQma_S9iw3l9KVQXvRyvwjtvBQDSi7NNbxixXSJazNpBV7bFF4ssdoJj4o775Z-LcxnIU09Wj7BsEzWXl6EfZDfC2g12L-GQZtMLZB26Sf3c8PiUli4KHwE-3--912F6mnSpapFKjvJyQO80bmwCpiaWLA3wjVh6X2P09qeZrcLssYEhSMIVBeumutvdYXk8M2KMO2CyeHVvlHXQm2x13Oz8YAYLMsVI1-CI-HTv2L7tRsmSVsKbPobLH_kmbyjCSKZZdyDiZpwgDFQm9gc46NFBmMpDlf9HAMs.Rh5ON89iRgXGL8g7XylVGrEmXMbuMXQOaMkdfYYo37E&dib_tag=se&keywords=current+to+voltage+converter&qid=1766943550&sbo=RZvfv%2F%2FHxDF%2BO5021pAnSA%3D%3D&sprefix=current+to+v%2Caps%2C106&sr=8-5)** - For converting the sensor's 4-20ma reading to an analog voltage signal readable by the analog-to-digital converter.
 - **[DC-DC Buck Converter Step Down Module](https://www.amazon.ca/BULVACK-LM2596-Converter-Module-1-25V-30V/dp/B07VVXF7YX/ref=sr_1_5?crid=1ROC6BN6Y6OR7&dib=eyJ2IjoiMSJ9.IzPm51oT3D41gXhy_bhJb0sDM8Yxnjp7MgpE8EV27npIYkwOLhME66vlJgLPbe-g60yLeUnzZ87r34BTTS9eNnQDOxdVLl7pLSQRwTDvprzzTi5yMemmQ-NWE6Zip3TRPuyDiPnwQ69wB94qLcM8QC7rTVP4UoM6Z8uqIQdBo6cleq5hXnz_faBD615LwDvoSoje5kSk7arxh1fNH5jvrGwazgeDZI_6kn24a6pADovGg236aFXJF4NAvwBSSlOkSblnJR_PsarZ0lbooBrrw0YQkubyTD_Rj9kDuAF7eJk.j-vhqnA0Mk_yMLSIWxtIh27Ms1X7nl2grLZew2L8VaA&dib_tag=se&keywords=voltage%2Bbuck&qid=1766944014&sprefix=voltage%2Bbuck%2Caps%2C135&sr=8-5&th=1)** - For steping-down 12VDC to 5VDC for powering the ESP32 off a boat battery.
+- **[I2C Logic Level Converter](https://www.amazon.ca/SHILLEHTEK-PRE-SOLDERED-Bi-Directional-Compatible-Microcontrollers/dp/B0CL2R6K26/ref=pd_ci_mcx_di_int_sccai_cn_d_sccl_2_2/147-4847175-2976763?pd_rd_w=2SCHm&content-id=amzn1.sym.d6674fdf-bd00-4d07-8317-6dfd6c498cdf&pf_rd_p=d6674fdf-bd00-4d07-8317-6dfd6c498cdf&pf_rd_r=XX24NN5Y0SPZ21C7Y2CX&pd_rd_wg=dRCOK&pd_rd_r=557bd08b-da65-4592-a467-e8e140a0b864&pd_rd_i=B0CL2R6K26&th=1)** - Bi-directional level shifter to safely bridge the ESP32's 3.3V I2C lines and any 5V I2C devices (e.g. ADS1115 powered at 5V). Prevents logic-high mismatch that can damage the ESP32 or cause unreliable communication.
+- **[Waterproof Project Enclosure](https://www.amazon.ca/Joinfworld-Electrical-Weatherproof-Waterproof-Electronics/dp/B0CHHJ49QN/ref=sr_1_8?crid=3C7ILQXJLYSO3&dib=eyJ2IjoiMSJ9.itg-wqa0bqsnR-cUJo6fzYikmA3OMskYzqljCFmk52v1y3qn0hi1PC8ILrdtbgT4HE7UAAoFXGWZFn6tE4gI7W_WRKH2ASw1S0vpI9JhWVqrqLCKfe7WgIq_BQKKqKetrXRs4eGAjfvaSHo_VKQ_PJjTUrTT23Jxn_F6ca-loeDIo-0vWd_L4UQgRkNe_Ka3_7cn_4Yj0nyI6oqbpfx9nv60K-aO0rvSgj96ciUNCT_H8xum_43NzhiX_yr1inJe8F7jKMhLvhqOy4eaa779hUBsOliKjPBOWydym8DBAcQ.FHX2YvkBUMjSXofxsz8-xosB_f_NBN1s8CKg61tdu4c&dib_tag=se&keywords=project+box+enclosure&qid=1780177844&sprefix=project+box+enclos%2Caps%2C248&sr=8-8&xpid=_efXN9DbDxWap)** - Weatherproof enclosure to house the ESP32, ADS1115, buck converter, and supporting components. Essential for marine environments to protect electronics from moisture and bilge splashes.
+- **[7-Pin Waterproof Connector](https://www.amazon.ca/Connector-Waterproof-Electrical-Connectors-Industrial/dp/B09PNJYF2T/ref=sr_1_6?crid=1UBYD16V9DN08&dib=eyJ2IjoiMSJ9.i5gKI7-nhw8LQdAvSWXsemdckThUMJjlPy25Tt4w3eC7Hc1UPwUNUeGvt4H77PjB99flRrhWpKpc8xXiRb1TOGBrDPVTe7otSOg79o6ogIHpsYftz5exQB4pbcsWc5hBiqLiKfUGoo5q_rfpVwSOKBTJyBCrKeA--b3F0uQ0cqiXyl39wt7BND_KOQUpnKnqlfVyV_IoGXib2p4Omvqb2cIQIh53Yca4ruITGd2-CZ3fLK2n4pkBI-3G53yJRWBQ6hnyuDNkP5vpEB09-DqFoyw2oTaj0K33CWBfnxoD3MU._YgcrDNKYhUAWoeM6CAtNEiL14hw2lAii4s4Y_q7tI8&dib_tag=se&keywords=7+pin+connector&qid=1780177874&sprefix=7+pin+c%2Caps%2C824&sr=8-6)** - Waterproof connector for running external wiring (power in, sensor, alert output, button) through the enclosure wall. Keeps the enclosure sealed while allowing field-removable connections.
 - **Push Button** - For entering configuration mode (normally open, pull-up configured in software)
 - **LED Indicator** - Built-in LED works, or connect external LED
 - **Alert Output Device** (Optional) - Connect to GPIO 19 (buzzer, relay, larger indicator light, etc.)
@@ -45,20 +48,24 @@ Project by: Robert Mazza and David Miller
 ## Wiring Diagram
 
 ```
+ESP32 Pin        Level Shifter          ADS1115
+---------        -------------          -------
+GPIO 21   <-->  LV1         HV1  <-->  SDA
+GPIO 22   <-->  LV2         HV2  <-->  SCL
+3.3V      -->   LV (low-voltage rail)
+5V        -->   HV (high-voltage rail)  VDD
+GND       -->   GND (both sides)        GND
+
 ESP32 Pin       Component
 ---------       ---------
 GPIO 23   <--   Push Button (other side to GND)
 GPIO 19   -->   Alert Output (buzzer/relay/LED)
-GPIO 21   <-->  ADS1115 SDA
-GPIO 22   <-->  ADS1115 SCL
 Built-in LED    Status Indicator
-3.3V      -->   ADS1115 VDD
-GND       -->   ADS1115 GND
 
 ADS1115
 -------
-A0        <--   Water Pressure Sensor Signal
-VDD       -->   3.3V or 5V (check your sensor specs)
+A0        <--   Current-to-Voltage Converter output
+VDD       -->   5V
 GND       -->   GND
 ```
 
@@ -321,8 +328,9 @@ The mock build (`-D ENABLE_MOCK_MODE`) generates simulated water level readings.
 - **Solution 3**: Verify WiFi password is correct (check serial monitor for connection errors)
 
 ### Sensor readings seem inaccurate or invalid
-- Check wiring between ESP32 and ADS1115 (SDA/SCL on GPIO 21/22)
-- Verify ADS1115 has power (3.3V or 5V and GND)
+- Check wiring between ESP32 and ADS1115 (SDA/SCL on GPIO 21/22 via the I2C logic level converter)
+- Verify the level shifter is connected correctly: LV side to ESP32 3.3V, HV side to 5V, GND on both sides
+- Verify ADS1115 has power (5V and GND)
 - Check sensor connection to ADS1115 A0 pin
 - Perform two-point calibration
 - Check serial monitor for actual millivolt readings
@@ -356,7 +364,7 @@ The mock build (`-D ENABLE_MOCK_MODE`) generates simulated water level readings.
 
 ### Serial Monitor shows "[EVENT] Sensor error detected!"
 - Sensor is returning invalid readings
-- Check ADS1115 I2C connection (SDA/SCL)
+- Check ADS1115 I2C connection (SDA/SCL through the logic level converter)
 - Verify sensor has proper power supply
 - Check sensor is not damaged
 - System will automatically recover when sensor readings become valid
