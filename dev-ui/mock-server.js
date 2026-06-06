@@ -261,6 +261,16 @@ app.get('/notifications', (req, res) => {
     });
 });
 
+// Lean status-only endpoint (booleans, no secrets) used by the live MQTT pill poll
+app.get('/notifications/status', (req, res) => {
+    res.json({
+        hasPhoneNumber: mockState.hasPhoneNumber,
+        hasDiscordWebhook: mockState.hasDiscordWebhook,
+        mqttConfigured: mockState.mqttConfigured,
+        mqttConnected: mockState.mqttConnected,
+    });
+});
+
 app.post('/notifications/emergency-freq', (req, res) => {
     const freq_ms = parseInt(req.body.freq_ms);
     if (freq_ms < 5000 || freq_ms > 3600000) {

@@ -117,7 +117,7 @@ else setPill('mqtt_dot','mqtt_label','','off');
 // Refresh only the MQTT connection pill; never touch input fields so it
 // can't clobber what the user is mid-typing.
 function pollMqttStatus(){
-fetch('/notifications').then(r=>r.json()).then(d=>{
+fetch('/notifications/status').then(r=>r.json()).then(d=>{
 if(d.mqttConfigured&&d.mqttConnected)setPill('mqtt_dot','mqtt_label','ok','connected');
 else if(d.mqttConfigured)setPill('mqtt_dot','mqtt_label','warn','disconnected');
 else setPill('mqtt_dot','mqtt_label','','off');

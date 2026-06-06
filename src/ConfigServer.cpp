@@ -137,6 +137,9 @@ void ConfigServer::startSetupMode() {
     // Route: GET /notifications → return current notification settings
     server->on("/notifications", HTTP_GET, [this]() { handleGetNotifications(); });
 
+    // Route: GET /notifications/status → lean status-only JSON (booleans, no secrets) for polling
+    server->on("/notifications/status", HTTP_GET, [this]() { handleNotificationsStatus(); });
+
     // Route: POST /notifications/emergency-notif-freq -> set emergency notification frequency
     server->on("/notifications/emergency-freq", HTTP_POST, [this]() { handleSetEmergencyNotifFreq(); });
     
@@ -856,6 +859,25 @@ void ConfigServer::handleGetNotifications() {
         json += ",\"mqttConnected\":false";
     }
 
+    json += "}";
+    server->send(200, "application/json", json);
+}
+
+void ConfigServer::handleNotificationsStatus() {
+    serverStartTime = millis();
+
+    // Lean, secret-free status for periodic polling (e.g. the live MQTT pill).
+    // Booleans only — no host/phone/webhook values — so it stays cheap to fetch.
+    bool hasPhone   = smsService && smsService->hasPhoneNumber();
+    bool hasWebhook = discordService && discordService->hasWebhookUrl();
+    bool mqttCfg    = mqttService && mqttService->hasBrokerConfig();
+    bool mqttConn   = mqttCfg && mqttService->isConnected();
+
+    String json = "{";
+    json += "\"hasPhoneNumber\":";    json += hasPhone   ? "true" : "false";
+    json += ",\"hasDiscordWebhook\":"; json += hasWebhook ? "true" : "false";
+    json += ",\"mqttConfigured\":";    json += mqttCfg    ? "true" : "false";
+    json += ",\"mqttConnected\":";     json += mqttConn   ? "true" : "false";
     json += "}";
     server->send(200, "application/json", json);
 }
