@@ -101,6 +101,7 @@ private:
     
     // === Notification Settings Handlers ===
     void handleGetNotifications();          // GET: Return current notification settings
+    void handleNotificationsStatus();       // GET: Lean status-only JSON (booleans, no secrets) for polling
     void handleSetPhoneNumber();            // POST: Set SMS phone number
     void handleSetDiscordWebhook();         // POST: Set Discord webhook URL
     void handleTestSMS();                   // POST: Send a test SMS message
