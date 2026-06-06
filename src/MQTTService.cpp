@@ -178,7 +178,13 @@ int MQTTService::getBroker(char* hostBuf, size_t hostSize, uint16_t* portOut) {
 void MQTTService::updateCredentials(const char* user, const char* pass) {
     if (!preferences.begin(MQTT_PREFS_NAMESPACE, false)) return;
     preferences.putString("user", user ? user : "");
-    preferences.putString("pass", pass ? pass : "");
+    // Only overwrite the password when a non-empty value is supplied. An empty
+    // or null pass means "keep the stored password unchanged" — the config UI
+    // never re-populates the password field after load, so an unrelated save
+    // (e.g. editing only the broker host) would otherwise wipe the credential.
+    if (pass && pass[0] != '\0') {
+        preferences.putString("pass", pass);
+    }
     preferences.end();
 }
 
