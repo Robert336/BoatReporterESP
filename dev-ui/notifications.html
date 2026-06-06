@@ -114,6 +114,15 @@ else if(d.mqttConfigured)setPill('mqtt_dot','mqtt_label','warn','disconnected');
 else setPill('mqtt_dot','mqtt_label','','off');
 }).catch(e=>{})
 }
+// Refresh only the MQTT connection pill; never touch input fields so it
+// can't clobber what the user is mid-typing.
+function pollMqttStatus(){
+fetch('/notifications').then(r=>r.json()).then(d=>{
+if(d.mqttConfigured&&d.mqttConnected)setPill('mqtt_dot','mqtt_label','ok','connected');
+else if(d.mqttConfigured)setPill('mqtt_dot','mqtt_label','warn','disconnected');
+else setPill('mqtt_dot','mqtt_label','','off');
+}).catch(e=>{})
+}
 function post(url,body,msgId,okText){
 return fetch(url,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body}).then(r=>r.json()).then(d=>{
 if(d.success){flash(msgId,okText||'✓ Saved','ok');return true}
@@ -144,6 +153,7 @@ function testDisc(){testChan('/notifications/test/discord','test_disc','disc_msg
 function testMqtt(){testChan('/notifications/test/mqtt','test_mqtt','mqtt_msg')}
 
 loadNotif();
+setInterval(pollMqttStatus,5000);
 if(location.hash){setTimeout(function(){var t=document.querySelector(location.hash);if(t)t.scrollIntoView({behavior:'smooth',block:'start'})},100)}
 </script>
 </body>
