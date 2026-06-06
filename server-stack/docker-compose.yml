@@ -1,0 +1,93 @@
+name: boatreporter-stack
+
+# Full telemetry stack for BoatReporterESP, intended to run on a Raspberry Pi
+# (64-bit OS required — InfluxDB 2.x has no 32-bit build).
+#
+#   ESP32 ──MQTT──▶ mosquitto ──▶ telegraf ──▶ influxdb ──▶ grafana
+#
+# Copy .env.example to .env and edit the secrets before first launch.
+
+services:
+  # MQTT broker the ESP32 publishes to. Point the device's web UI
+  # (Notifications → MQTT broker) at this Pi's LAN IP, port 1883.
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: boat-mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"   # plaintext — for LAN devices; do NOT port-forward this
+      - "8883:8883"   # TLS — port-forward this one for WAN access (no-op until
+                      # you switch to the WAN config + provide certs)
+    volumes:
+      # Whole config dir is mounted (not just one file) so the passwd + acl
+      # files are visible to the broker. Read-write so scripts/mosquitto-passwd.sh
+      # can create the password file inside the container.
+      - ./mosquitto/config:/mosquitto/config
+      - ./certs:/mosquitto/certs:ro          # TLS cert/key (Let's Encrypt) live here
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+
+  # Time-series database.
+  influxdb:
+    image: influxdb:2.7
+    container_name: boat-influxdb
+    restart: unless-stopped
+    ports:
+      - "8086:8086"   # InfluxDB UI / API — handy for debugging, LAN only
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUX_USERNAME}
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUX_PASSWORD}
+      DOCKER_INFLUXDB_INIT_ORG: ${INFLUX_ORG}
+      DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUX_BUCKET}
+      DOCKER_INFLUXDB_INIT_RETENTION: ${INFLUX_RETENTION}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUX_TOKEN}
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+      - influxdb-config:/etc/influxdb2
+
+  # Subscribes to MQTT, parses the JSON, writes points to InfluxDB.
+  telegraf:
+    image: telegraf:1.32
+    container_name: boat-telegraf
+    restart: unless-stopped
+    depends_on:
+      - mosquitto
+      - influxdb
+    environment:
+      INFLUX_TOKEN: ${INFLUX_TOKEN}
+      INFLUX_ORG: ${INFLUX_ORG}
+      INFLUX_BUCKET: ${INFLUX_BUCKET}
+      # Used only if the broker requires auth (WAN config). Empty = anonymous.
+      MQTT_USERNAME: ${MQTT_USERNAME}
+      MQTT_PASSWORD: ${MQTT_PASSWORD}
+    volumes:
+      - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+
+  # Dashboards. Reach it at http://<pi-ip>:3000 (default login from .env).
+  grafana:
+    image: grafana/grafana-oss:11.4.0
+    container_name: boat-grafana
+    restart: unless-stopped
+    depends_on:
+      - influxdb
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      # Consumed by the provisioned datasource (server-stack/grafana/provisioning).
+      INFLUX_TOKEN: ${INFLUX_TOKEN}
+      INFLUX_ORG: ${INFLUX_ORG}
+      INFLUX_BUCKET: ${INFLUX_BUCKET}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+
+volumes:
+  mosquitto-data:
+  mosquitto-log:
+  influxdb-data:
+  influxdb-config:
+  grafana-data:

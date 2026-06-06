@@ -1,0 +1,269 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "liveNow": false,
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["boat", "bilge"],
+  "templating": {
+    "list": [
+      {
+        "name": "device",
+        "label": "Device",
+        "type": "query",
+        "datasource": { "type": "influxdb", "uid": "influxdb_boat" },
+        "query": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"boat\", tag: \"device\")",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": { "selected": true, "text": "All", "value": "$__all" },
+        "sort": 1
+      }
+    ]
+  },
+  "time": { "from": "now-24h", "to": "now" },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Boat Reporter — Bilge Monitor",
+  "uid": "boat-reporter",
+  "version": 1,
+  "weekStart": "",
+  "panels": [
+    {
+      "title": "Water Level",
+      "type": "timeseries",
+      "datasource": { "type": "influxdb", "uid": "influxdb_boat" },
+      "gridPos": { "h": 9, "w": 16, "x": 0, "y": 0 },
+      "id": 1,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "lengthcm",
+          "decimals": 1,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 10,
+            "spanNulls": true,
+            "thresholdsStyle": { "mode": "line+area" }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 30 },
+              { "color": "red", "value": 50 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "influxdb_boat" },
+          "refId": "A",
+          "query": "from(bucket: \"boat\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"boat_telemetry\" and r._field == \"level_cm\")\n  |> filter(fn: (r) => r[\"device\"] =~ /${device:regex}/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"device\"])"
+        }
+      ]
+    },
+    {
+      "title": "Current Level",
+      "type": "stat",
+      "datasource": { "type": "influxdb", "uid": "influxdb_boat" },
+      "gridPos": { "h": 9, "w": 8, "x": 16, "y": 0 },
+      "id": 2,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "lengthcm",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 30 },
+              { "color": "red", "value": 50 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "influxdb_boat" },
+          "refId": "A",
+          "query": "from(bucket: \"boat\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"boat_telemetry\" and r._field == \"level_cm\")\n  |> filter(fn: (r) => r[\"device\"] =~ /${device:regex}/)\n  |> last()"
+        }
+      ]
+    },
+    {
+      "title": "Rate of Change",
+      "type": "timeseries",
+      "datasource": { "type": "influxdb", "uid": "influxdb_boat" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "id": 3,
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 10,
+            "spanNulls": true,
+            "axisLabel": "cm / 30 min"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "influxdb_boat" },
+          "refId": "A",
+          "query": "from(bucket: \"boat\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"boat_telemetry\" and r._field == \"rate_cm_30min\")\n  |> filter(fn: (r) => r[\"device\"] =~ /${device:regex}/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"device\"])"
+        }
+      ]
+    },
+    {
+      "title": "WiFi Signal (RSSI)",
+      "type": "timeseries",
+      "datasource": { "type": "influxdb", "uid": "influxdb_boat" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+      "id": 4,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dBm",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "fillOpacity": 5,
+            "spanNulls": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": -80 },
+              { "color": "green", "value": -67 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "influxdb_boat" },
+          "refId": "A",
+          "query": "from(bucket: \"boat\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"boat_telemetry\" and r._field == \"rssi\")\n  |> filter(fn: (r) => r[\"device\"] =~ /${device:regex}/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"device\"])"
+        }
+      ]
+    },
+    {
+      "title": "System State",
+      "type": "state-timeline",
+      "datasource": { "type": "influxdb", "uid": "influxdb_boat" },
+      "gridPos": { "h": 7, "w": 16, "x": 0, "y": 17 },
+      "id": 5,
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "fillOpacity": 80, "lineWidth": 0 },
+          "mappings": [
+            { "type": "value", "options": { "NORMAL":    { "color": "green",  "index": 0 } } },
+            { "type": "value", "options": { "CONFIG":    { "color": "blue",   "index": 1 } } },
+            { "type": "value", "options": { "ERROR":     { "color": "orange", "index": 2 } } },
+            { "type": "value", "options": { "EMERGENCY": { "color": "red",    "index": 3 } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] }
+        },
+        "overrides": []
+      },
+      "options": {
+        "mergeValues": true,
+        "showValue": "auto",
+        "alignValue": "left",
+        "rowHeight": 0.9,
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "influxdb_boat" },
+          "refId": "A",
+          "query": "from(bucket: \"boat\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"boat_telemetry\" and r._field == \"state\")\n  |> filter(fn: (r) => r[\"device\"] =~ /${device:regex}/)\n  |> keep(columns: [\"_time\", \"_value\", \"device\"])"
+        }
+      ]
+    },
+    {
+      "title": "Connectivity",
+      "type": "stat",
+      "datasource": { "type": "influxdb", "uid": "influxdb_boat" },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 17 },
+      "id": 6,
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "online":  { "color": "green", "index": 0, "text": "ONLINE" } } },
+            { "type": "value", "options": { "offline": { "color": "red",   "index": 1, "text": "OFFLINE" } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "blue", "value": null } ] },
+          "color": { "mode": "fixed", "fixedColor": "text" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "influxdb_boat" },
+          "refId": "A",
+          "query": "from(bucket: \"boat\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"boat_availability\" and r._field == \"value\")\n  |> filter(fn: (r) => r[\"device\"] =~ /${device:regex}/)\n  |> last()"
+        }
+      ]
+    }
+  ]
+}

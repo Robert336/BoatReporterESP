@@ -14,3 +14,13 @@ src/compressed_pages.h
 # Test logs (ignore large log files, keep summaries)
 test-logs/*.log
 test-logs/*.txt
+
+# Server stack secrets (copy .env.example -> .env locally)
+server-stack/.env
+# TLS material, broker password file, certbot state, and DNS API creds
+server-stack/certs/*
+!server-stack/certs/.gitkeep
+server-stack/letsencrypt/
+server-stack/mosquitto/config/passwd
+server-stack/secrets/*
+!server-stack/secrets/cloudflare.ini.example

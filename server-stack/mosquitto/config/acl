@@ -1,0 +1,25 @@
+# Mosquitto ACL for the BoatReporter stack (used by mosquitto.conf.wan).
+#
+# Principle of least privilege: each boat device may only touch its own topic
+# tree, and the ingest user (Telegraf) gets read-only access to everything.
+#
+# Usernames below must match the entries you create in the password file
+# (scripts/mosquitto-passwd.sh).
+
+# ── Telegraf ingest: read every device's telemetry/availability ────────────
+user telegraf
+topic read boat/#
+
+# ── A boat device: full access to its own subtree only ─────────────────────
+# Duplicate this block per device, replacing the username and MAC. The device's
+# base topic is boat/<6-hex-MAC> (shown in the device's MQTT settings page).
+user boat-aabbcc
+topic readwrite boat/aabbcc/#
+
+# Example second device:
+# user boat-112233
+# topic readwrite boat/112233/#
+
+# ── Optional admin user: full access (for mosquitto_sub debugging) ──────────
+# user admin
+# topic readwrite #
