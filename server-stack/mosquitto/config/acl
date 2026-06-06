@@ -10,16 +10,12 @@
 user telegraf
 topic read boat/#
 
+# ── Admin: full access (for mosquitto_sub debugging) ───────────────────────
+user admin
+topic readwrite #
+
 # ── A boat device: full access to its own subtree only ─────────────────────
 # Duplicate this block per device, replacing the username and MAC. The device's
 # base topic is boat/<6-hex-MAC> (shown in the device's MQTT settings page).
-user boat-aabbcc
-topic readwrite boat/aabbcc/#
-
-# Example second device:
-# user boat-112233
-# topic readwrite boat/112233/#
-
-# ── Optional admin user: full access (for mosquitto_sub debugging) ──────────
-# user admin
-# topic readwrite #
+# user boat-aabbcc
+# topic readwrite boat/aabbcc/#
