@@ -1,0 +1,35 @@
+# Hardened Mosquitto config for WAN exposure: TLS + authentication + ACLs.
+#
+# Activate it:
+#   cd server-stack/mosquitto/config
+#   cp mosquitto.conf mosquitto.conf.lan.bak     # keep a copy of the LAN config
+#   cp mosquitto.conf.wan mosquitto.conf
+#   docker compose restart mosquitto
+#
+# Prerequisites (see ../../README.md → "WAN / TLS deployment"):
+#   - A Let's Encrypt cert for your domain in ../../certs/ (fullchain.pem + privkey.pem)
+#   - A password file created with ../../scripts/mosquitto-passwd.sh
+#   - The acl file below (already in this directory)
+
+# Global: nobody connects without valid credentials.
+allow_anonymous false
+password_file /mosquitto/config/passwd
+acl_file /mosquitto/config/acl
+
+persistence true
+persistence_location /mosquitto/data/
+log_dest stdout
+
+# ── LAN listener (plaintext) ────────────────────────────────────────────────
+# Used by Telegraf over the internal Docker network, and by any LAN devices.
+# Still requires username/password (allow_anonymous is global). Do NOT
+# port-forward 1883 from your router.
+listener 1883
+
+# ── WAN listener (TLS) ──────────────────────────────────────────────────────
+# Port-forward 8883 → this Pi. Devices connect with TLS and validate this
+# certificate against the Let's Encrypt roots bundled in the firmware.
+listener 8883
+certfile /mosquitto/certs/fullchain.pem
+keyfile  /mosquitto/certs/privkey.pem
+# tls_version tlsv1.2
