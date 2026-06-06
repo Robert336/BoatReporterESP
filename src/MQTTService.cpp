@@ -4,6 +4,7 @@
 #include <WiFi.h>
 
 static constexpr const char* MQTT_PREFS_NAMESPACE = "mqtt";
+static constexpr const char* DEFAULT_MQTT_HOST     = "192.168.2.41";
 static constexpr uint16_t    DEFAULT_MQTT_PORT     = 1883;
 static constexpr uint32_t    RECONNECT_INITIAL_MS  = 5000;
 static constexpr uint32_t    RECONNECT_MAX_MS      = 30000;
@@ -47,18 +48,16 @@ MQTTService::MQTTService()
 
 void MQTTService::begin() {
     buildClientIdAndDefaults();
-    
-    // Hardcoded MQTT configuration for logging
-    strcpy(brokerHost, "192.168.2.41");
-    brokerPort = 1883;
-    username[0] = '\0';  // No username
-    password[0] = '\0';  // No password
-    
+
+    // Load persisted broker config from NVS. Defaults (DEFAULT_MQTT_HOST,
+    // DEFAULT_MQTT_PORT, anonymous auth, MAC-derived base topic) apply when
+    // nothing has been saved, so a fresh device still connects out of the box.
+    readNvs();
+
     applyServerConfig();
     s_instance    = this;
     m_initialized = true;
-    // Force broker config to be considered available
-    cachedBrokerConfigExists = true;
+    cachedBrokerConfigExists = hasBrokerConfig();
     recheckBrokerConfig = false;
 }
 
@@ -166,12 +165,11 @@ void MQTTService::updateBroker(const char* host, uint16_t port) {
 
 int MQTTService::getBroker(char* hostBuf, size_t hostSize, uint16_t* portOut) {
     if (!hostBuf || hostSize == 0) return -1;
-    // Return hardcoded broker configuration
-    const char* hardcodedHost = "192.168.2.41";
-    size_t hostLen = strlen(hardcodedHost);
+    // Return the NVS-backed cached config (defaults applied in readNvs)
+    size_t hostLen = strlen(brokerHost);
     if (hostLen + 1 > hostSize) return -1;
-    strcpy(hostBuf, hardcodedHost);
-    if (portOut) *portOut = 1883;
+    strcpy(hostBuf, brokerHost);
+    if (portOut) *portOut = brokerPort;
     return 0;
 }
 
@@ -190,9 +188,10 @@ void MQTTService::updateCredentials(const char* user, const char* pass) {
 
 int MQTTService::getUsername(char* outBuf, size_t bufferSize) {
     if (!outBuf || bufferSize == 0) return -1;
-    // No username configured
-    if (1 > bufferSize) return -1;
-    outBuf[0] = '\0';
+    // Return the NVS-backed cached username (empty = anonymous)
+    size_t len = strlen(username);
+    if (len + 1 > bufferSize) return -1;
+    strcpy(outBuf, username);
     return 0;
 }
 
@@ -213,8 +212,9 @@ int MQTTService::getBaseTopic(char* outBuf, size_t bufferSize) {
 }
 
 bool MQTTService::hasBrokerConfig() {
-    // Hardcoded configuration is always available
-    return true;
+    // Configured when a broker host is set (default host applies on a fresh
+    // device, so this is normally true unless the host was explicitly cleared)
+    return strlen(brokerHost) > 0;
 }
 
 
@@ -233,7 +233,7 @@ void MQTTService::buildClientIdAndDefaults() {
 
 void MQTTService::readNvs() {
     if (!preferences.begin(MQTT_PREFS_NAMESPACE, true)) return;
-    String h = preferences.getString("host", "");
+    String h = preferences.getString("host", DEFAULT_MQTT_HOST);
     brokerPort = preferences.getUShort("port", DEFAULT_MQTT_PORT);
     String u = preferences.getString("user", "");
     String p = preferences.getString("pass", "");
