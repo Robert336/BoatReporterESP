@@ -242,6 +242,30 @@ The system uses two independently configurable thresholds, both set via the web 
 >  
 > Regularly test your setup, and adjust the threshold if needed to balance prompt alerts and avoiding nuisance triggers!
 
+### MQTT Broker Configuration
+
+The device streams all log output to an MQTT broker (useful for Home Assistant integration or remote monitoring). The broker is fully configurable from the web interface and persisted to NVS — no recompile required.
+
+In the web interface, open **Notification Settings → MQTT broker** and set:
+
+| Field | Notes |
+|-------|-------|
+| **Broker host** | Hostname or IP of your MQTT broker (e.g. `192.168.2.41`) |
+| **Port** | Defaults to `1883` |
+| **Username** | Optional — leave blank for anonymous brokers |
+| **Password** | Optional, write-only. **Leave blank to keep the current password** — saving an unrelated change won't wipe it |
+| **Base topic** | Optional — defaults to `boat/<6-hex-MAC>` |
+
+Click **Save** to apply (takes effect live, no reboot) and **Test** to publish a test message. The connection status pill polls every few seconds and shows `connected` / `disconnected` / `off`.
+
+**Default broker:** out of the box (before anything is saved) the device connects to `192.168.2.41:1883` anonymously. This default lives in `DEFAULT_MQTT_HOST` in `src/MQTTService.cpp`; change it there if you want a different fallback baked into the firmware.
+
+**Topics published:**
+- `<base topic>/availability` — `online` / `offline` (retained LWT, for Home Assistant availability)
+- `<base topic>/log` — all serial log output
+
+> **Note:** Saved broker settings survive reboots and firmware flashes (NVS is preserved). Because of that, bumping `DEFAULT_MQTT_HOST` in firmware only affects devices that have *never* had a broker saved — already-configured devices keep their saved value until you change it in the UI.
+
 
 ## Usage
 
