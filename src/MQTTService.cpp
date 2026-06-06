@@ -1,6 +1,7 @@
 #ifndef UNIT_TESTING
 
 #include "MQTTService.h"
+#include "MqttRootCA.h"
 #include <WiFi.h>
 
 static constexpr const char* MQTT_PREFS_NAMESPACE = "mqtt";
@@ -20,6 +21,7 @@ MQTTService* MQTTService::s_instance = nullptr;
 MQTTService::MQTTService()
     : client(wifiClient)
     , brokerPort(DEFAULT_MQTT_PORT)
+    , useTls(false)
     , m_initialized(false)
     , cachedBrokerConfigExists(false)
     , recheckBrokerConfig(true)
@@ -210,6 +212,13 @@ void MQTTService::updateBaseTopic(const char* topic) {
     preferences.end();
 }
 
+void MQTTService::updateTls(bool enabled) {
+    if (!preferences.begin(MQTT_PREFS_NAMESPACE, false)) return;
+    preferences.putBool("tls", enabled);
+    preferences.end();
+    // reloadConfig() (called by the config handler) re-reads NVS and reconnects.
+}
+
 int MQTTService::getBaseTopic(char* outBuf, size_t bufferSize) {
     if (!outBuf || bufferSize == 0) return -1;
     // Return the default base topic (built in buildClientIdAndDefaults)
@@ -249,12 +258,14 @@ void MQTTService::readNvs() {
     String p = "";
     String t = "";
     brokerPort = DEFAULT_MQTT_PORT;
+    useTls = false;
     if (preferences.begin(MQTT_PREFS_NAMESPACE, true)) {
         h = preferences.getString("host", DEFAULT_MQTT_HOST);
         brokerPort = preferences.getUShort("port", DEFAULT_MQTT_PORT);
         u = preferences.getString("user", "");
         p = preferences.getString("pass", "");
         t = preferences.getString("topic", "");
+        useTls = preferences.getBool("tls", false);
         preferences.end();
     }
 
@@ -272,6 +283,17 @@ void MQTTService::readNvs() {
 }
 
 void MQTTService::applyServerConfig() {
+    // Select the transport. TLS validates the broker cert against the bundled
+    // CA (Let's Encrypt roots) — required when exposing the broker over WAN.
+    // The hostname passed to setServer() doubles as the TLS SNI / CN to verify,
+    // so always use a domain name (not a bare IP) for a TLS broker.
+    if (useTls) {
+        secureClient.setCACert(MQTT_ROOT_CA_BUNDLE);
+        client.setClient(secureClient);
+    } else {
+        client.setClient(wifiClient);
+    }
+
     if (strlen(brokerHost) > 0) {
         client.setServer(brokerHost, brokerPort);
     }

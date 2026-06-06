@@ -78,6 +78,8 @@ label .hint{font-weight:normal;color:#a8a29e;margin-left:4px}
 <div class="input"><input type="text" id="mqtt_host" placeholder="192.168.2.41"></div>
 <label>Port</label>
 <div class="input"><input type="number" id="mqtt_port" placeholder="1883" min="1" max="65535"></div>
+<label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="mqtt_tls" onchange="tlsToggle()" style="width:auto;margin:0"> Use TLS encryption (port 8883)</label>
+<div class="helptext">Enable when the broker is reachable over the internet. The broker must present a Let's Encrypt certificate for its hostname; use a domain name (not an IP) as the host.</div>
 <label>Username <span class="hint">optional</span></label>
 <div class="input"><input type="text" id="mqtt_user" placeholder="anonymous"></div>
 <label>Password <span class="hint">optional · write-only</span></label>
@@ -109,6 +111,7 @@ el('mqtt_host').value=d.mqttHost||'';
 el('mqtt_port').value=d.mqttPort||1883;
 el('mqtt_user').value=d.mqttUser||'';
 el('mqtt_topic').value=d.mqttBaseTopic||'';
+el('mqtt_tls').checked=!!d.mqttTls;
 if(d.mqttConfigured&&d.mqttConnected)setPill('mqtt_dot','mqtt_label','ok','connected');
 else if(d.mqttConfigured)setPill('mqtt_dot','mqtt_label','warn','disconnected');
 else setPill('mqtt_dot','mqtt_label','','off');
@@ -137,8 +140,16 @@ var body='host='+encodeURIComponent(h)
 +'&port='+encodeURIComponent(el('mqtt_port').value||'1883')
 +'&user='+encodeURIComponent(el('mqtt_user').value)
 +'&pass='+encodeURIComponent(el('mqtt_pass').value)
-+'&topic='+encodeURIComponent(el('mqtt_topic').value);
++'&topic='+encodeURIComponent(el('mqtt_topic').value)
++'&tls='+(el('mqtt_tls').checked?'1':'0');
 post('/notifications/mqtt',body,'mqtt_msg').then(ok=>{if(ok){el('mqtt_pass').value='';loadNotif()}})
+}
+// Convenience: flip the port to the conventional TLS/plain default when the
+// box is toggled, but only if the field is empty or on the other default.
+function tlsToggle(){
+var p=el('mqtt_port');
+if(el('mqtt_tls').checked){if(!p.value||p.value==='1883')p.value='8883'}
+else{if(p.value==='8883')p.value='1883'}
 }
 function testChan(url,btnId,msgId){
 var btn=el(btnId);btn.disabled=true;var old=btn.textContent;btn.textContent='…';
