@@ -75,6 +75,9 @@ public:
     void updateBroker(const char* host, uint16_t port);
     int  getBroker(char* hostBuf, size_t hostSize, uint16_t* portOut);
 
+    // Stores the username always. An empty/null pass leaves the stored password
+    // unchanged ("leave blank to keep current") so an unrelated config save
+    // cannot wipe credentials the UI never re-populates.
     void updateCredentials(const char* user, const char* pass);
     int  getUsername(char* outBuf, size_t bufferSize);
 
