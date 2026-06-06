@@ -232,13 +232,22 @@ void MQTTService::buildClientIdAndDefaults() {
 }
 
 void MQTTService::readNvs() {
-    if (!preferences.begin(MQTT_PREFS_NAMESPACE, true)) return;
-    String h = preferences.getString("host", DEFAULT_MQTT_HOST);
-    brokerPort = preferences.getUShort("port", DEFAULT_MQTT_PORT);
-    String u = preferences.getString("user", "");
-    String p = preferences.getString("pass", "");
-    String t = preferences.getString("topic", "");
-    preferences.end();
+    // Defaults must apply even when the namespace has never been written (a
+    // fresh device): opening Preferences read-only fails with NOT_FOUND in that
+    // case, so seed the defaults first and only override from NVS if it opens.
+    String h = DEFAULT_MQTT_HOST;
+    String u = "";
+    String p = "";
+    String t = "";
+    brokerPort = DEFAULT_MQTT_PORT;
+    if (preferences.begin(MQTT_PREFS_NAMESPACE, true)) {
+        h = preferences.getString("host", DEFAULT_MQTT_HOST);
+        brokerPort = preferences.getUShort("port", DEFAULT_MQTT_PORT);
+        u = preferences.getString("user", "");
+        p = preferences.getString("pass", "");
+        t = preferences.getString("topic", "");
+        preferences.end();
+    }
 
     strncpy(brokerHost, h.c_str(), sizeof(brokerHost) - 1); brokerHost[sizeof(brokerHost)-1] = '\0';
     strncpy(username,   u.c_str(), sizeof(username)   - 1); username[sizeof(username)-1]     = '\0';
