@@ -250,13 +250,21 @@ In the web interface, open **Notification Settings → MQTT broker** and set:
 
 | Field | Notes |
 |-------|-------|
-| **Broker host** | Hostname or IP of your MQTT broker (e.g. `192.168.2.41`) |
-| **Port** | Defaults to `1883` |
+| **Broker host** | Hostname or IP of your MQTT broker (e.g. `192.168.2.41`). Use a **domain name** when TLS is enabled |
+| **Port** | Defaults to `1883` (plaintext) or `8883` (TLS) |
+| **Use TLS encryption** | Encrypts the connection and validates the broker certificate. **Required when the broker is exposed over the internet** |
 | **Username** | Optional — leave blank for anonymous brokers |
 | **Password** | Optional, write-only. **Leave blank to keep the current password** — saving an unrelated change won't wipe it |
 | **Base topic** | Optional — defaults to `boat/<6-hex-MAC>` |
 
 Click **Save** to apply (takes effect live, no reboot) and **Test** to publish a test message. The connection status pill polls every few seconds and shows `connected` / `disconnected` / `off`.
+
+**TLS / WAN access:** For a broker on the local LAN, plaintext (1883) is fine. To reach a broker over the internet, enable **Use TLS encryption** and connect on **8883** — this both encrypts traffic and prevents the broker credentials from crossing the network in the clear. When TLS is on, the device validates the broker's certificate against the bundled Let's Encrypt CA roots (ISRG Root X1/X2, in `include/MqttRootCA.h`), so:
+- The broker must present a valid certificate (e.g. issued by Let's Encrypt) for the hostname you connect to.
+- Set **Broker host** to that **domain name**, not a bare IP — the hostname is verified against the certificate (SNI/CN).
+- If your broker uses a certificate from a different CA, replace the bundle in `include/MqttRootCA.h` and reflash.
+
+See [`server-stack/README.md`](server-stack/README.md) for a full broker + dashboard setup, including the WAN/TLS deployment guide.
 
 **Default broker:** out of the box (before anything is saved) the device connects to `192.168.2.41:1883` anonymously. This default lives in `DEFAULT_MQTT_HOST` in `src/MQTTService.cpp`; change it there if you want a different fallback baked into the firmware.
 

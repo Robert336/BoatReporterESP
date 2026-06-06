@@ -23,6 +23,7 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 #include <Preferences.h>
 #include <freertos/portmacro.h>
@@ -89,6 +90,12 @@ public:
     void updateBaseTopic(const char* topic);
     int  getBaseTopic(char* outBuf, size_t bufferSize);
 
+    // Enable TLS (port 8883) vs. plaintext (port 1883). When enabled the broker
+    // certificate is validated against the bundled CA (Let's Encrypt roots).
+    // Call reloadConfig() afterwards to apply.
+    void updateTls(bool enabled);
+    bool getTls() const { return useTls; }
+
     bool hasBrokerConfig();
 
     // -------------------------------------------------------------------------
@@ -98,9 +105,10 @@ public:
     uint32_t getLogsDropped() const { return logsDropped; }
 
 private:
-    Preferences  preferences;
-    WiFiClient   wifiClient;
-    PubSubClient client;
+    Preferences      preferences;
+    WiFiClient       wifiClient;     // plaintext transport (port 1883)
+    WiFiClientSecure secureClient;   // TLS transport (port 8883)
+    PubSubClient     client;
 
     // Cached config — fixed char[] to avoid long-lived String heap fragmentation
     char     brokerHost[64];
@@ -112,6 +120,7 @@ private:
     char     logTopic[80];           // baseTopic + "/log"
     char     availabilityTopic[80];  // baseTopic + "/availability" (LWT)
     char     telemetryTopic[80];     // baseTopic + "/telemetry" (structured JSON)
+    bool     useTls;                 // true = TLS (8883), false = plaintext (1883)
 
     bool m_initialized;
     bool cachedBrokerConfigExists;   // Cached result to avoid NVS check every loop

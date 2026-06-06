@@ -49,6 +49,7 @@ let mockState = {
     mqttPort: 1883,
     mqttUser: '',
     mqttBaseTopic: 'boat/aabbcc',
+    mqttTls: false,
 };
 
 // Simulate sensor readings that change over time
@@ -258,6 +259,7 @@ app.get('/notifications', (req, res) => {
         mqttPort: mockState.mqttPort,
         mqttUser: mockState.mqttUser,
         mqttBaseTopic: mockState.mqttBaseTopic,
+        mqttTls: mockState.mqttTls,
     });
 });
 
@@ -299,12 +301,13 @@ app.post('/notifications/discord', (req, res) => {
 });
 
 app.post('/notifications/mqtt', (req, res) => {
-    const { host, port, user, pass, topic } = req.body;
+    const { host, port, user, pass, topic, tls } = req.body;
     if (!host) { res.status(400).json({ error: 'Missing broker host' }); return; }
     mockState.mqttHost = host;
     mockState.mqttPort = parseInt(port) || 1883;
     mockState.mqttUser = user || '';
     mockState.mqttBaseTopic = topic || 'boat/aabbcc';
+    mockState.mqttTls = (tls === '1' || tls === 'true' || tls === 'on');
     mockState.mqttConfigured = true;
     mockState.mqttConnected = true; // simulate immediate connect
     console.log(`[MQTT] Broker configured: ${host}:${mockState.mqttPort}`);

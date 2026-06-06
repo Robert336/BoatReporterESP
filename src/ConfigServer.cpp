@@ -854,6 +854,7 @@ void ConfigServer::handleGetNotifications() {
         json += ",\"mqttPort\":" + String(port);
         json += ",\"mqttUser\":\"" + String(userBuf) + "\"";
         json += ",\"mqttBaseTopic\":\"" + String(topicBuf) + "\"";
+        json += ",\"mqttTls\":" + String(mqttService->getTls() ? "true" : "false");
     } else {
         json += "false";
         json += ",\"mqttConnected\":false";
@@ -1016,6 +1017,14 @@ void ConfigServer::handleSetMqttConfig() {
             LOG_INFO("[CONFIG] MQTT base topic updated: %s", topic.c_str());
             changed = true;
         }
+    }
+
+    if (server->hasArg("tls")) {
+        String tlsArg = server->arg("tls");
+        bool tls = (tlsArg == "1" || tlsArg == "true" || tlsArg == "on");
+        mqttService->updateTls(tls);
+        LOG_INFO("[CONFIG] MQTT TLS %s", tls ? "enabled" : "disabled");
+        changed = true;
     }
 
     if (changed) {
