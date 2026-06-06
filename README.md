@@ -452,8 +452,30 @@ The device streams all log output to an MQTT broker (in addition to serial). Thi
 **Topics published:**
 - `<baseTopic>/log` — plaintext log lines (all `LOG_*` macros)
 - `<baseTopic>/availability` — `"online"` on connect, `"offline"` as LWT
+- `<baseTopic>/telemetry` — structured JSON sensor reading, published every 60 s (retained)
 
 The log queue is a 16-slot ring buffer (~4 KB RAM). Messages dropped during a slow/blocked connection are counted and reported in the periodic status log.
+
+### Telemetry Topic (for dashboards / Home Assistant)
+
+In addition to the plaintext log, the device publishes a numeric, structured reading to `<baseTopic>/telemetry` once per minute. Unlike the log topic, this is machine-parseable — feed it to a time-series pipeline (e.g. Telegraf → InfluxDB → Grafana) or to Home Assistant. The message is **retained**, so a consumer that connects later immediately sees the last reading.
+
+```json
+{
+  "level_cm": 42.10,        // current water level in cm
+  "rate_cm_30min": 2.30,    // rate-of-change trend (cm per 30 min)
+  "state": "NORMAL",        // NORMAL | ERROR | EMERGENCY | CONFIG
+  "sensor_error": false,    // true when the latest sample was invalid
+  "valid": true,            // validity of the level_cm in this message
+  "rssi": -67               // WiFi signal strength (dBm)
+}
+```
+
+Subscribe with the MAC-derived base topic, or use a wildcard to capture every device on the broker:
+
+```bash
+mosquitto_sub -h <broker> -t 'boat/+/telemetry' -v
+```
 
 ## Remote Firmware Updates (OTA)
 

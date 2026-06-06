@@ -39,6 +39,7 @@ MQTTService::MQTTService()
     baseTopic[0]          = '\0';
     logTopic[0]           = '\0';
     availabilityTopic[0]  = '\0';
+    telemetryTopic[0]     = '\0';
 }
 
 
@@ -130,6 +131,13 @@ bool MQTTService::publishLog(const char* message) {
     logQueueCount++;
     portEXIT_CRITICAL(&logQueueMux);
     return true;
+}
+
+bool MQTTService::publishTelemetry(const char* json, bool retained) {
+    if (!json) return false;
+    // Synchronous publish (telemetry is low-rate, ~1/min) — unlike logs it does
+    // not use the ring buffer. publish() guards against disconnect/reentrancy.
+    return publish(telemetryTopic, json, retained);
 }
 
 
@@ -229,6 +237,7 @@ void MQTTService::buildClientIdAndDefaults() {
     snprintf(baseTopic, sizeof(baseTopic), "boat/%02x%02x%02x", mac[3], mac[4], mac[5]);
     snprintf(logTopic,          sizeof(logTopic),          "%s/log",          baseTopic);
     snprintf(availabilityTopic, sizeof(availabilityTopic), "%s/availability", baseTopic);
+    snprintf(telemetryTopic,    sizeof(telemetryTopic),    "%s/telemetry",    baseTopic);
 }
 
 void MQTTService::readNvs() {
@@ -259,6 +268,7 @@ void MQTTService::readNvs() {
     }
     snprintf(logTopic,          sizeof(logTopic),          "%s/log",          baseTopic);
     snprintf(availabilityTopic, sizeof(availabilityTopic), "%s/availability", baseTopic);
+    snprintf(telemetryTopic,    sizeof(telemetryTopic),    "%s/telemetry",    baseTopic);
 }
 
 void MQTTService::applyServerConfig() {

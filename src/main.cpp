@@ -60,6 +60,10 @@ SystemState systemState; // Tracks current device state
 static constexpr uint32_t STATUS_LOG_INTERVAL_MS = 10000; // Log status every 10 seconds
 uint32_t lastStatusLogTime = 0;
 
+// Structured telemetry publishing (MQTT <baseTopic>/telemetry, for Grafana/HA)
+static constexpr uint32_t TELEMETRY_INTERVAL_MS = 60000; // Publish telemetry every 60 seconds
+uint32_t lastTelemetryTime = 0;
+
 static constexpr int BUTTON_PIN = 23; // GPIO
 static constexpr int ALERT_PIN = 19; // GPIO
 static constexpr int SENSOR_PIN = 32; // Water sensor analog pin ADC1 because wifi is required
@@ -584,6 +588,25 @@ void loop() {
         LOG_STATUS("[NOTIFIER] Pending=%u, Dropped=%u",
                       notifier.getPendingCount(), notifier.getDropCount());
         lastStatusLogTime = millis();
+    }
+
+    // Periodic structured telemetry — numeric JSON for time-series consumers
+    // (Grafana via Telegraf/InfluxDB, Home Assistant). Retained so a freshly
+    // connected consumer immediately sees the last reading. publishTelemetry()
+    // is a no-op when MQTT is disconnected, so this never blocks the loop.
+    if (millis() - lastTelemetryTime >= TELEMETRY_INTERVAL_MS) {
+        char payload[160];
+        snprintf(payload, sizeof(payload),
+            "{\"level_cm\":%.2f,\"rate_cm_30min\":%.2f,\"state\":\"%s\","
+            "\"sensor_error\":%s,\"valid\":%s,\"rssi\":%d}",
+            currentReading.level_cm,
+            waterSensor.getRateOfChange_cm30min(),
+            stateToString(systemState.currentState),
+            systemState.sensorError ? "true" : "false",
+            currentReading.valid ? "true" : "false",
+            wifiMgr.getRSSI());
+        mqtt.publishTelemetry(payload);
+        lastTelemetryTime = millis();
     }
 }
 #endif // UNIT_TESTING

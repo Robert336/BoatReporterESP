@@ -59,6 +59,11 @@ public:
     // Safe to call from LOG_* macros — never blocks or touches the wire.
     bool publishLog(const char* message);
 
+    // Publish structured sensor telemetry (JSON) to <baseTopic>/telemetry.
+    // Retained by default so a freshly-connected consumer (Grafana/Telegraf,
+    // Home Assistant) immediately sees the last known reading.
+    bool publishTelemetry(const char* json, bool retained = true);
+
     // -------------------------------------------------------------------------
     // Subscribe API — forward-looking (HA commands, config-over-MQTT, etc.)
     // -------------------------------------------------------------------------
@@ -106,6 +111,7 @@ private:
     char     baseTopic[64];          // default "boat/<6hex-mac>"
     char     logTopic[80];           // baseTopic + "/log"
     char     availabilityTopic[80];  // baseTopic + "/availability" (LWT)
+    char     telemetryTopic[80];     // baseTopic + "/telemetry" (structured JSON)
 
     bool m_initialized;
     bool cachedBrokerConfigExists;   // Cached result to avoid NVS check every loop
