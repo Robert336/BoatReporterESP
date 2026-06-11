@@ -367,10 +367,48 @@ void MQTTService::onMessageTrampoline(char* topic, byte* payload, unsigned int l
     s_instance->dispatchMessage(topic, buf);
 }
 
+// MQTT 3.1.1 §4.7 topic filter matching.
+// Rules:
+//   '#' must appear only as the last segment; matches any remaining levels.
+//   '+' matches exactly one topic level (no slashes).
+//   All other characters must match exactly.
+static bool mqttTopicMatches(const char* filter, const char* topic) {
+    const char* f = filter;
+    const char* t = topic;
+
+    while (*f && *t) {
+        if (*f == '#') {
+            // '#' is valid only at end of filter (optionally preceded by '/')
+            return true;
+        }
+
+        if (*f == '+') {
+            // '+' matches exactly one level — advance topic past the next '/'
+            while (*t && *t != '/') {
+                t++;
+            }
+            f++; // consume '+'
+            // Both pointers should now point at '/' or '\0'
+        } else {
+            if (*f != *t) {
+                return false;
+            }
+            f++;
+            t++;
+        }
+    }
+
+    // Handle trailing '#' (e.g. filter "a/#" matches topic "a/")
+    if (*f == '#' || (*f == '/' && *(f + 1) == '#')) {
+        return true;
+    }
+
+    return *f == '\0' && *t == '\0';
+}
+
 void MQTTService::dispatchMessage(const char* topic, const char* payload) {
     for (auto& sub : subscriptions) {
-        // Simple prefix/exact match; PubSubClient handles wildcard at broker level
-        if (sub.filter.equals(topic)) {
+        if (mqttTopicMatches(sub.filter.c_str(), topic)) {
             sub.cb(topic, payload);
         }
     }

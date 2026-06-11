@@ -6,6 +6,7 @@ static constexpr const char* DISCORD_PREFS_NAMESPACE = "discord";
 
 SendDiscord::SendDiscord() {
     // Don't call preferences.begin() here - NVS may not be ready for global objects
+    webhookUrlCache[0] = '\0';
 }
 
 
@@ -14,29 +15,40 @@ SendDiscord::~SendDiscord() {
 }
 
 
+void SendDiscord::loadCache() {
+    webhookUrlCache[0] = '\0';
+    cacheLoaded = true; // Mark loaded even on failure so we don't retry on every send
+
+    if (!preferences.begin(DISCORD_PREFS_NAMESPACE, true)) {
+        return;
+    }
+    String url = preferences.getString("webhook-url", "");
+    preferences.end();
+
+    if (url.length() > 0 && url.length() < sizeof(webhookUrlCache)) {
+        strncpy(webhookUrlCache, url.c_str(), sizeof(webhookUrlCache) - 1);
+        webhookUrlCache[sizeof(webhookUrlCache) - 1] = '\0';
+    }
+}
+
 bool SendDiscord::send(const char* message) {
     // Validate inputs
     if (!message) {
         return false;
     }
-    
+
     // Check for active wifi connection first
     if (!WiFi.isConnected()) {
         LOG_NETWORK("[Discord] WiFi not connected, cannot send");
         return false;
     }
 
-    // Open preferences for reading
-    if (!preferences.begin(DISCORD_PREFS_NAMESPACE, true)) {
-        LOG_CRITICAL("[Discord] Failed to open preferences for reading");
-        return false;
+    // Use in-RAM cache; load from NVS on first call only
+    if (!cacheLoaded) {
+        loadCache();
     }
 
-    // Retrieve webhook URL from preferences
-    String webhookUrl = preferences.getString("webhook-url", "");
-    preferences.end();
-    
-    if (webhookUrl.length() == 0) {
+    if (webhookUrlCache[0] == '\0') {
         // No webhook URL stored
         return false;
     }
@@ -65,7 +77,7 @@ bool SendDiscord::send(const char* message) {
     
     LOG_NETWORK("[Discord] Initiating HTTP POST to webhook");
     uint32_t startTime = millis();
-    http.begin(webhookUrl);
+    http.begin(webhookUrlCache);
     http.setTimeout(10000); // 10 second timeout
     http.addHeader("Content-Type", "application/json");
 
@@ -110,11 +122,14 @@ void SendDiscord::updateWebhookUrl(const char* newWebhookUrl) {
     
     size_t bytesWritten = preferences.putString("webhook-url", newWebhookUrl);
     preferences.end();
-    
+
     if (bytesWritten == 0) {
         LOG_CRITICAL("[Discord] Failed to store webhook URL in preferences!");
     } else {
         LOG_INFO("[Discord] Webhook URL saved successfully (%d bytes)", bytesWritten);
+        // Refresh in-RAM cache so the next send() picks up the new URL without
+        // needing a reboot.
+        loadCache();
     }
 }
 
@@ -204,13 +219,8 @@ void SendDiscord::escapeJsonString(const char* input, char* output, size_t outpu
 
 
 bool SendDiscord::hasWebhookUrl() {
-    // Open preferences for reading
-    if (!preferences.begin(DISCORD_PREFS_NAMESPACE, true)) {
-        return false;
+    if (!cacheLoaded) {
+        loadCache();
     }
-    
-    bool hasUrl = !preferences.getString("webhook-url", "").isEmpty();
-    preferences.end();
-    
-    return hasUrl;
+    return webhookUrlCache[0] != '\0';
 }
