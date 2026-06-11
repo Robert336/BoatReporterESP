@@ -46,15 +46,22 @@ class SendSMS {
         /// @return true if a phone number exists, false otherwise
         bool hasPhoneNumber();
         
+        /// Load phone number from NVS into the in-RAM cache. Called automatically
+        /// on first use and explicitly after updatePhoneNumber().
+        void loadCache();
+
     private:
         Preferences preferences;
+        char phoneNumberCache[32]; // In-RAM cache — avoids NVS open on every send()
+        bool cacheLoaded = false;
+
         static constexpr auto& twilio_account_sid = TWILIO_ACCOUNT_SID;
         static constexpr auto& twilio_auth_token = TWILIO_AUTH_TOKEN;
         static constexpr auto& twilio_messaging_service_sid = TWILIO_MESSAGING_SERVICE_SID;
-        
+
         /// Builds the Twilio API endpoint URL using the account SID from secrets
         String getEndpointUrl();
-        
+
         /// URL-encodes a string for use in HTTP POST data.
         /// @param input The string to encode
         /// @param output Buffer to store the encoded string

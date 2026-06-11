@@ -30,18 +30,17 @@ void NotificationWorker::begin(SendSMS* sms, SendDiscord* discord, bool dryRunMo
     }
 }
 
-bool NotificationWorker::enqueue(const char* message, bool sendSms, bool sendDiscord) {
+bool NotificationWorker::enqueue(const char* message, uint8_t channels) {
     if (!message) return false;
     if (dryRun) {
-        LOG_EVENT("[MOCK] Notification (dry-run): %.120s", message);
+        LOG_EVENT("[MOCK] Notification (dry-run, ch=0x%02x): %.120s", channels, message);
         return true;
     }
     if (!fifoQueue) return false;
     NotifMsg msg;
     strncpy(msg.body, message, sizeof(msg.body) - 1);
     msg.body[sizeof(msg.body) - 1] = '\0';
-    msg.sendSms     = sendSms;
-    msg.sendDiscord = sendDiscord;
+    msg.channels = channels;
     if (xQueueSend(fifoQueue, &msg, 0) != pdTRUE) {
         dropCount++;
         LOG_EVENT("[NOTIFIER] FIFO full — message dropped (total dropped: %u): %.60s",
@@ -51,18 +50,17 @@ bool NotificationWorker::enqueue(const char* message, bool sendSms, bool sendDis
     return true;
 }
 
-bool NotificationWorker::enqueueEmergency(const char* message, bool sendSms, bool sendDiscord) {
+bool NotificationWorker::enqueueEmergency(const char* message, uint8_t channels) {
     if (!message) return false;
     if (dryRun) {
-        LOG_EVENT("[MOCK] Emergency notification (dry-run): %.120s", message);
+        LOG_EVENT("[MOCK] Emergency notification (dry-run, ch=0x%02x): %.120s", channels, message);
         return true;
     }
     if (!emergencyMailbox) return false;
     NotifMsg msg;
     strncpy(msg.body, message, sizeof(msg.body) - 1);
     msg.body[sizeof(msg.body) - 1] = '\0';
-    msg.sendSms     = sendSms;
-    msg.sendDiscord = sendDiscord;
+    msg.channels = channels;
     // Depth-1 overwrite: always succeeds, replacing any older unsent snapshot.
     xQueueOverwrite(emergencyMailbox, &msg);
     return true;
@@ -79,17 +77,40 @@ void NotificationWorker::taskEntry(void* arg) {
 
 void NotificationWorker::deliver(NotifMsg& msg) {
     // Track per-channel so a channel that already succeeded is never re-sent.
-    bool smsPending     = msg.sendSms;
-    bool discordPending = msg.sendDiscord;
+    // Use the channels bitmask so adding a third channel only requires adding
+    // an entry to the table below, not touching this loop.
+    struct ChanEntry {
+        uint8_t     flag;
+        const char* name;
+        bool (*send)(void* svc, const char* body);
+        void*       service;
+    };
 
-    for (uint8_t attempt = 1;
-         attempt <= SEND_ATTEMPTS && (smsPending || discordPending);
-         attempt++) {
+    // Channel dispatch table — extend here for future channels
+    ChanEntry channels[] = {
+        { CHAN_SMS,     "SMS",     [](void* s, const char* b) { return static_cast<SendSMS*>(s)->send(b); },     smsService     },
+        { CHAN_DISCORD, "Discord", [](void* s, const char* b) { return static_cast<SendDiscord*>(s)->send(b); }, discordService },
+    };
+    constexpr size_t NUM_CHANNELS = sizeof(channels) / sizeof(channels[0]);
 
-        if (smsPending && smsService->send(msg.body))         smsPending = false;
-        if (discordPending && discordService->send(msg.body)) discordPending = false;
+    // pending bitmask: start with requested channels that have a live service
+    uint8_t pending = 0;
+    for (size_t i = 0; i < NUM_CHANNELS; i++) {
+        if ((msg.channels & channels[i].flag) && channels[i].service) {
+            pending |= channels[i].flag;
+        }
+    }
 
-        if ((smsPending || discordPending) && attempt < SEND_ATTEMPTS) {
+    for (uint8_t attempt = 1; attempt <= SEND_ATTEMPTS && pending; attempt++) {
+        for (size_t i = 0; i < NUM_CHANNELS; i++) {
+            if (pending & channels[i].flag) {
+                if (channels[i].send(channels[i].service, msg.body)) {
+                    pending &= ~channels[i].flag;
+                }
+            }
+        }
+
+        if (pending && attempt < SEND_ATTEMPTS) {
             uint32_t backoff = RETRY_BACKOFF_MS[attempt - 1];
             LOG_EVENT("[NOTIFIER] Send failed (attempt %u/%u), retrying in %ums: %.60s",
                       attempt, SEND_ATTEMPTS, backoff, msg.body);
@@ -97,11 +118,11 @@ void NotificationWorker::deliver(NotifMsg& msg) {
         }
     }
 
-    if (smsPending) {
-        LOG_CRITICAL("[NOTIFIER] SMS send GAVE UP after %u attempts: %.60s", SEND_ATTEMPTS, msg.body);
-    }
-    if (discordPending) {
-        LOG_CRITICAL("[NOTIFIER] Discord send GAVE UP after %u attempts: %.60s", SEND_ATTEMPTS, msg.body);
+    for (size_t i = 0; i < NUM_CHANNELS; i++) {
+        if (pending & channels[i].flag) {
+            LOG_CRITICAL("[NOTIFIER] %s send GAVE UP after %u attempts: %.60s",
+                         channels[i].name, SEND_ATTEMPTS, msg.body);
+        }
     }
 }
 

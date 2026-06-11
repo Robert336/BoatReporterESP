@@ -7,12 +7,17 @@
 #include "SendSMS.h"
 #include "SendDiscord.h"
 
+// Channel bitmask for NotifMsg — add new channels here without touching the struct.
+// Default (CHAN_ALL) sends to every registered channel.
+constexpr uint8_t CHAN_SMS     = 0x01;
+constexpr uint8_t CHAN_DISCORD = 0x02;
+constexpr uint8_t CHAN_ALL     = CHAN_SMS | CHAN_DISCORD;
+
 // SMS and Discord are paired in one item so both channels are dropped together
 // if the queue is full — prevents partial delivery (SMS only, no Discord).
 struct NotifMsg {
-    char body[160];
-    bool sendSms;
-    bool sendDiscord;
+    char    body[160];
+    uint8_t channels; // bitmask of CHAN_* flags
 };
 
 // Runs outbound HTTP (SMS, Discord) on Core 0 so the main-loop state machine
@@ -35,12 +40,13 @@ public:
 
     // Enqueue a one-shot event notification. One FIFO slot = one alert;
     // returns false and logs if the FIFO is full.
-    bool enqueue(const char* message, bool sendSms = true, bool sendDiscord = true);
+    // channels: bitmask of CHAN_SMS | CHAN_DISCORD (default: CHAN_ALL)
+    bool enqueue(const char* message, uint8_t channels = CHAN_ALL);
 
     // Enqueue an emergency snapshot into the latest-wins mailbox. Always
     // succeeds, replacing any older unsent snapshot. Use this for periodic
     // EMERGENCY-state alerts so an outage backlog collapses to the latest.
-    bool enqueueEmergency(const char* message, bool sendSms = true, bool sendDiscord = true);
+    bool enqueueEmergency(const char* message, uint8_t channels = CHAN_ALL);
 
     uint32_t getPendingCount() const;
     uint32_t getDropCount() const { return dropCount; }
