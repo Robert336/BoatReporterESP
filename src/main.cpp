@@ -61,19 +61,21 @@ static uint32_t messageTraceId = 0;
 SettingsStore settingsStore;
 ConfigServer* configServer = nullptr;
 OTAManager* otaManager = nullptr;
-NotificationWorker notifier;
 LightCode light(LIGHT_PIN);
 TimeManagement& rtc = TimeManagement::getInstance();
 WiFiManager& wifiMgr = WiFiManager::getInstance();
 WaterPressureSensor waterSensor(USE_MOCK); // false = use real sensor, not mock data
 SendSMS sms;
 SendDiscord discord;
-MQTTService mqtt;
 
 // Logger publishes logs via MQTT; Discord kept for OTA / direct emergency sends
 SendDiscord* g_discord = &discord;
 
 #ifndef UNIT_TESTING
+// NotificationWorker and MQTTService use FreeRTOS/Arduino APIs not available in
+// unit test builds — instantiate them only when compiling for real hardware.
+NotificationWorker notifier;
+MQTTService mqtt;
 // Exclude setup() and loop() when building unit tests to avoid conflicts with test harness
 void setup() {
     Serial.begin(115200);

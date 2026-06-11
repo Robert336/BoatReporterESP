@@ -11,8 +11,13 @@
 class MQTTService;
 extern MQTTService* g_mqtt;
 
-// Declared in MQTTService.cpp — enqueues the message; never blocks the main loop
+// Declared in MQTTService.cpp — enqueues the message; never blocks the main loop.
+// In UNIT_TESTING builds MQTTService.cpp is excluded, so provide a no-op stub.
+#ifdef UNIT_TESTING
+inline void sendMqttLog(const char*) {}
+#else
 void sendMqttLog(const char* message);
+#endif
 
 // Log level constants (included in MQTT log messages so consumers can filter)
 #define LOG_LEVEL_DEBUG    0

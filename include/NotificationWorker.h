@@ -1,4 +1,5 @@
 #pragma once
+class NotificationWorker;
 #ifndef UNIT_TESTING
 
 #include <Arduino.h>
