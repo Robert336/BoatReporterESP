@@ -16,6 +16,7 @@
 #include "StateMachine.h"
 #include "SettingsStore.h"
 #include "Version.h"
+#include <ArduinoJson.h>
 
 // Forward declarations
 void handleButtonPress();
@@ -393,18 +394,20 @@ void loop() {
     // connected consumer immediately sees the last reading. publishTelemetry()
     // is a no-op when MQTT is disconnected, so this never blocks the loop.
     if (millis() - lastTelemetryTime >= TELEMETRY_INTERVAL_MS) {
-        // ArduinoJson builder — NaN-proof by construction (item A3)
+        // ArduinoJson builder — NaN-proof by construction (item A3).
+        // ArduinoJson v6 serializes float NaN as "null" when assigned nullptr;
+        // assigning a float directly serializes the numeric value.
         StaticJsonDocument<256> doc;
         if (isnan(currentReading.level_cm)) {
             doc["level_cm"] = nullptr;
         } else {
-            doc["level_cm"] = serialized(String(currentReading.level_cm, 2));
+            doc["level_cm"] = (float)((int)(currentReading.level_cm * 100 + 0.5f)) / 100.0f;
         }
         float rate = waterSensor.getRateOfChange_cm30min();
         if (isnan(rate)) {
             doc["rate_cm_30min"] = nullptr;
         } else {
-            doc["rate_cm_30min"] = serialized(String(rate, 2));
+            doc["rate_cm_30min"] = (float)((int)(rate * 100 + 0.5f)) / 100.0f;
         }
         doc["state"]        = stateToString(smCtx.currentState);
         doc["sensor_error"] = smCtx.sensorError;
