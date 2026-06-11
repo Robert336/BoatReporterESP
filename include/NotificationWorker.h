@@ -29,7 +29,9 @@ class NotificationWorker {
 public:
     NotificationWorker() = default;
 
-    void begin(SendSMS* sms, SendDiscord* discord);
+    // dryRun = true: enqueue() logs messages instead of queuing them (mock/test mode).
+    // Pass USE_MOCK at the call site so all guards live in NotificationWorker.
+    void begin(SendSMS* sms, SendDiscord* discord, bool dryRun = false);
 
     // Enqueue a one-shot event notification. One FIFO slot = one alert;
     // returns false and logs if the FIFO is full.
@@ -54,6 +56,7 @@ private:
     QueueHandle_t  emergencyMailbox = nullptr;
     QueueSetHandle_t queueSet       = nullptr;
     uint32_t       dropCount        = 0;
+    bool           dryRun           = false; // When true, log instead of queuing
 
     static constexpr size_t      FIFO_DEPTH    = 8;
     static constexpr uint32_t    TASK_STACK    = 6144;

@@ -6,9 +6,10 @@
 
 constexpr uint32_t NotificationWorker::RETRY_BACKOFF_MS[3];
 
-void NotificationWorker::begin(SendSMS* sms, SendDiscord* discord) {
+void NotificationWorker::begin(SendSMS* sms, SendDiscord* discord, bool dryRunMode) {
     smsService     = sms;
     discordService = discord;
+    dryRun         = dryRunMode;
 
     fifoQueue        = xQueueCreate(FIFO_DEPTH, sizeof(NotifMsg));
     emergencyMailbox = xQueueCreate(1, sizeof(NotifMsg));
@@ -30,7 +31,12 @@ void NotificationWorker::begin(SendSMS* sms, SendDiscord* discord) {
 }
 
 bool NotificationWorker::enqueue(const char* message, bool sendSms, bool sendDiscord) {
-    if (!fifoQueue || !message) return false;
+    if (!message) return false;
+    if (dryRun) {
+        LOG_EVENT("[MOCK] Notification (dry-run): %.120s", message);
+        return true;
+    }
+    if (!fifoQueue) return false;
     NotifMsg msg;
     strncpy(msg.body, message, sizeof(msg.body) - 1);
     msg.body[sizeof(msg.body) - 1] = '\0';
@@ -46,7 +52,12 @@ bool NotificationWorker::enqueue(const char* message, bool sendSms, bool sendDis
 }
 
 bool NotificationWorker::enqueueEmergency(const char* message, bool sendSms, bool sendDiscord) {
-    if (!emergencyMailbox || !message) return false;
+    if (!message) return false;
+    if (dryRun) {
+        LOG_EVENT("[MOCK] Emergency notification (dry-run): %.120s", message);
+        return true;
+    }
+    if (!emergencyMailbox) return false;
     NotifMsg msg;
     strncpy(msg.body, message, sizeof(msg.body) - 1);
     msg.body[sizeof(msg.body) - 1] = '\0';
