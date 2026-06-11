@@ -5,8 +5,10 @@
 #include <Update.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
-#include "SendSMS.h"
-#include "SendDiscord.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/semphr.h>
+#include "NotificationWorker.h"
 
 constexpr const char OTA_PREFERENCES_NAMESPACE[] = "ota_config";
 constexpr unsigned long DEFAULT_CHECK_INTERVAL_MS = 86400000; // 24 hours
@@ -25,7 +27,6 @@ constexpr unsigned long REBOOT_DELAY_MS = 3000; // 3 seconds
 // Buffer sizes
 constexpr size_t NOTIFICATION_MESSAGE_BUFFER_SIZE = 150;
 constexpr size_t SHORT_MESSAGE_BUFFER_SIZE = 120;
-constexpr size_t JSON_DOCUMENT_SIZE = 4096;
 
 // HTTP status codes
 constexpr int HTTP_FORBIDDEN = 403;
@@ -34,6 +35,11 @@ constexpr int HTTP_TOO_MANY_REQUESTS = 429;
 // Progress reporting
 constexpr size_t PROGRESS_LOG_INTERVAL_PERCENT = 10;
 constexpr unsigned long DOWNLOAD_LOOP_DELAY_MS = 1;
+
+// OTA check task stack and priority
+constexpr uint32_t    OTA_TASK_STACK    = 8192;
+constexpr UBaseType_t OTA_TASK_PRIORITY = 1;
+constexpr BaseType_t  OTA_TASK_CORE     = 0;
 
 enum class OTAState {
     IDLE,
@@ -66,36 +72,41 @@ struct VersionInfo {
 
 /**
  * OTAManager - Manages Over-The-Air firmware updates
- * 
+ *
  * Features:
- * - Check GitHub Releases for new firmware versions
- * - Download and install firmware updates via HTTPS
- * - Automatic version checking on schedule
+ * - Check GitHub Releases for new firmware versions (on a dedicated Core 0 task)
+ * - Download and install firmware updates via HTTPS (on the loop task — device
+ *   is intentionally out-of-service during a download anyway)
+ * - Automatic version checking on schedule without blocking loop()
  * - Manual update triggering via web interface
- * - Notification integration (SMS/Discord)
+ * - Notification integration via NotificationWorker (no direct send() calls)
  * - Rollback detection and notification
  * - NVS configuration storage
  */
 class OTAManager {
 private:
     // Services
-    SendSMS* smsService;
-    SendDiscord* discordService;
+    NotificationWorker* notifier;
     Preferences preferences;
-    
-    // State
-    OTAState currentState;
-    OTAConfig config;
-    VersionInfo versionInfo;
+
+    // State (guarded by stateMux for cross-task access)
+    OTAState      currentState;
+    OTAConfig     config;
+    VersionInfo   versionInfo;
     unsigned long lastCheckTime;
-    String lastError;
-    bool firstBootAfterUpdate;
-    bool rollbackOccurred;
-    
+    String        lastError;
+    bool          firstBootAfterUpdate;
+    bool          rollbackOccurred;
+
+    // FreeRTOS primitives for the background check task
+    SemaphoreHandle_t stateMux;      // Mutex protecting currentState / versionInfo / lastError
+    TaskHandle_t      checkTaskHandle;
+    volatile bool     checkRequested; // Set by loop task, consumed by check task
+
     // Helper methods
     void loadConfig();
     void saveConfig();
-    bool sendNotification(const char* message);  // Returns true if at least one notification succeeded
+    void sendNotification(const char* message);
     bool checkForUpdates();
     bool compareVersions(const String& v1, const String& v2);
     bool downloadAndInstall(const String& url, size_t expectedSize);
@@ -103,25 +114,32 @@ private:
     void setFirstBootFlag();
     void clearFirstBootFlag();
     int parseVersionComponent(const String& version, int component);
-    
+
     // Pre-flight validation methods
     bool validateFirmwareSize(size_t size);
     bool checkFlashSpace(size_t requiredSize);
     bool checkHeapAvailable(size_t requiredSize);
     bool checkSignalStrength();
-    
+
+    // Background check task
+    static void checkTaskEntry(void* arg);
+    void runCheckTask();
+
 public:
-    OTAManager(SendSMS* sms = nullptr, SendDiscord* discord = nullptr);
+    OTAManager(NotificationWorker* notifier = nullptr);
     ~OTAManager();
-    
+
     // Core operations
     void begin();
-    void loop();
-    
+
+    // Called from main loop: handles auto-install only.
+    // The version check runs in the background task, not here.
+    void loopInstallOnly();
+
     // Manual control
     bool manualCheckForUpdates();
     bool startUpdate(const char* password = nullptr);
-    
+
     // Configuration
     void setGitHubRepo(const char* owner, const char* repo);
     void setGitHubToken(const char* token);
@@ -129,8 +147,8 @@ public:
     void setAutoCheck(bool enabled, unsigned long intervalMs = DEFAULT_CHECK_INTERVAL_MS);
     void setAutoInstall(bool enabled);
     void setNotificationsEnabled(bool enabled);
-    
-    // Getters
+
+    // Getters (lock-free for simple booleans; use mutex for String fields)
     OTAState getState() const { return currentState; }
     String getCurrentVersion() const { return versionInfo.currentVersion; }
     String getAvailableVersion() const { return versionInfo.availableVersion; }
