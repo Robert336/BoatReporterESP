@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <stdio.h>   // For snprintf (C-style for Arduino compatibility)
+#include <math.h>    // For isnan
 
 // Forward declarations for hardware-dependent types
 class ConfigServer;
@@ -24,29 +25,38 @@ struct StateMachineSensorReading {
 struct StateMachineContext {
     // Current state
     State currentState;
-    
+
     // Timers (milliseconds)
     uint32_t lastStateChangeTime;
     uint32_t emergencyConditionsTrueTime;
     uint32_t emergencyConditionsFalseTime;
     uint32_t lastEmergencyMessageTime;
     uint32_t lastHornToggleTime;
-    
+    uint32_t sensorErrorTrueTime;          // When sensorError last went false->true
+    uint32_t lastSensorErrorNotifyTime;    // Last sustained-failure notification
+
     // Event flags
     bool emergencyConditions;              // Tier 1 threshold exceeded
     bool urgentEmergencyConditions;        // Tier 2 threshold exceeded
     bool hornCurrentlyOn;                  // Tracks horn state for pulsing
     bool sensorError;
-    bool configCommandReceived;
+    bool sensorErrorNotified;              // Owner alerted about the current failure episode
+    volatile bool configCommandReceived;
     bool notificationsSilenced;            // Tracks if emergency alerts are silenced
-    
-    // Configuration values (normally from ConfigServer)
+
+    // Last reading where valid=true. Used as the displayed level in emergency
+    // notifications when the current sample is invalid, so the owner sees the
+    // last trustworthy value instead of a garbage ADC reading.
+    float lastValidLevel_cm;
+    bool  hasValidLevel;
+
+    // Configuration values (normally from ConfigServer / SettingsStore)
     float emergencyWaterLevel_cm;
     float urgentEmergencyWaterLevel_cm;
     int emergencyNotifFreq_ms;
     int hornOnDuration_ms;
     int hornOffDuration_ms;
-    
+
     // Constructor with defaults
     StateMachineContext() :
         currentState(NORMAL),
@@ -55,14 +65,19 @@ struct StateMachineContext {
         emergencyConditionsFalseTime(0),
         lastEmergencyMessageTime(0),
         lastHornToggleTime(0),
+        sensorErrorTrueTime(0),
+        lastSensorErrorNotifyTime(0),
         emergencyConditions(false),
         urgentEmergencyConditions(false),
         hornCurrentlyOn(false),
         sensorError(false),
+        sensorErrorNotified(false),
         configCommandReceived(false),
         notificationsSilenced(false),
-        emergencyWaterLevel_cm(30.0),
-        urgentEmergencyWaterLevel_cm(50.0),
+        lastValidLevel_cm(0.0f),
+        hasValidLevel(false),
+        emergencyWaterLevel_cm(30.0f),
+        urgentEmergencyWaterLevel_cm(50.0f),
         emergencyNotifFreq_ms(900000),
         hornOnDuration_ms(1000),
         hornOffDuration_ms(1000)
@@ -73,22 +88,32 @@ struct StateMachineContext {
 struct StateMachineOutput {
     bool stateChanged;
     State newState;
-    
+
     // Horn control
     bool setHornState;
     bool hornOn;
-    
+
     // Notification flags
     bool sendEmergencyNotification;
     bool sendSilenceConfirmation;
     bool sendUnsilenceConfirmation;
-    
+    bool sendSensorRecoveryNotification;
+    bool sendSustainedSensorFailureNotification;
+
+    // Latest reading info for message construction (to avoid re-reading sensor)
+    float displayLevel_cm;       // level_cm to use in emergency messages
+    bool  sensorFaultActive;     // true when emergency message should note stale data
+    float rateOfChange_cm30min;  // NaN when unavailable
+
+    // Sensor-failure context for the sustained-failure notification
+    uint32_t sensorDownSeconds;  // how long the sensor has been continuously failed
+
     // Message to send (if any notification flag is set)
     char message[256];
-    
+
     // LED pattern (for light code)
     int ledPattern; // Can map to PATTERN_OFF, PATTERN_SOLID, etc.
-    
+
     StateMachineOutput() :
         stateChanged(false),
         newState(NORMAL),
@@ -97,14 +122,24 @@ struct StateMachineOutput {
         sendEmergencyNotification(false),
         sendSilenceConfirmation(false),
         sendUnsilenceConfirmation(false),
+        sendSensorRecoveryNotification(false),
+        sendSustainedSensorFailureNotification(false),
+        displayLevel_cm(0.0f),
+        sensorFaultActive(false),
+        rateOfChange_cm30min(0.0f),
+        sensorDownSeconds(0),
         ledPattern(0)
     {
         message[0] = '\0';
     }
 };
 
-// State machine timeout constants
-constexpr uint32_t EMERGENCY_TIMEOUT_MS = 1000;
+// State machine timeout constants — match live main.cpp behavior
+constexpr uint32_t EMERGENCY_TIMEOUT_MS = 5000;
+
+// Sensor-failure notification timing (mirrors main.cpp constants)
+constexpr uint32_t SENSOR_ERROR_NOTIFY_DELAY_MS  = 60000;   // 1 min sustained before first alert
+constexpr uint32_t SENSOR_ERROR_NOTIFY_REPEAT_MS = 1800000; // 30 min reminder interval
 
 // Pure function: Update emergency condition flags based on sensor reading
 inline void updateEmergencyConditions(StateMachineContext& ctx,
@@ -117,6 +152,11 @@ inline void updateEmergencyConditions(StateMachineContext& ctx,
     if (!reading.valid) {
         return;
     }
+
+    // Remember the last trustworthy level for emergency messaging when the
+    // sensor is faulty but EMERGENCY state is still active.
+    ctx.lastValidLevel_cm = reading.level_cm;
+    ctx.hasValidLevel = true;
 
     // Check Tier 1 emergency conditions (message notifications)
     bool previousEmergencyConditions = ctx.emergencyConditions;
@@ -133,12 +173,7 @@ inline void updateEmergencyConditions(StateMachineContext& ctx,
     }
 
     // Check Tier 2 urgent emergency conditions (horn alarm)
-    bool previousUrgentEmergencyConditions = ctx.urgentEmergencyConditions;
-    if (reading.level_cm >= ctx.urgentEmergencyWaterLevel_cm) {
-        ctx.urgentEmergencyConditions = true;
-    } else {
-        ctx.urgentEmergencyConditions = false;
-    }
+    ctx.urgentEmergencyConditions = (reading.level_cm >= ctx.urgentEmergencyWaterLevel_cm);
 }
 
 // Pure function: Compute state transitions
@@ -146,7 +181,7 @@ inline State computeNextState(const StateMachineContext& ctx,
                               const StateMachineSensorReading& reading,
                               uint32_t currentTime,
                               bool configServerActive = false) {
-    
+
     switch (ctx.currentState) {
         case ERROR:
             if (!ctx.sensorError) {
@@ -155,33 +190,33 @@ inline State computeNextState(const StateMachineContext& ctx,
                 return CONFIG;
             }
             break;
-            
+
         case NORMAL:
             if (ctx.sensorError) {
                 return ERROR;
-            } else if (ctx.emergencyConditions && 
+            } else if (ctx.emergencyConditions &&
                        (currentTime - ctx.emergencyConditionsTrueTime) >= EMERGENCY_TIMEOUT_MS) {
                 return EMERGENCY;
             } else if (ctx.configCommandReceived) {
                 return CONFIG;
             }
             break;
-            
+
         case CONFIG:
             // Config state exits when config server becomes inactive
             if (!configServerActive && !ctx.configCommandReceived) {
                 return NORMAL;
             }
             break;
-            
+
         case EMERGENCY:
-            if (!ctx.emergencyConditions && 
+            if (!ctx.emergencyConditions &&
                 (currentTime - ctx.emergencyConditionsFalseTime) >= EMERGENCY_TIMEOUT_MS) {
                 return NORMAL;
             }
             break;
     }
-    
+
     return ctx.currentState; // No state change
 }
 
@@ -191,15 +226,15 @@ inline bool shouldSendEmergencyNotification(const StateMachineContext& ctx,
     if (ctx.currentState != EMERGENCY) {
         return false;
     }
-    
+
     if (ctx.notificationsSilenced) {
         return false;
     }
-    
+
     if (currentTime - ctx.lastEmergencyMessageTime >= (uint32_t)ctx.emergencyNotifFreq_ms) {
         return true;
     }
-    
+
     return false;
 }
 
@@ -209,84 +244,129 @@ inline bool shouldHornBeOn(const StateMachineContext& ctx,
     if (ctx.currentState != EMERGENCY) {
         return false;
     }
-    
+
     if (!ctx.urgentEmergencyConditions) {
         return false;
     }
-    
+
     if (ctx.notificationsSilenced) {
         return false;
     }
-    
+
     // Check if it's time to toggle horn based on current state
     uint32_t currentDuration = ctx.hornCurrentlyOn ? ctx.hornOnDuration_ms : ctx.hornOffDuration_ms;
     if (currentTime - ctx.lastHornToggleTime >= currentDuration) {
         return !ctx.hornCurrentlyOn; // Toggle
     }
-    
+
     return ctx.hornCurrentlyOn; // Maintain current state
 }
 
-// Main state machine update function
+// Main state machine update function.
+// Parameters:
+//   ctx           - mutable state context (updated in place)
+//   reading       - current sensor reading
+//   currentTime   - millis() snapshot for this iteration
+//   rateOfChange  - cm/30min from WaterPressureSensor::getRateOfChange_cm30min() (NaN if unavailable)
+//   configServerActive - whether ConfigServer is actively serving
 inline StateMachineOutput updateStateMachine(StateMachineContext& ctx,
                                              const StateMachineSensorReading& reading,
                                              uint32_t currentTime,
+                                             float rateOfChange,
                                              bool configServerActive = false) {
     StateMachineOutput output;
-    
-    // Update sensor error flag
+
+    // ------------------------------------------------------------------
+    // Sensor error tracking
+    // ------------------------------------------------------------------
+    bool previousSensorError = ctx.sensorError;
     ctx.sensorError = !reading.valid;
-    
-    // Update emergency conditions
+
+    if (ctx.sensorError && !previousSensorError) {
+        // Sensor just failed: record onset time, reset notification state
+        ctx.sensorErrorTrueTime     = currentTime;
+        ctx.sensorErrorNotified     = false;
+    } else if (!ctx.sensorError && previousSensorError) {
+        // Sensor recovered
+        if (ctx.sensorErrorNotified) {
+            // Only notify owner of recovery when they were previously told it failed
+            ctx.sensorErrorNotified = false;
+            output.sendSensorRecoveryNotification = true;
+        }
+    }
+
+    // Sustained-failure notification (skip if I2C is unrecoverable — caller
+    // sends its own distinct alert for that case)
+    if (ctx.sensorError) {
+        bool dueFirst  = !ctx.sensorErrorNotified &&
+                         (currentTime - ctx.sensorErrorTrueTime >= SENSOR_ERROR_NOTIFY_DELAY_MS);
+        bool dueRepeat = ctx.sensorErrorNotified &&
+                         (currentTime - ctx.lastSensorErrorNotifyTime >= SENSOR_ERROR_NOTIFY_REPEAT_MS);
+        if (dueFirst || dueRepeat) {
+            ctx.sensorErrorNotified         = true;
+            ctx.lastSensorErrorNotifyTime   = currentTime;
+            output.sendSustainedSensorFailureNotification = true;
+            output.sensorDownSeconds = (currentTime - ctx.sensorErrorTrueTime) / 1000;
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Update emergency conditions (only when reading is valid)
+    // ------------------------------------------------------------------
     updateEmergencyConditions(ctx, reading, currentTime);
-    
-    // Compute next state
+
+    // ------------------------------------------------------------------
+    // Compute and apply state transitions
+    // ------------------------------------------------------------------
     State nextState = computeNextState(ctx, reading, currentTime, configServerActive);
-    
+
     if (nextState != ctx.currentState) {
         output.stateChanged = true;
         output.newState = nextState;
         ctx.currentState = nextState;
         ctx.lastStateChangeTime = currentTime;
-        
-        // Handle state entry actions
-        if (nextState == NORMAL && ctx.notificationsSilenced) {
-            // Auto-clear silence flag when returning to normal
-            ctx.notificationsSilenced = false;
-        }
 
-        if (nextState == NORMAL && ctx.configCommandReceived) {
-            // Clear config command when entering normal
+        // State-entry actions
+        if (nextState == NORMAL) {
+            // Auto-clear silence when returning to normal (safety feature)
+            if (ctx.notificationsSilenced) {
+                ctx.notificationsSilenced = false;
+            }
+            // Clear config command so NORMAL doesn't immediately fall into CONFIG
             ctx.configCommandReceived = false;
+            // Ensure horn is driven off
+            if (ctx.hornCurrentlyOn) {
+                output.setHornState = true;
+                output.hornOn = false;
+                ctx.hornCurrentlyOn = false;
+            }
         }
 
-        if (nextState == EMERGENCY && ctx.configCommandReceived) {
+        if (nextState == EMERGENCY) {
             // Drop any pending config-button press so post-emergency NORMAL
             // doesn't immediately fall into CONFIG.
             ctx.configCommandReceived = false;
         }
     }
-    
+
+    // ------------------------------------------------------------------
     // Handle emergency state operations
+    // ------------------------------------------------------------------
     if (ctx.currentState == EMERGENCY) {
-        // Check if emergency notifications should be sent
+        // TIER 1: Periodic emergency message notifications
         if (shouldSendEmergencyNotification(ctx, currentTime)) {
             output.sendEmergencyNotification = true;
+            // Update timer even when we're about to populate the output, so
+            // the caller doesn't need to touch ctx.
             ctx.lastEmergencyMessageTime = currentTime;
-            
-            // Format message
-            if (ctx.urgentEmergencyConditions) {
-                snprintf(output.message, sizeof(output.message),
-                        "BilgeRise URGENT Alert: Tier 2 Emergency Level Reached - Critical Level %.2f cm",
-                        reading.level_cm);
-            } else {
-                snprintf(output.message, sizeof(output.message),
-                        "BilgeRise Alert: Emergency Level %.2f cm",
-                        reading.level_cm);
-            }
+
+            // Populate display context for caller's message construction
+            output.displayLevel_cm      = reading.valid ? reading.level_cm : ctx.lastValidLevel_cm;
+            output.sensorFaultActive    = ctx.sensorError;
+            output.rateOfChange_cm30min = rateOfChange;
         }
-        
-        // Handle horn pulsing
+
+        // TIER 2: Horn pulsing
         bool newHornState = shouldHornBeOn(ctx, currentTime);
         if (newHornState != ctx.hornCurrentlyOn) {
             output.setHornState = true;
@@ -295,33 +375,31 @@ inline StateMachineOutput updateStateMachine(StateMachineContext& ctx,
             ctx.lastHornToggleTime = currentTime;
         }
     } else {
-        // Not in emergency state - ensure horn is off
+        // Not in emergency state — ensure horn is off
         if (ctx.hornCurrentlyOn) {
             output.setHornState = true;
             output.hornOn = false;
             ctx.hornCurrentlyOn = false;
         }
     }
-    
+
     return output;
 }
 
-// Helper function to handle button silence toggle
+// Handle button silence toggle in EMERGENCY state
 inline StateMachineOutput handleSilenceToggle(StateMachineContext& ctx) {
     StateMachineOutput output;
-    
+
     if (ctx.currentState != EMERGENCY) {
         return output; // Only works in emergency state
     }
-    
+
     ctx.notificationsSilenced = !ctx.notificationsSilenced;
-    
+
     if (ctx.notificationsSilenced) {
         output.sendSilenceConfirmation = true;
-        snprintf(output.message, sizeof(output.message),
-                "BilgeRise: Emergency alerts have been temporarily silenced");
-        
-        // Turn off horn immediately if it was on
+
+        // Turn off horn immediately when silenced
         if (ctx.hornCurrentlyOn) {
             output.setHornState = true;
             output.hornOn = false;
@@ -329,10 +407,8 @@ inline StateMachineOutput handleSilenceToggle(StateMachineContext& ctx) {
         }
     } else {
         output.sendUnsilenceConfirmation = true;
-        snprintf(output.message, sizeof(output.message),
-                "BilgeRise: Emergency alerts have been re-enabled");
     }
-    
+
     return output;
 }
 
