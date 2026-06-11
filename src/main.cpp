@@ -14,6 +14,7 @@
 #include "OTAManager.h"
 #include "NotificationWorker.h"
 #include "StateMachine.h"
+#include "SettingsStore.h"
 #include "Version.h"
 
 // Forward declarations
@@ -56,6 +57,7 @@ volatile bool emergencyLongHoldDetected = false; // Flag for 5-second hold in em
 static uint32_t messageTraceId = 0;
 
 // Create easier references to the singleton objects
+SettingsStore settingsStore;
 ConfigServer* configServer = nullptr;
 OTAManager* otaManager = nullptr;
 NotificationWorker notifier;
@@ -86,6 +88,9 @@ void setup() {
 
     waterSensor.init();
 
+    // Load alarm threshold settings from NVS (before ConfigServer construction)
+    settingsStore.load();
+
     // Initialize state machine context with current time
     smCtx.lastStateChangeTime           = millis();
     smCtx.emergencyConditionsTrueTime   = millis();
@@ -111,15 +116,8 @@ void setup() {
 
     // Initialize ConfigServer early to load calibration from NVS
     // This ensures saved calibration is applied before first sensor reading
-    configServer = new ConfigServer(&waterSensor, &sms, &discord, otaManager, &mqtt);
+    configServer = new ConfigServer(&waterSensor, &sms, &discord, otaManager, &mqtt, &settingsStore);
     LOG_SETUP("[SETUP] ConfigServer initialized - calibration loaded from NVS");
-
-    // Load initial threshold config from ConfigServer into the state machine context
-    smCtx.emergencyWaterLevel_cm        = configServer->getEmergencyWaterLevel();
-    smCtx.urgentEmergencyWaterLevel_cm  = configServer->getUrgentEmergencyWaterLevel();
-    smCtx.emergencyNotifFreq_ms         = configServer->getEmergencyNotifFreq();
-    smCtx.hornOnDuration_ms             = configServer->getHornOnDuration();
-    smCtx.hornOffDuration_ms            = configServer->getHornOffDuration();
 
     // Print unique device AP password for easy access
     LOG_SETUP("========================================");
@@ -205,13 +203,17 @@ void loop() {
     // Track state before processing to detect changes
     State previousState = smCtx.currentState;
 
-    // Refresh threshold config from ConfigServer on every loop iteration so
+    // Refresh threshold config from SettingsStore on every loop iteration so
     // settings changed via the web UI take effect without a reboot.
-    smCtx.emergencyWaterLevel_cm       = configServer->getEmergencyWaterLevel();
-    smCtx.urgentEmergencyWaterLevel_cm = configServer->getUrgentEmergencyWaterLevel();
-    smCtx.emergencyNotifFreq_ms        = configServer->getEmergencyNotifFreq();
-    smCtx.hornOnDuration_ms            = configServer->getHornOnDuration();
-    smCtx.hornOffDuration_ms           = configServer->getHornOffDuration();
+    // SettingsStore::get() returns the in-RAM copy — no NVS I/O on this path.
+    {
+        const SettingsValues& sv = settingsStore.get();
+        smCtx.emergencyWaterLevel_cm       = sv.emergencyWaterLevel_cm;
+        smCtx.urgentEmergencyWaterLevel_cm = sv.urgentEmergencyWaterLevel_cm;
+        smCtx.emergencyNotifFreq_ms        = sv.emergencyNotifFreq_ms;
+        smCtx.hornOnDuration_ms            = sv.hornOnDuration_ms;
+        smCtx.hornOffDuration_ms           = sv.hornOffDuration_ms;
+    }
 
     SensorReading currentReading = waterSensor.readLevel();
 
