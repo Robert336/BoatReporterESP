@@ -1,3 +1,5 @@
+#ifndef UNIT_TESTING
+
 #include "OTAManager.h"
 #include "Logger.h"
 #include "Version.h"
@@ -757,3 +759,5 @@ void OTAManager::setNotificationsEnabled(bool enabled) {
     saveConfig();
     LOG_INFO("[OTA] Notifications %s", enabled ? "enabled" : "disabled");
 }
+
+#endif // UNIT_TESTING

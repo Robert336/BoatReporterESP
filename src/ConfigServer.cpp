@@ -1,3 +1,5 @@
+#ifndef UNIT_TESTING
+
 #include "ConfigServer.h"
 #include "Logger.h"
 #include "Version.h"
@@ -1217,5 +1219,7 @@ void ConfigServer::handleOTASettings() {
         server->send(400, "application/json", "{\"error\":\"No valid settings provided\"}");
     }
 }
+
+#endif // UNIT_TESTING
 
 
