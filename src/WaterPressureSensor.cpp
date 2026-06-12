@@ -168,8 +168,10 @@ SensorReading WaterPressureSensor::readLevel() {
         }
 
         int16_t rawADC = ads.getLastConversionResults();
-        reading.millivolts = ads.computeVolts(rawADC) * 1000;
+        // Compute voltage once and reuse — avoids calling ads.computeVolts() twice
+        // on the same raw value (P6 fix).
         float computedVolts = ads.computeVolts(rawADC);
+        reading.millivolts = computedVolts * 1000.0f;
         uint32_t now = millis();
         if (now - lastLogTime >= 1000) {
             LOG_DEBUG("WaterPressureSensor: millivolts reading = %.2f mV", reading.millivolts);

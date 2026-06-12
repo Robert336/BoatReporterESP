@@ -1,3 +1,5 @@
+#ifndef UNIT_TESTING
+
 #include "ConfigServer.h"
 #include "Logger.h"
 #include "Version.h"
@@ -7,19 +9,21 @@
 // CORE LIFECYCLE METHODS
 // ============================================================================
 
-ConfigServer::ConfigServer(WaterPressureSensor* sensor, SendSMS* sms, SendDiscord* discord, OTAManager* ota, MQTTService* mqtt)
-    : server(nullptr), waterSensor(sensor), smsService(sms), discordService(discord), otaManager(ota), mqttService(mqtt) {
+ConfigServer::ConfigServer(WaterPressureSensor* sensor, SendSMS* sms, SendDiscord* discord,
+                           OTAManager* ota, MQTTService* mqtt, SettingsStore* settings)
+    : server(nullptr), waterSensor(sensor), smsService(sms), discordService(discord),
+      otaManager(ota), mqttService(mqtt), settingsStore(settings) {
     // Generate unique AP password from chip ID
     uint64_t chipId = ESP.getEfuseMac();
     uint32_t id = (uint32_t)(chipId & 0xFFFFFFFF);
     char passwordBuf[15];
     snprintf(passwordBuf, sizeof(passwordBuf), "Boat%08X", id);
     apPassword = String(passwordBuf);
-    
+
     // Initialize calibration preferences
     loadCalibration();
-    // Initialize emergency settings
-    loadEmergencySettings();
+    // Emergency settings are owned by SettingsStore; caller must call
+    // settingsStore->load() before constructing ConfigServer.
 }
 
 ConfigServer::~ConfigServer() {
@@ -30,8 +34,8 @@ ConfigServer::~ConfigServer() {
         dnsServer = nullptr;
     }
     stopSetupMode();
-    calibrationPrefs.end(); // Close Preferences namespace
-    emergencyPrefs.end(); // Close emergency settings namespace
+    calibrationPrefs.end(); // Close calibration NVS namespace
+    // Emergency settings NVS is managed by SettingsStore
 }
 
 void ConfigServer::startSetupMode() {
@@ -122,13 +126,18 @@ void ConfigServer::startSetupMode() {
     server->on("/emergency/test-pin", HTTP_POST, [this]() { handleTestEmergencyPin(); });
     
     // Route: GET /emergency-settings → return current emergency settings
-    server->on("/emergency-settings", HTTP_GET, [this]() { 
+    server->on("/emergency-settings", HTTP_GET, [this]() {
+        float el  = settingsStore ? settingsStore->getEmergencyWaterLevel()       : 30.0f;
+        int   ef  = settingsStore ? settingsStore->getEmergencyNotifFreq()        : 900000;
+        float ul  = settingsStore ? settingsStore->getUrgentEmergencyWaterLevel() : 50.0f;
+        int   hon = settingsStore ? settingsStore->getHornOnDuration()            : 1000;
+        int   hof = settingsStore ? settingsStore->getHornOffDuration()           : 1000;
         String json = "{";
-        json += "\"emergencyWaterLevel_cm\":" + String(emergencyWaterLevel_cm, 2) + ",";
-        json += "\"emergencyNotifFreq_ms\":" + String(emergencyNotifFreq_ms) + ",";
-        json += "\"urgentEmergencyWaterLevel_cm\":" + String(urgentEmergencyWaterLevel_cm, 2) + ",";
-        json += "\"hornOnDuration_ms\":" + String(hornOnDuration_ms) + ",";
-        json += "\"hornOffDuration_ms\":" + String(hornOffDuration_ms);
+        json += "\"emergencyWaterLevel_cm\":" + String(el, 2) + ",";
+        json += "\"emergencyNotifFreq_ms\":" + String(ef) + ",";
+        json += "\"urgentEmergencyWaterLevel_cm\":" + String(ul, 2) + ",";
+        json += "\"hornOnDuration_ms\":" + String(hon) + ",";
+        json += "\"hornOffDuration_ms\":" + String(hof);
         json += "}";
         server->send(200, "application/json", json);
         serverStartTime = millis();
@@ -305,8 +314,8 @@ void ConfigServer::handleInit() {
     json += "},";
 
     json += "\"thresholds\":{";
-    json += "\"emergencyWaterLevel_cm\":" + String(emergencyWaterLevel_cm, 2) + ",";
-    json += "\"urgentEmergencyWaterLevel_cm\":" + String(urgentEmergencyWaterLevel_cm, 2);
+    json += "\"emergencyWaterLevel_cm\":" + String(getEmergencyWaterLevel(), 2) + ",";
+    json += "\"urgentEmergencyWaterLevel_cm\":" + String(getUrgentEmergencyWaterLevel(), 2);
     json += "}";
 
     json += "}";
@@ -331,7 +340,7 @@ void ConfigServer::handleSettingsInit() {
     json += "},";
 
     // emergency freq (the only /emergency-settings field settings.html uses)
-    json += "\"emergencyNotifFreq_ms\":" + String(emergencyNotifFreq_ms) + ",";
+    json += "\"emergencyNotifFreq_ms\":" + String(getEmergencyNotifFreq()) + ",";
 
     // wifi (mirrors fields settings.html reads from /status)
     bool connected = WiFiManager::getInstance().isConnected();
@@ -610,15 +619,18 @@ void ConfigServer::handleSetEmergencyLevel() {
         }
         
         // Validate that Tier 1 threshold is less than Tier 2 threshold
-        if (level_cm >= urgentEmergencyWaterLevel_cm) {
+        if (level_cm >= getUrgentEmergencyWaterLevel()) {
             String errorMsg = "{\"error\":\"Tier 1 threshold must be less than Tier 2 threshold (";
-            errorMsg += String(urgentEmergencyWaterLevel_cm, 2) + " cm)\"}";
+            errorMsg += String(getUrgentEmergencyWaterLevel(), 2) + " cm)\"}";
             server->send(400, "application/json", errorMsg);
             return;
         }
-        
-        emergencyWaterLevel_cm = level_cm;
-        saveEmergencySettings();
+
+        if (settingsStore) {
+            SettingsValues v = settingsStore->get();
+            v.emergencyWaterLevel_cm = level_cm;
+            settingsStore->save(v);
+        }
         
         String json = "{";
         json += "\"success\":true,";
@@ -648,8 +660,11 @@ void ConfigServer::handleSetEmergencyNotifFreq() {
             return;
         }
         
-        emergencyNotifFreq_ms = freq_ms;
-        saveEmergencySettings();
+        if (settingsStore) {
+            SettingsValues v = settingsStore->get();
+            v.emergencyNotifFreq_ms = freq_ms;
+            settingsStore->save(v);
+        }
         
         String json = "{";
         json += "\"success\":true,";
@@ -681,15 +696,18 @@ void ConfigServer::handleSetUrgentEmergencyLevel() {
         }
         
         // Validate that Tier 2 threshold is greater than Tier 1 threshold
-        if (level_cm <= emergencyWaterLevel_cm) {
+        if (level_cm <= getEmergencyWaterLevel()) {
             String errorMsg = "{\"error\":\"Tier 2 threshold must be greater than Tier 1 threshold (";
-            errorMsg += String(emergencyWaterLevel_cm, 2) + " cm)\"}";
+            errorMsg += String(getEmergencyWaterLevel(), 2) + " cm)\"}";
             server->send(400, "application/json", errorMsg);
             return;
         }
-        
-        urgentEmergencyWaterLevel_cm = level_cm;
-        saveEmergencySettings();
+
+        if (settingsStore) {
+            SettingsValues v = settingsStore->get();
+            v.urgentEmergencyWaterLevel_cm = level_cm;
+            settingsStore->save(v);
+        }
         
         String json = "{";
         json += "\"success\":true,";
@@ -727,81 +745,9 @@ void ConfigServer::handleTestEmergencyPin() {
     server->send(200, "application/json", json);
 }
 
-void ConfigServer::loadEmergencySettings() {
-    // Set defaults first
-    emergencyWaterLevel_cm = DEFAULT_EMERGENCY_WATER_LEVEL_CM;
-    emergencyNotifFreq_ms = DEFAULT_EMERGENCY_NOTIF_FREQ_MS;
-    urgentEmergencyWaterLevel_cm = DEFAULT_URGENT_EMERGENCY_WATER_LEVEL_CM;
-    hornOnDuration_ms = DEFAULT_HORN_ON_DURATION_MS;
-    hornOffDuration_ms = DEFAULT_HORN_OFF_DURATION_MS;
-    
-    if (!emergencyPrefs.begin(EMERGENCY_SETTINGS_NAMESPACE, true)) {
-        LOG_CRITICAL("[EMERGENCY] Failed to load emergency settings NVS storage in read mode");
-        return;
-    }
-    
-    float saved_level = emergencyPrefs.getFloat("level_cm", -1.0f);
-    if (saved_level >= 0) {
-        emergencyWaterLevel_cm = saved_level;
-        LOG_INFO("[EMERGENCY] Loaded emergency water level (Tier 1) from NVS: %.2f cm", emergencyWaterLevel_cm);
-    } else {
-        LOG_INFO("[EMERGENCY] No saved emergency water level found, using default: %.2f cm", emergencyWaterLevel_cm);
-    }
-    
-    int saved_freq = emergencyPrefs.getInt("notif_freq_ms", -1);
-    if (saved_freq >= 0) {
-        emergencyNotifFreq_ms = saved_freq;
-        LOG_INFO("[EMERGENCY] Loaded emergency notification frequency from NVS: %d ms (%d seconds)", 
-                      emergencyNotifFreq_ms, emergencyNotifFreq_ms / 1000);
-    } else {
-        LOG_INFO("[EMERGENCY] No saved notification frequency found, using default: %d ms (%d seconds)",
-                      emergencyNotifFreq_ms, emergencyNotifFreq_ms / 1000);
-    }
-    
-    float saved_urgent_level = emergencyPrefs.getFloat("urgent_level_cm", -1.0f);
-    if (saved_urgent_level >= 0) {
-        urgentEmergencyWaterLevel_cm = saved_urgent_level;
-        LOG_INFO("[EMERGENCY] Loaded urgent emergency water level (Tier 2) from NVS: %.2f cm", urgentEmergencyWaterLevel_cm);
-    } else {
-        LOG_INFO("[EMERGENCY] No saved urgent emergency water level found, using default: %.2f cm", urgentEmergencyWaterLevel_cm);
-    }
-    
-    int saved_horn_on = emergencyPrefs.getInt("horn_on_ms", -1);
-    if (saved_horn_on >= 0) {
-        hornOnDuration_ms = saved_horn_on;
-        LOG_INFO("[EMERGENCY] Loaded horn ON duration from NVS: %d ms", hornOnDuration_ms);
-    } else {
-        LOG_INFO("[EMERGENCY] No saved horn ON duration found, using default: %d ms", hornOnDuration_ms);
-    }
-    
-    int saved_horn_off = emergencyPrefs.getInt("horn_off_ms", -1);
-    if (saved_horn_off >= 0) {
-        hornOffDuration_ms = saved_horn_off;
-        LOG_INFO("[EMERGENCY] Loaded horn OFF duration from NVS: %d ms", hornOffDuration_ms);
-    } else {
-        LOG_INFO("[EMERGENCY] No saved horn OFF duration found, using default: %d ms", hornOffDuration_ms);
-    }
-    
-    emergencyPrefs.end();
-}
-
-void ConfigServer::saveEmergencySettings() {
-    if (!emergencyPrefs.begin(EMERGENCY_SETTINGS_NAMESPACE, false)) {
-        LOG_CRITICAL("[EMERGENCY] Failed to load emergency settings NVS storage in write mode");
-        return;
-    }
-    
-    emergencyPrefs.putFloat("level_cm", emergencyWaterLevel_cm);
-    emergencyPrefs.putInt("notif_freq_ms", emergencyNotifFreq_ms);
-    emergencyPrefs.putFloat("urgent_level_cm", urgentEmergencyWaterLevel_cm);
-    emergencyPrefs.putInt("horn_on_ms", hornOnDuration_ms);
-    emergencyPrefs.putInt("horn_off_ms", hornOffDuration_ms);
-    
-    LOG_INFO("[EMERGENCY] Saved emergency settings to NVS: Tier1=%.2f cm, Tier2=%.2f cm, freq=%d ms, horn=%d/%d ms", 
-                  emergencyWaterLevel_cm, urgentEmergencyWaterLevel_cm, emergencyNotifFreq_ms, hornOnDuration_ms, hornOffDuration_ms);
-    
-    emergencyPrefs.end();
-}
+// loadEmergencySettings() and saveEmergencySettings() removed — emergency
+// settings are now owned by SettingsStore (see include/SettingsStore.h).
+// ConfigServer reads via get*() getters and writes via settingsStore->save().
 
 // ============================================================================
 // NOTIFICATION SETTINGS HANDLERS
@@ -1273,5 +1219,7 @@ void ConfigServer::handleOTASettings() {
         server->send(400, "application/json", "{\"error\":\"No valid settings provided\"}");
     }
 }
+
+#endif // UNIT_TESTING
 
 

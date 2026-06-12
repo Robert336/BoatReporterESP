@@ -13,48 +13,18 @@
 #include "SendDiscord.h"
 #include "OTAManager.h"
 #include "NotificationWorker.h"
+#include "StateMachine.h"
+#include "SettingsStore.h"
 #include "Version.h"
-
-// System States
-enum State {
-    ERROR,
-    NORMAL,
-    EMERGENCY,
-    CONFIG
-};
+#include <ArduinoJson.h>
 
 // Forward declarations
 void handleButtonPress();
-const char* stateToString(State state);
 
-struct SystemState {
-    State currentState;
-    // Timers
-    uint32_t lastStateChangeTime;
-    uint32_t emergencyConditionsTrueTime;  // When emergency conditions became true (Tier 1)
-    uint32_t emergencyConditionsFalseTime; // When emergency conditions became false (Tier 1)
-    uint32_t lastEmergencyMessageTime;
-    uint32_t lastHornToggleTime;           // For horn pulsing pattern (Tier 2)
-    uint32_t sensorErrorTrueTime;          // When sensorError last went false->true
-    uint32_t lastSensorErrorNotifyTime;    // Last sustained-failure notification
-
-    // Event flags
-    bool emergencyConditions;              // Tier 1 threshold exceeded
-    bool urgentEmergencyConditions;        // Tier 2 threshold exceeded
-    bool hornCurrentlyOn;                  // Tracks horn state for pulsing
-    bool sensorError;
-    bool sensorErrorNotified;              // Owner alerted about the current failure episode
-    volatile bool configCommandReceived;
-    bool notificationsSilenced;            // Tracks if emergency alerts are silenced
-
-    // Last reading where valid=true. Used as the displayed level in emergency
-    // notifications when the current sample is invalid, so the owner sees the
-    // last trustworthy value instead of a garbage ADC reading.
-    float lastValidLevel_cm;
-    bool  hasValidLevel;
-};
-
-SystemState systemState; // Tracks current device state
+// The canonical state machine context. All state lives here; loop() is a thin
+// dispatcher that calls updateStateMachine(), reads the output, and executes
+// side effects (horn GPIO, MQTT enqueue, LED pattern).
+StateMachineContext smCtx;
 
 // Status logging
 static constexpr uint32_t STATUS_LOG_INTERVAL_MS = 10000; // Log status every 10 seconds
@@ -74,20 +44,9 @@ static constexpr bool USE_MOCK = false;
 #endif
 static constexpr int LIGHT_PIN = 12;
 
-// Emergency timeout before transitioning to EMERGENCY state
-static constexpr int EMERGENCY_TIMEOUT_MS = 5000;
-
-// Sensor-failure notification: wait this long of *continuous* sensor error
-// before alerting, so brief single-sample glitches (which intentionally trip
-// ERROR) don't spam the owner. Re-alert at the repeat interval while it stays
-// down. The ERROR state transition itself is unchanged and still immediate.
-static constexpr uint32_t SENSOR_ERROR_NOTIFY_DELAY_MS  = 60000;   // 1 min sustained
-static constexpr uint32_t SENSOR_ERROR_NOTIFY_REPEAT_MS = 1800000; // 30 min reminder
-
-// Task watchdog: reboot if loop() stalls this long. Sized above the 30s OTA
-// version-check HTTP GET (the longest single blocking call in loop); the OTA
-// download loop feeds the dog itself.
-static constexpr uint32_t WDT_TIMEOUT_S = 60;
+// Task watchdog: tightened now that checkForUpdates() runs off-loop on an OTA task.
+// The longest blocking call remaining in loop() is <1 s, so 10 s gives ample margin.
+static constexpr uint32_t WDT_TIMEOUT_S = 10;
 
 volatile bool buttonPressed = false;
 volatile unsigned long lastButtonPress = 0;
@@ -99,36 +58,28 @@ volatile bool emergencyLongHoldDetected = false; // Flag for 5-second hold in em
 static uint32_t messageTraceId = 0;
 
 // Create easier references to the singleton objects
+SettingsStore settingsStore;
 ConfigServer* configServer = nullptr;
 OTAManager* otaManager = nullptr;
-NotificationWorker notifier;
 LightCode light(LIGHT_PIN);
 TimeManagement& rtc = TimeManagement::getInstance();
 WiFiManager& wifiMgr = WiFiManager::getInstance();
 WaterPressureSensor waterSensor(USE_MOCK); // false = use real sensor, not mock data
 SendSMS sms;
 SendDiscord discord;
-MQTTService mqtt;
 
 // Logger publishes logs via MQTT; Discord kept for OTA / direct emergency sends
 SendDiscord* g_discord = &discord;
 
-// Helper function to convert state enum to string
-const char* stateToString(State state) {
-    switch (state) {
-        case ERROR: return "ERROR";
-        case NORMAL: return "NORMAL";
-        case EMERGENCY: return "EMERGENCY";
-        case CONFIG: return "CONFIG";
-        default: return "UNKNOWN";
-    }
-}
-
 #ifndef UNIT_TESTING
+// NotificationWorker and MQTTService use FreeRTOS/Arduino APIs not available in
+// unit test builds — instantiate them only when compiling for real hardware.
+NotificationWorker notifier;
+MQTTService mqtt;
 // Exclude setup() and loop() when building unit tests to avoid conflicts with test harness
 void setup() {
     Serial.begin(115200);
-    
+
     // Initialize NVS FIRST (before any Preferences usage)
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -137,46 +88,40 @@ void setup() {
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
-    
-    waterSensor.init();
-    
-    // Initialize system state timers
-    systemState.lastStateChangeTime = millis();
-    systemState.emergencyConditionsTrueTime = millis();
-    systemState.emergencyConditionsFalseTime = millis();
-    systemState.lastEmergencyMessageTime = 0;
-    systemState.lastHornToggleTime = 0;
-    systemState.sensorErrorTrueTime = millis();
-    systemState.lastSensorErrorNotifyTime = 0;
 
-    // Initialize system state flags
-    systemState.emergencyConditions = false;
-    systemState.urgentEmergencyConditions = false;
-    systemState.hornCurrentlyOn = false;
-    systemState.sensorErrorNotified = false;
-    systemState.notificationsSilenced = false;
-    systemState.lastValidLevel_cm = 0.0f;
-    systemState.hasValidLevel = false;
-    
+    waterSensor.init();
+
+    // Load alarm threshold settings from NVS (before ConfigServer construction)
+    settingsStore.load();
+
+    // Initialize state machine context with current time
+    smCtx.lastStateChangeTime           = millis();
+    smCtx.emergencyConditionsTrueTime   = millis();
+    smCtx.emergencyConditionsFalseTime  = millis();
+    smCtx.lastEmergencyMessageTime      = 0;
+    smCtx.lastHornToggleTime            = 0;
+    smCtx.sensorErrorTrueTime           = millis();
+    smCtx.lastSensorErrorNotifyTime     = 0;
+
     // Initialize MQTT early so all subsequent LOG_* calls can be queued for delivery
     g_mqtt = &mqtt;
     mqtt.begin();
     LOG_SETUP("[SETUP] MQTTService initialized");
 
     // Start notification worker on Core 0 — SMS/Discord HTTP calls no longer block Core 1
-    notifier.begin(&sms, &discord);
-    LOG_SETUP("[SETUP] NotificationWorker started on Core 0");
+    notifier.begin(&sms, &discord, USE_MOCK);
+    LOG_SETUP("[SETUP] NotificationWorker started on Core 0%s", USE_MOCK ? " (dry-run mode)" : "");
 
     // Initialize OTAManager early to check for rollback/first boot after update
-    otaManager = new OTAManager(&sms, &discord);
+    otaManager = new OTAManager(&notifier);
     otaManager->begin();
     LOG_SETUP("[SETUP] OTAManager initialized - version %s", FIRMWARE_VERSION);
-    
+
     // Initialize ConfigServer early to load calibration from NVS
     // This ensures saved calibration is applied before first sensor reading
-    configServer = new ConfigServer(&waterSensor, &sms, &discord, otaManager, &mqtt);
+    configServer = new ConfigServer(&waterSensor, &sms, &discord, otaManager, &mqtt, &settingsStore);
     LOG_SETUP("[SETUP] ConfigServer initialized - calibration loaded from NVS");
-    
+
     // Print unique device AP password for easy access
     LOG_SETUP("========================================");
     LOG_SETUP("Device Configuration Access Point:");
@@ -191,22 +136,22 @@ void setup() {
 
     // Initialize WiFiManager
     wifiMgr.begin();
-    
+
     // Check if we have stored credentials
     // If not, or if user holds a button, start setup mode
     std::vector<String> ssids = wifiMgr.getStoredSSIDs();
 
     if (ssids.empty()) {
-        systemState.currentState = CONFIG;
-        LOG_STATE("[STATE] Initial state: %s (no WiFi credentials found)", stateToString(systemState.currentState));
+        smCtx.currentState = CONFIG;
+        LOG_STATE("[STATE] Initial state: %s (no WiFi credentials found)", stateToString(smCtx.currentState));
         light.setPattern(PATTERN_SLOW_BLINK); // CONFIG state pattern
     } else {
-        systemState.currentState = NORMAL;
-        LOG_STATE("[STATE] Initial state: %s", stateToString(systemState.currentState));
+        smCtx.currentState = NORMAL;
+        LOG_STATE("[STATE] Initial state: %s", stateToString(smCtx.currentState));
         light.setPattern(PATTERN_OFF); // NORMAL state pattern
         LOG_SETUP("WiFi credentials found, connecting...");
         delay(2000);
-        
+
         if (wifiMgr.isConnected()) {
             LOG_SETUP("IP address: %s", WiFi.localIP().toString().c_str());
         }
@@ -228,29 +173,30 @@ void loop() {
     light.update();
     wifiMgr.maintainConnection();
 
-    // Run OTA update checks (only when not in CONFIG or EMERGENCY states)
-    if (otaManager && systemState.currentState != CONFIG && systemState.currentState != EMERGENCY) {
-        otaManager->loop();
+    // OTA version checks now run on their own Core 0 task (see OTAManager::begin()),
+    // so loop() only needs to handle auto-install when a check has already found an update.
+    if (otaManager && smCtx.currentState != CONFIG && smCtx.currentState != EMERGENCY) {
+        otaManager->loopInstallOnly();
     }
 
     // Monitor WiFi connection status for critical events
     static bool wasWiFiConnected = false;
     bool isWiFiConnected = wifiMgr.isConnected();
-    
+
     if (wasWiFiConnected && !isWiFiConnected) {
         LOG_EVENT("[WIFI] Connection lost - internet disconnected");
-        if (systemState.currentState == EMERGENCY) {
+        if (smCtx.currentState == EMERGENCY) {
             LOG_EVENT("[WIFI_EMERGENCY] WiFi lost during EMERGENCY state - emergency notifications may be delayed!");
         }
         // Update LED if in NORMAL state to show WiFi disconnection
-        if (systemState.currentState == NORMAL) {
+        if (smCtx.currentState == NORMAL) {
             light.setPattern(PATTERN_DOUBLE_BLINK);
             LOG_DEBUG("[LIGHT] WiFi disconnected - switching to double blink pattern");
         }
     } else if (!wasWiFiConnected && isWiFiConnected) {
         LOG_EVENT("[WIFI] Connection restored - internet connected");
         // Update LED if in NORMAL state to show WiFi reconnection
-        if (systemState.currentState == NORMAL) {
+        if (smCtx.currentState == NORMAL) {
             light.setPattern(PATTERN_OFF);
             LOG_DEBUG("[LIGHT] WiFi reconnected - switching to off pattern");
         }
@@ -258,303 +204,153 @@ void loop() {
     wasWiFiConnected = isWiFiConnected;
 
     // Track state before processing to detect changes
-    State previousState = systemState.currentState;
+    State previousState = smCtx.currentState;
+
+    // Refresh threshold config from SettingsStore on every loop iteration so
+    // settings changed via the web UI take effect without a reboot.
+    // SettingsStore::get() returns the in-RAM copy — no NVS I/O on this path.
+    {
+        const SettingsValues& sv = settingsStore.get();
+        smCtx.emergencyWaterLevel_cm       = sv.emergencyWaterLevel_cm;
+        smCtx.urgentEmergencyWaterLevel_cm = sv.urgentEmergencyWaterLevel_cm;
+        smCtx.emergencyNotifFreq_ms        = sv.emergencyNotifFreq_ms;
+        smCtx.hornOnDuration_ms            = sv.hornOnDuration_ms;
+        smCtx.hornOffDuration_ms           = sv.hornOffDuration_ms;
+    }
 
     SensorReading currentReading = waterSensor.readLevel();
-    // LOG_SENSOR("SensorReading: valid=%d, level_cm=%.2f, millivolts=%.2f, timestamp={isNTPSynced=%d, unixTime=%ld, timeSinceBoot=%u}",
-    //               currentReading.valid, currentReading.level_cm, currentReading.millivolts,
-    //               currentReading.timestamp.isNTPSynced, static_cast<long>(currentReading.timestamp.unixTime), currentReading.timestamp.timeSinceBoot);
-
-    // Handle potential events and set appropriate flags
-    bool previousSensorError = systemState.sensorError;
-    systemState.sensorError = !currentReading.valid;
-    
-    if (systemState.sensorError && !previousSensorError) {
-        LOG_EVENT("[EVENT] Sensor error detected!");
-        systemState.sensorErrorTrueTime = millis();
-    } else if (!systemState.sensorError && previousSensorError) {
-        LOG_EVENT("[EVENT] Sensor error cleared");
-        // Only tell the owner it recovered if we'd alerted them it failed.
-        if (systemState.sensorErrorNotified) {
-            systemState.sensorErrorNotified = false;
-            if (!USE_MOCK) {
-                messageTraceId++;
-                char recoverMsg[120];
-                snprintf(recoverMsg, sizeof(recoverMsg),
-                         "[MSG:%u] BilgeRise: Sensor recovered — water-level monitoring restored.", messageTraceId);
-                notifier.enqueue(recoverMsg);
-            }
-        }
-    }
-
-    // Notify on a *sustained* sensor failure (past the glitch debounce). The
-    // I2C-bus-unrecoverable path sends its own distinct alert, so skip here.
-    if (systemState.sensorError && !waterSensor.isBusUnrecoverable()) {
-        uint32_t now = millis();
-        bool dueFirst  = !systemState.sensorErrorNotified &&
-                         (now - systemState.sensorErrorTrueTime >= SENSOR_ERROR_NOTIFY_DELAY_MS);
-        bool dueRepeat = systemState.sensorErrorNotified &&
-                         (now - systemState.lastSensorErrorNotifyTime >= SENSOR_ERROR_NOTIFY_REPEAT_MS);
-        if (dueFirst || dueRepeat) {
-            systemState.sensorErrorNotified = true;
-            systemState.lastSensorErrorNotifyTime = now;
-            uint32_t downSecs = (now - systemState.sensorErrorTrueTime) / 1000;
-            LOG_CRITICAL("[SENSOR] Sustained sensor failure (%us) — notifying owner", downSecs);
-            if (!USE_MOCK) {
-                messageTraceId++;
-                char failMsg[150];
-                snprintf(failMsg, sizeof(failMsg),
-                         "[MSG:%u] BilgeRise: Sensor failure — no valid reading for %us. Flood detection is OFFLINE; device needs inspection.",
-                         messageTraceId, downSecs);
-                notifier.enqueue(failMsg);
-            }
-        }
-    }
-
-    static bool busUnrecoverableNotified = false;
-    if (!busUnrecoverableNotified && waterSensor.isBusUnrecoverable()) {
-        busUnrecoverableNotified = true;
-        LOG_CRITICAL("[SENSOR] I2C bus permanently unrecoverable after %d attempts", BUS_RECOVERY_MAX_ATTEMPTS);
-        if (!USE_MOCK) {
-            messageTraceId++;
-            char busMsg[120];
-            snprintf(busMsg, sizeof(busMsg), "[MSG:%u] BilgeRise: I2C sensor bus unrecoverable. Device requires inspection.", messageTraceId);
-            notifier.enqueue(busMsg);
-        }
-    }
-
-    static bool lastConfigCommandReceived = false;
-    if (systemState.configCommandReceived && !lastConfigCommandReceived) {
-        LOG_EVENT("[EVENT] Button pressed - config command received");
-    }
-    lastConfigCommandReceived = systemState.configCommandReceived;
 
     // Check for 5-second button hold to toggle silence in EMERGENCY state
     static bool silenceToggleHandled = false;
     static bool lastButtonState = false;
-    
-    // Process long hold detected during emergency (set by interrupt handler)
-    if (emergencyLongHoldDetected && systemState.currentState == EMERGENCY && !silenceToggleHandled) {
-        // Toggle silence state
-        systemState.notificationsSilenced = !systemState.notificationsSilenced;
+
+    if (emergencyLongHoldDetected && smCtx.currentState == EMERGENCY && !silenceToggleHandled) {
         silenceToggleHandled = true;
         emergencyLongHoldDetected = false;
-        
-        if (systemState.notificationsSilenced) {
+        StateMachineOutput silenceOut = handleSilenceToggle(smCtx);
+        if (silenceOut.sendSilenceConfirmation) {
             LOG_EVENT("[EVENT] Emergency notifications SILENCED by button hold");
-            
-            // Send confirmation notification
-            if (!USE_MOCK) {
-                messageTraceId++;
-                char silenceMessage[100];
-                snprintf(silenceMessage, sizeof(silenceMessage), "[MSG:%u] BilgeRise: Emergency alerts silenced", messageTraceId);
-                notifier.enqueue(silenceMessage);
-            }
-        } else {
+            messageTraceId++;
+            char buf[100];
+            snprintf(buf, sizeof(buf), "[MSG:%u] BilgeRise: Emergency alerts silenced", messageTraceId);
+            notifier.enqueue(buf);
+        } else if (silenceOut.sendUnsilenceConfirmation) {
             LOG_EVENT("[EVENT] Emergency notifications RE-ENABLED by button hold - WiFi: %d", wifiMgr.isConnected());
         }
+        if (silenceOut.setHornState) {
+            digitalWrite(ALERT_PIN, silenceOut.hornOn ? HIGH : LOW);
+        }
     }
-    
+
     // Reset silence toggle flag when button is released
     if (lastButtonState && !buttonCurrentlyPressed) {
         silenceToggleHandled = false;
     }
     lastButtonState = buttonCurrentlyPressed;
 
-    // Only evaluate thresholds against valid readings — an invalid sample's
-    // level_cm is stale/garbage and would spuriously set or clear the debounce
-    // timers. We're already heading to ERROR via sensorError set above, so
-    // freezing the flags at their last-known-good values is the safe choice.
-    if (currentReading.valid) {
-        // Remember last trustworthy level for emergency messaging during sensor faults.
-        systemState.lastValidLevel_cm = currentReading.level_cm;
-        systemState.hasValidLevel = true;
-
-        // Check Tier 1 emergency conditions (message notifications)
-        bool previousEmergencyConditions = systemState.emergencyConditions;
-        float emergencyThreshold = configServer->getEmergencyWaterLevel();
-        if (currentReading.level_cm >= emergencyThreshold) {
-            systemState.emergencyConditions = true;
-            if (!previousEmergencyConditions) {
-                systemState.emergencyConditionsTrueTime = millis(); // Update timer when conditions START
-                LOG_EVENT("[EVENT] Tier 1 Emergency conditions detected! level=%.2f cm (threshold=%.2f cm)",
-                              currentReading.level_cm, emergencyThreshold);
-            }
+    // Handle CONFIG state server calls (must happen before updateStateMachine so
+    // configCommandReceived is consumed correctly)
+    if (smCtx.currentState == CONFIG) {
+        if (!configServer->isSetupModeActive()) {
+            LOG_STATE("[STATE] Starting configuration server mode");
+            configServer->startSetupMode();
         } else {
-            systemState.emergencyConditions = false;
-            if (previousEmergencyConditions) {
-                systemState.emergencyConditionsFalseTime = millis(); // Update timer when conditions CLEAR
-                LOG_EVENT("[EVENT] Tier 1 Emergency conditions cleared. level=%.2f cm", currentReading.level_cm);
-            }
-        }
-
-        // Check Tier 2 urgent emergency conditions (horn alarm)
-        bool previousUrgentEmergencyConditions = systemState.urgentEmergencyConditions;
-        float urgentEmergencyThreshold = configServer->getUrgentEmergencyWaterLevel();
-        if (currentReading.level_cm >= urgentEmergencyThreshold) {
-            systemState.urgentEmergencyConditions = true;
-            if (!previousUrgentEmergencyConditions) {
-                LOG_EVENT("[EVENT] Tier 2 URGENT Emergency conditions detected! level=%.2f cm (threshold=%.2f cm)",
-                              currentReading.level_cm, urgentEmergencyThreshold);
-            }
-        } else {
-            systemState.urgentEmergencyConditions = false;
-            if (previousUrgentEmergencyConditions) {
-                LOG_EVENT("[EVENT] Tier 2 URGENT Emergency conditions cleared. level=%.2f cm", currentReading.level_cm);
-            }
+            configServer->handleClient();
         }
     }
 
-
-    // Handle state-specific operations
-    
-    switch (systemState.currentState) {
-        case ERROR:
-            if (systemState.sensorError == false) {
-                LOG_STATE("[STATE] Transitioning from %s to NORMAL (sensor recovered)", stateToString(systemState.currentState));
-                systemState.currentState = NORMAL;
-                systemState.lastStateChangeTime = millis();
-            }
-            else if (systemState.configCommandReceived) {
-                LOG_STATE("[STATE] Transitioning from %s to CONFIG (button pressed)", stateToString(systemState.currentState));
-                systemState.currentState = CONFIG;
-                systemState.lastStateChangeTime = millis();
-            }
-            break;
-        case NORMAL:
-            if (systemState.sensorError == true) {
-                LOG_EVENT("[STATE] Transitioning from %s to ERROR (sensor error detected)", stateToString(systemState.currentState));
-                systemState.currentState = ERROR;
-                systemState.lastStateChangeTime = millis();
-            }
-            else if (systemState.emergencyConditions &&
-                (millis() - systemState.emergencyConditionsTrueTime) >= EMERGENCY_TIMEOUT_MS) {
-                LOG_EVENT("[STATE] Transitioning to EMERGENCY state - WiFi connected: %d, IP: %s, water level: %.2f cm",
-                              wifiMgr.isConnected(), WiFi.localIP().toString().c_str(), currentReading.level_cm);
-                systemState.currentState = EMERGENCY;
-                systemState.lastStateChangeTime = millis();
-                // Drop any pending config-button press so post-emergency NORMAL
-                // doesn't immediately fall into CONFIG.
-                systemState.configCommandReceived = false;
-            }
-            else if (systemState.configCommandReceived) {
-                LOG_STATE("[STATE] Transitioning from %s to CONFIG (button pressed)", stateToString(systemState.currentState));
-                systemState.currentState = CONFIG;
-                systemState.lastStateChangeTime = millis();
-            } 
-            break;
-        case CONFIG:
-            if (!configServer->isSetupModeActive()) {
-                // Start setup mode (configServer already exists from setup())
-                LOG_STATE("[STATE] Starting configuration server mode");
-                configServer->startSetupMode();
-            }
-            else {
-                configServer->handleClient();
-                
-                // Check if setup mode has ended (timeout or manual stop)
-                if (!configServer->isSetupModeActive()) {
-                    LOG_STATE("[STATE] Transitioning from %s to NORMAL (config completed)", stateToString(systemState.currentState));
-                    systemState.currentState = NORMAL;
-                    systemState.configCommandReceived = false;
-                    systemState.lastStateChangeTime = millis();
-                }
-            }
-            break;
-        case EMERGENCY:
-            if (systemState.emergencyConditions == false && (millis() - systemState.emergencyConditionsFalseTime) >= EMERGENCY_TIMEOUT_MS) {
-                LOG_EVENT("[STATE] Transitioning from %s to NORMAL (emergency cleared)", stateToString(systemState.currentState));
-                systemState.currentState = NORMAL;
-                systemState.lastStateChangeTime = millis();
-                // Ensure horn is OFF when exiting EMERGENCY state
-                digitalWrite(ALERT_PIN, LOW);
-                systemState.hornCurrentlyOn = false;
-                // Auto-clear silence flag when emergency ends (safety feature)
-                if (systemState.notificationsSilenced) {
-                    LOG_EVENT("[STATE] Auto-clearing notification silence (emergency cleared)");
-                    systemState.notificationsSilenced = false;
-                }
-            } else {
-                // TIER 1: Send emergency message notifications (always in EMERGENCY state)
-                int emergencyFreq = configServer->getEmergencyNotifFreq();
-                
-                if (millis() - systemState.lastEmergencyMessageTime >= emergencyFreq) {
-                    // Update timer even when silenced to prevent message burst when un-silenced
-                    systemState.lastEmergencyMessageTime = millis();
-                    
-                    // Only send notifications if not silenced
-                    if (!systemState.notificationsSilenced) {
-                        messageTraceId++;
-                        // If the current sample is invalid, fall back to the last
-                        // trustworthy level and flag the fault so the owner knows
-                        // monitoring is degraded even while EMERGENCY is active.
-                        float displayLevel = currentReading.valid
-                                                ? currentReading.level_cm
-                                                : systemState.lastValidLevel_cm;
-                        const char* sensorNote = systemState.sensorError
-                                                    ? " — SENSOR FAULT (level stale)"
-                                                    : "";
-                        char ratePart[28] = "";
-                        if (!systemState.sensorError) {
-                            float rate = waterSensor.getRateOfChange_cm30min();
-                            if (!isnan(rate)) {
-                                snprintf(ratePart, sizeof(ratePart), " (%+.1f cm/30min)", rate);
-                            }
-                        }
-                        char emergMessageBuf[180];
-                        if (systemState.urgentEmergencyConditions) {
-                            snprintf(emergMessageBuf, sizeof(emergMessageBuf), "[MSG:%u] BilgeRise URGENT Alert: Tier 2 Emergency Level %.2f cm%s%s", messageTraceId, displayLevel, ratePart, sensorNote);
-                        } else {
-                            snprintf(emergMessageBuf, sizeof(emergMessageBuf), "[MSG:%u] BilgeRise Alert: Emergency Level %.2f cm%s%s", messageTraceId, displayLevel, ratePart, sensorNote);
-                        }
-                        LOG_EVENT("[STATE] EMERGENCY: Sending alert message: %s", emergMessageBuf);
-
-                        if (!USE_MOCK) {
-                            // Latest-wins mailbox: if a prior emergency alert is still
-                            // undelivered (e.g. WiFi outage), this replaces it so the
-                            // owner gets the current level, not a backlog of stale ones.
-                            notifier.enqueueEmergency(emergMessageBuf);
-                        } else {
-                            LOG_EVENT("[MOCK] Skipping SMS/Discord send (TraceID:%u)", messageTraceId);
-                        }
-                    } else {
-                        LOG_INFO("[STATE] EMERGENCY: Notifications silenced, skipping alert message");
-                    }
-                }
-                
-                // TIER 2: Horn alarm pulsing (only if urgent emergency conditions met and not silenced)
-                if (systemState.urgentEmergencyConditions && !systemState.notificationsSilenced) {
-                    int hornOnDuration = configServer->getHornOnDuration();
-                    int hornOffDuration = configServer->getHornOffDuration();
-                    uint32_t currentDuration = systemState.hornCurrentlyOn ? hornOnDuration : hornOffDuration;
-                    
-                    if (millis() - systemState.lastHornToggleTime >= currentDuration) {
-                        systemState.hornCurrentlyOn = !systemState.hornCurrentlyOn;
-                        digitalWrite(ALERT_PIN, systemState.hornCurrentlyOn ? HIGH : LOW);
-                        systemState.lastHornToggleTime = millis();
-                        LOG_DEBUG("[HORN] Horn %s", systemState.hornCurrentlyOn ? "ON" : "OFF");
-                    }
-                } else {
-                    // Not urgent emergency or notifications silenced - ensure horn is OFF
-                    if (systemState.hornCurrentlyOn) {
-                        digitalWrite(ALERT_PIN, LOW);
-                        systemState.hornCurrentlyOn = false;
-                        if (systemState.notificationsSilenced) {
-                            LOG_EVENT("[HORN] Horn deactivated (notifications silenced)");
-                        } else {
-                            LOG_EVENT("[HORN] Horn deactivated (Tier 2 conditions cleared)");
-                        }
-                    }
-                }
-            }
-            break;
+    // Check for I2C bus unrecoverable — one-shot alert
+    static bool busUnrecoverableNotified = false;
+    if (!busUnrecoverableNotified && waterSensor.isBusUnrecoverable()) {
+        busUnrecoverableNotified = true;
+        LOG_CRITICAL("[SENSOR] I2C bus permanently unrecoverable after %d attempts", BUS_RECOVERY_MAX_ATTEMPTS);
+        messageTraceId++;
+        char busMsg[120];
+        snprintf(busMsg, sizeof(busMsg), "[MSG:%u] BilgeRise: I2C sensor bus unrecoverable. Device requires inspection.", messageTraceId);
+        notifier.enqueue(busMsg);
     }
 
-    // Automatically update LED pattern if state changed
-    if (systemState.currentState != previousState) {
-        switch (systemState.currentState) {
+    // Build the sensor reading adapter for the state machine
+    StateMachineSensorReading smReading;
+    smReading.valid    = currentReading.valid;
+    smReading.level_cm = currentReading.level_cm;
+
+    // Get rate-of-change for emergency messages (NaN if not enough history)
+    float rateOfChange = waterSensor.getRateOfChange_cm30min();
+
+    // Config server active flag for state machine
+    bool configActive = configServer->isSetupModeActive();
+
+    // Run the unified state machine
+    StateMachineOutput out = updateStateMachine(smCtx, smReading, millis(), rateOfChange, configActive);
+
+    // ------------------------------------------------------------------
+    // Execute side effects from state machine output
+    // ------------------------------------------------------------------
+
+    // Horn GPIO
+    if (out.setHornState) {
+        digitalWrite(ALERT_PIN, out.hornOn ? HIGH : LOW);
+        LOG_DEBUG("[HORN] Horn %s", out.hornOn ? "ON" : "OFF");
+    }
+
+    // Sensor recovery notification
+    if (out.sendSensorRecoveryNotification) {
+        LOG_EVENT("[EVENT] Sensor error cleared");
+        messageTraceId++;
+        char recoverMsg[120];
+        snprintf(recoverMsg, sizeof(recoverMsg),
+                 "[MSG:%u] BilgeRise: Sensor recovered — water-level monitoring restored.", messageTraceId);
+        notifier.enqueue(recoverMsg);
+    }
+
+    // Sustained sensor failure notification (skip if I2C bus is unrecoverable — separate alert)
+    if (out.sendSustainedSensorFailureNotification && !waterSensor.isBusUnrecoverable()) {
+        LOG_CRITICAL("[SENSOR] Sustained sensor failure (%us) — notifying owner", out.sensorDownSeconds);
+        messageTraceId++;
+        char failMsg[150];
+        snprintf(failMsg, sizeof(failMsg),
+                 "[MSG:%u] BilgeRise: Sensor failure — no valid reading for %us. Flood detection is OFFLINE; device needs inspection.",
+                 messageTraceId, out.sensorDownSeconds);
+        notifier.enqueue(failMsg);
+    }
+
+    // Emergency notification (latest-wins mailbox for coalescing during WiFi outages)
+    if (out.sendEmergencyNotification) {
+        messageTraceId++;
+        char ratePart[28] = "";
+        if (!out.sensorFaultActive && !isnan(out.rateOfChange_cm30min)) {
+            snprintf(ratePart, sizeof(ratePart), " (%+.1f cm/30min)", out.rateOfChange_cm30min);
+        }
+        const char* sensorNote = out.sensorFaultActive ? " — SENSOR FAULT (level stale)" : "";
+        char emergMessageBuf[180];
+        if (smCtx.urgentEmergencyConditions) {
+            snprintf(emergMessageBuf, sizeof(emergMessageBuf),
+                     "[MSG:%u] BilgeRise URGENT Alert: Tier 2 Emergency Level %.2f cm%s%s",
+                     messageTraceId, out.displayLevel_cm, ratePart, sensorNote);
+        } else {
+            snprintf(emergMessageBuf, sizeof(emergMessageBuf),
+                     "[MSG:%u] BilgeRise Alert: Emergency Level %.2f cm%s%s",
+                     messageTraceId, out.displayLevel_cm, ratePart, sensorNote);
+        }
+        LOG_EVENT("[STATE] EMERGENCY: Sending alert message: %s", emergMessageBuf);
+        // Latest-wins mailbox: replaces any older unsent snapshot during WiFi outage
+        notifier.enqueueEmergency(emergMessageBuf);
+    }
+
+    // State change side effects
+    if (out.stateChanged) {
+        LOG_STATE("[STATE] Transitioning to %s", stateToString(smCtx.currentState));
+
+        if (smCtx.currentState == EMERGENCY && !previousState) {
+            // Log transition details
+            LOG_EVENT("[STATE] Transitioning to EMERGENCY state - WiFi connected: %d, IP: %s, water level: %.2f cm",
+                      wifiMgr.isConnected(), WiFi.localIP().toString().c_str(), currentReading.level_cm);
+        }
+
+        // Update LED pattern on state change
+        switch (smCtx.currentState) {
             case NORMAL:
-                // Check WiFi status when entering NORMAL state
                 if (wifiMgr.isConnected()) {
                     light.setPattern(PATTERN_OFF);
                 } else {
@@ -572,15 +368,20 @@ void loop() {
                 light.setPattern(PATTERN_SOLID);
                 break;
         }
+
+        // When config mode ends, transition was already applied by SM
+        if (smCtx.currentState == NORMAL && previousState == CONFIG) {
+            LOG_STATE("[STATE] Config mode ended - returning to NORMAL");
+        }
     }
 
     // Periodic status logging
     if (millis() - lastStatusLogTime >= STATUS_LOG_INTERVAL_MS) {
         LOG_STATUS("[STATUS] State=%s, WaterLevel=%.2f cm, SensorError=%d, EmergencyConditions=%d",
-                      stateToString(systemState.currentState),
+                      stateToString(smCtx.currentState),
                       currentReading.level_cm,
-                      systemState.sensorError,
-                      systemState.emergencyConditions);
+                      smCtx.sensorError,
+                      smCtx.emergencyConditions);
         LOG_STATUS("[WIFI] Connected=%d, RSSI=%d dBm",
                       wifiMgr.isConnected(), wifiMgr.getRSSI());
         LOG_STATUS("[HEAP] Free=%u, MinFree=%u, MaxBlock=%u",
@@ -595,19 +396,36 @@ void loop() {
     // connected consumer immediately sees the last reading. publishTelemetry()
     // is a no-op when MQTT is disconnected, so this never blocks the loop.
     if (millis() - lastTelemetryTime >= TELEMETRY_INTERVAL_MS) {
+        // ArduinoJson builder — NaN-proof by construction (item A3).
+        // ArduinoJson v6 serializes float NaN as "null" when assigned nullptr;
+        // assigning a float directly serializes the numeric value.
+        StaticJsonDocument<256> doc;
+        if (isnan(currentReading.level_cm)) {
+            doc["level_cm"] = nullptr;
+        } else {
+            doc["level_cm"] = (float)((int)(currentReading.level_cm * 100 + 0.5f)) / 100.0f;
+        }
+        float rate = waterSensor.getRateOfChange_cm30min();
+        if (isnan(rate)) {
+            doc["rate_cm_30min"] = nullptr;
+        } else {
+            doc["rate_cm_30min"] = (float)((int)(rate * 100 + 0.5f)) / 100.0f;
+        }
+        doc["state"]        = stateToString(smCtx.currentState);
+        doc["sensor_error"] = smCtx.sensorError;
+        doc["valid"]        = currentReading.valid;
+        doc["rssi"]         = wifiMgr.getRSSI();
+
         char payload[160];
-        snprintf(payload, sizeof(payload),
-            "{\"level_cm\":%.2f,\"rate_cm_30min\":%.2f,\"state\":\"%s\","
-            "\"sensor_error\":%s,\"valid\":%s,\"rssi\":%d}",
-            currentReading.level_cm,
-            waterSensor.getRateOfChange_cm30min(),
-            stateToString(systemState.currentState),
-            systemState.sensorError ? "true" : "false",
-            currentReading.valid ? "true" : "false",
-            wifiMgr.getRSSI());
+        serializeJson(doc, payload, sizeof(payload));
         mqtt.publishTelemetry(payload);
         lastTelemetryTime = millis();
     }
+
+    // Yield 10 ms at end of loop so the FreeRTOS idle task (light-sleep) can run.
+    // All inputs are interrupt-driven (button) or time-based (>=100 ms granularity),
+    // so this delay is safe and does not affect responsiveness.
+    vTaskDelay(pdMS_TO_TICKS(10));
 }
 #endif // UNIT_TESTING
 
@@ -618,7 +436,7 @@ void loop() {
 void IRAM_ATTR handleButtonPress() {
     unsigned long now = millis();
     bool currentPinState = digitalRead(BUTTON_PIN);
-    
+
     // Button is pressed when pin is LOW (INPUT_PULLUP)
     if (currentPinState == LOW && !buttonCurrentlyPressed) {
         // Button press detected
@@ -630,13 +448,13 @@ void IRAM_ATTR handleButtonPress() {
         // Button release detected
         buttonCurrentlyPressed = false;
         unsigned long holdDuration = now - buttonPressStartTime;
-        
+
         // Only process config command if NOT in emergency
         // If in emergency, the hold duration will be checked for silence toggle
-        if (systemState.currentState != EMERGENCY) {
+        if (smCtx.currentState != EMERGENCY) {
             // Short press (< 5 seconds) = config command (only when not in emergency)
             if (holdDuration < 5000) {
-                systemState.configCommandReceived = true;
+                smCtx.configCommandReceived = true;
             }
         } else if (holdDuration >= 5000) {
             // Long press during emergency = silence toggle signal for main loop
