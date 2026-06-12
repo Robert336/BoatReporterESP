@@ -2,6 +2,7 @@
 
 #include <unity.h>
 #include <string.h>
+#include <math.h>
 
 #ifdef ARDUINO
 // Include Arduino.h for ESP32 hardware testing (Serial, delay, etc.)
@@ -18,7 +19,8 @@ namespace TestConstants {
     constexpr float URGENT_EMERGENCY_LEVEL_CM = 55.0f;
     constexpr float EMERGENCY_THRESHOLD_CM = 30.0f;
     constexpr float URGENT_THRESHOLD_CM = 50.0f;
-    constexpr uint32_t TIMEOUT_MS = 1000;
+    // TIMEOUT_MS matches EMERGENCY_TIMEOUT_MS in StateMachine.h (5000 ms — same as live firmware)
+    constexpr uint32_t TIMEOUT_MS = EMERGENCY_TIMEOUT_MS;
     constexpr uint32_t NOTIF_INTERVAL_MS = 10000;
     constexpr uint32_t HORN_DURATION_MS = 1000;
 }
@@ -131,15 +133,15 @@ void test_normal_to_emergency_with_timeout() {
     ctx.currentState = NORMAL;
     ctx.emergencyConditions = true;
     ctx.emergencyConditionsTrueTime = 1000;
-    
+
     StateMachineSensorReading reading = createEmergencyReading();
-    
+
     // Before timeout - should stay NORMAL
     State nextState = computeNextState(ctx, reading, 1500, false);
     TEST_ASSERT_EQUAL(NORMAL, nextState);
-    
-    // After timeout - should transition to EMERGENCY
-    nextState = computeNextState(ctx, reading, 2001, false);
+
+    // After timeout (5000 ms) - should transition to EMERGENCY
+    nextState = computeNextState(ctx, reading, 6001, false);
     TEST_ASSERT_EQUAL(EMERGENCY, nextState);
 }
 
@@ -184,15 +186,15 @@ void test_emergency_to_normal_with_timeout() {
     ctx.currentState = EMERGENCY;
     ctx.emergencyConditions = false;
     ctx.emergencyConditionsFalseTime = 1000;
-    
+
     StateMachineSensorReading reading = createNormalReading();
-    
+
     // Before timeout - should stay EMERGENCY
     State nextState = computeNextState(ctx, reading, 1500, false);
     TEST_ASSERT_EQUAL(EMERGENCY, nextState);
-    
-    // After timeout - should transition to NORMAL
-    nextState = computeNextState(ctx, reading, 2001, false);
+
+    // After timeout (5000 ms) - should transition to NORMAL
+    nextState = computeNextState(ctx, reading, 6001, false);
     TEST_ASSERT_EQUAL(NORMAL, nextState);
 }
 
@@ -371,13 +373,13 @@ void test_full_update_normal_to_emergency() {
     
     // First update with emergency reading - conditions become true
     StateMachineSensorReading reading = createEmergencyReading();
-    StateMachineOutput output = updateStateMachine(ctx, reading, 1000, false);
-    
+    StateMachineOutput output = updateStateMachine(ctx, reading, 1000, NAN, false);
+
     TEST_ASSERT_FALSE(output.stateChanged); // Not yet, need timeout
     TEST_ASSERT_TRUE(ctx.emergencyConditions);
     
     // Second update after timeout - should transition
-    output = updateStateMachine(ctx, reading, 2001, false);
+    output = updateStateMachine(ctx, reading, 6001, NAN, false);
     
     TEST_ASSERT_TRUE(output.stateChanged);
     TEST_ASSERT_EQUAL(EMERGENCY, output.newState);
@@ -392,10 +394,10 @@ void test_full_update_emergency_notification() {
     ctx.emergencyNotifFreq_ms = 10000;
     
     StateMachineSensorReading reading = createEmergencyReading();
-    StateMachineOutput output = updateStateMachine(ctx, reading, 10001, false);
-    
+    StateMachineOutput output = updateStateMachine(ctx, reading, 10001, NAN, false);
+
     TEST_ASSERT_TRUE(output.sendEmergencyNotification);
-    TEST_ASSERT_TRUE(strlen(output.message) > 0);
+    // Caller constructs the message from output.displayLevel_cm / output.sensorFaultActive
     TEST_ASSERT_EQUAL(10001, ctx.lastEmergencyMessageTime);
 }
 
@@ -408,8 +410,8 @@ void test_full_update_horn_activation() {
     ctx.hornOnDuration_ms = 1000;
     
     StateMachineSensorReading reading = createUrgentEmergencyReading();
-    StateMachineOutput output = updateStateMachine(ctx, reading, 2001, false);
-    
+    StateMachineOutput output = updateStateMachine(ctx, reading, 2001, NAN, false);
+
     TEST_ASSERT_TRUE(output.setHornState);
     TEST_ASSERT_TRUE(output.hornOn);
     TEST_ASSERT_TRUE(ctx.hornCurrentlyOn);
@@ -478,8 +480,8 @@ void test_silence_cleared_on_return_to_normal() {
     ctx.emergencyConditionsFalseTime = 1000;
     
     StateMachineSensorReading reading = createNormalReading();
-    StateMachineOutput output = updateStateMachine(ctx, reading, 2001, false);
-    
+    StateMachineOutput output = updateStateMachine(ctx, reading, 6001, NAN, false);
+
     TEST_ASSERT_TRUE(output.stateChanged);
     TEST_ASSERT_EQUAL(NORMAL, ctx.currentState);
     TEST_ASSERT_FALSE(ctx.notificationsSilenced);

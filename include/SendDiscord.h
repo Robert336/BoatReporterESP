@@ -45,9 +45,15 @@ class SendDiscord {
         /// @return true if a webhook URL exists, false otherwise
         bool hasWebhookUrl();
         
+        /// Load webhook URL from NVS into the in-RAM cache. Called automatically
+        /// on first use and explicitly after updateWebhookUrl().
+        void loadCache();
+
     private:
         Preferences preferences;
-        
+        char webhookUrlCache[256]; // In-RAM cache — avoids NVS open on every send()
+        bool cacheLoaded = false;
+
         /// Escapes a string for JSON (handles quotes, backslashes, newlines, etc.)
         /// @param input The string to escape
         /// @param output Buffer to store the escaped string

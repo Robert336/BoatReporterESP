@@ -1,4 +1,5 @@
 #pragma once
+class NotificationWorker;
 #ifndef UNIT_TESTING
 
 #include <Arduino.h>
@@ -7,12 +8,17 @@
 #include "SendSMS.h"
 #include "SendDiscord.h"
 
+// Channel bitmask for NotifMsg — add new channels here without touching the struct.
+// Default (CHAN_ALL) sends to every registered channel.
+constexpr uint8_t CHAN_SMS     = 0x01;
+constexpr uint8_t CHAN_DISCORD = 0x02;
+constexpr uint8_t CHAN_ALL     = CHAN_SMS | CHAN_DISCORD;
+
 // SMS and Discord are paired in one item so both channels are dropped together
 // if the queue is full — prevents partial delivery (SMS only, no Discord).
 struct NotifMsg {
-    char body[160];
-    bool sendSms;
-    bool sendDiscord;
+    char    body[160];
+    uint8_t channels; // bitmask of CHAN_* flags
 };
 
 // Runs outbound HTTP (SMS, Discord) on Core 0 so the main-loop state machine
@@ -29,16 +35,19 @@ class NotificationWorker {
 public:
     NotificationWorker() = default;
 
-    void begin(SendSMS* sms, SendDiscord* discord);
+    // dryRun = true: enqueue() logs messages instead of queuing them (mock/test mode).
+    // Pass USE_MOCK at the call site so all guards live in NotificationWorker.
+    void begin(SendSMS* sms, SendDiscord* discord, bool dryRun = false);
 
     // Enqueue a one-shot event notification. One FIFO slot = one alert;
     // returns false and logs if the FIFO is full.
-    bool enqueue(const char* message, bool sendSms = true, bool sendDiscord = true);
+    // channels: bitmask of CHAN_SMS | CHAN_DISCORD (default: CHAN_ALL)
+    bool enqueue(const char* message, uint8_t channels = CHAN_ALL);
 
     // Enqueue an emergency snapshot into the latest-wins mailbox. Always
     // succeeds, replacing any older unsent snapshot. Use this for periodic
     // EMERGENCY-state alerts so an outage backlog collapses to the latest.
-    bool enqueueEmergency(const char* message, bool sendSms = true, bool sendDiscord = true);
+    bool enqueueEmergency(const char* message, uint8_t channels = CHAN_ALL);
 
     uint32_t getPendingCount() const;
     uint32_t getDropCount() const { return dropCount; }
@@ -54,6 +63,7 @@ private:
     QueueHandle_t  emergencyMailbox = nullptr;
     QueueSetHandle_t queueSet       = nullptr;
     uint32_t       dropCount        = 0;
+    bool           dryRun           = false; // When true, log instead of queuing
 
     static constexpr size_t      FIFO_DEPTH    = 8;
     static constexpr uint32_t    TASK_STACK    = 6144;

@@ -7,6 +7,7 @@ static constexpr const char* SMS_PREFS_NAMESPACE = "sms";
 
 SendSMS::SendSMS() {
     // Don't call preferences.begin() here - NVS may not be ready for global objects
+    phoneNumberCache[0] = '\0';
 }
 
 
@@ -15,29 +16,40 @@ SendSMS::~SendSMS() {
 }
 
 
+void SendSMS::loadCache() {
+    phoneNumberCache[0] = '\0';
+    cacheLoaded = true; // Mark loaded even on failure so we don't retry on every send
+
+    if (!preferences.begin(SMS_PREFS_NAMESPACE, true)) {
+        return;
+    }
+    String num = preferences.getString("phone-number", "");
+    preferences.end();
+
+    if (num.length() > 0 && num.length() < sizeof(phoneNumberCache)) {
+        strncpy(phoneNumberCache, num.c_str(), sizeof(phoneNumberCache) - 1);
+        phoneNumberCache[sizeof(phoneNumberCache) - 1] = '\0';
+    }
+}
+
 bool SendSMS::send(const char* message) {
     // Validate inputs
     if (!message) {
         return false;
     }
-    
+
     // Check for active wifi connection first
     if (!WiFi.isConnected()) {
         LOG_NETWORK("[SMS] WiFi not connected, cannot send");
         return false;
     }
 
-    // Open preferences for reading
-    if (!preferences.begin(SMS_PREFS_NAMESPACE, true)) {
-        LOG_CRITICAL("[SMS] Failed to open preferences for reading");
-        return false;
+    // Use in-RAM cache; load from NVS on first call only
+    if (!cacheLoaded) {
+        loadCache();
     }
 
-    // Retrieve phone number from preferences
-    String toPhoneNumber = preferences.getString("phone-number", "");
-    preferences.end();
-    
-    if (toPhoneNumber.length() == 0) {
+    if (phoneNumberCache[0] == '\0') {
         // No phone number stored
         return false;
     }
@@ -46,7 +58,7 @@ bool SendSMS::send(const char* message) {
 
     // Calculate maximum size needed for encoded strings (worst case: every char becomes %XX = 3x)
     // Plus space for "To=", "&MessagingServiceSid=", "&Body=" and null terminator
-    size_t maxEncodedSize = (strlen(toPhoneNumber.c_str()) + strlen(TWILIO_MESSAGING_SERVICE_SID) + strlen(message)) * 3 + 100;
+    size_t maxEncodedSize = (strlen(phoneNumberCache) + strlen(TWILIO_MESSAGING_SERVICE_SID) + strlen(message)) * 3 + 100;
     char* encodedTo = (char*)malloc(maxEncodedSize);
     char* encodedMessagingServiceSid = (char*)malloc(maxEncodedSize);
     char* encodedBody = (char*)malloc(maxEncodedSize);
@@ -62,7 +74,7 @@ bool SendSMS::send(const char* message) {
     }
 
     // URL encode each parameter
-    urlEncode(toPhoneNumber.c_str(), encodedTo, maxEncodedSize);
+    urlEncode(phoneNumberCache, encodedTo, maxEncodedSize);
     urlEncode(TWILIO_MESSAGING_SERVICE_SID, encodedMessagingServiceSid, maxEncodedSize);
     urlEncode(message, encodedBody, maxEncodedSize);
 
@@ -123,11 +135,14 @@ void SendSMS::updatePhoneNumber(const char* newPhoneNumber) {
     
     size_t bytesWritten = preferences.putString("phone-number", newPhoneNumber);
     preferences.end();
-    
+
     if (bytesWritten == 0) {
         LOG_CRITICAL("[SMS] Failed to store phone number in preferences!");
     } else {
         LOG_INFO("[SMS] Phone number saved successfully (%d bytes)", bytesWritten);
+        // Refresh in-RAM cache so the next send() picks up the new number without
+        // needing a reboot.
+        loadCache();
     }
 }
 
@@ -209,13 +224,8 @@ void SendSMS::urlEncode(const char* input, char* output, size_t outputSize) {
 
 
 bool SendSMS::hasPhoneNumber() {
-    // Open preferences for reading
-    if (!preferences.begin(SMS_PREFS_NAMESPACE, true)) {
-        return false;
+    if (!cacheLoaded) {
+        loadCache();
     }
-    
-    bool hasPhone = !preferences.getString("phone-number", "").isEmpty();
-    preferences.end();
-    
-    return hasPhone;
+    return phoneNumberCache[0] != '\0';
 }

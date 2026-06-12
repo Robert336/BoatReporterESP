@@ -10,6 +10,7 @@
 #include "SendDiscord.h"
 #include "OTAManager.h"
 #include "MQTTService.h"
+#include "SettingsStore.h"
 
 /**
  * ConfigServer - Web-based configuration server for ESP32 boat monitoring system
@@ -57,18 +58,11 @@ private:
     SendDiscord* discordService;
     OTAManager* otaManager;
     MQTTService* mqttService;
+    SettingsStore* settingsStore;           // Single source of truth for alarm thresholds
     Preferences calibrationPrefs;           // NVS storage for calibration data
-    Preferences emergencyPrefs;             // NVS storage for emergency settings
     unsigned long serverStartTime;
     bool setupModeActive = false;
     String apPassword;                      // Unique per-device AP password generated from chip ID
-    
-    // === Emergency Settings ===
-    float emergencyWaterLevel_cm;           // Tier 1 threshold
-    int emergencyNotifFreq_ms;
-    float urgentEmergencyWaterLevel_cm;     // Tier 2 threshold
-    int hornOnDuration_ms;                  // Horn alarm on duration
-    int hornOffDuration_ms;                 // Horn alarm off duration
     
     // === WiFi Configuration Handlers ===
     void handleRoot();                      // Serve main dashboard page (gzipped)
@@ -96,8 +90,6 @@ private:
     void handleSetEmergencyNotifFreq();     // POST: Set emergency notification frequency
     void handleSetUrgentEmergencyLevel();   // POST: Set urgent emergency water level threshold (Tier 2)
     void handleTestEmergencyPin();          // POST: Test the emergency pin output device
-    void loadEmergencySettings();           // Load emergency settings from NVS
-    void saveEmergencySettings();           // Save emergency settings to NVS
     
     // === Notification Settings Handlers ===
     void handleGetNotifications();          // GET: Return current notification settings
@@ -124,7 +116,9 @@ private:
     void handleOTASettings();               // POST: Configure OTA settings
     
 public:
-    ConfigServer(WaterPressureSensor* sensor = nullptr, SendSMS* sms = nullptr, SendDiscord* discord = nullptr, OTAManager* ota = nullptr, MQTTService* mqtt = nullptr);
+    ConfigServer(WaterPressureSensor* sensor = nullptr, SendSMS* sms = nullptr,
+                 SendDiscord* discord = nullptr, OTAManager* ota = nullptr,
+                 MQTTService* mqtt = nullptr, SettingsStore* settings = nullptr);
     ~ConfigServer();
     
     // Start AP + Web server
@@ -139,12 +133,12 @@ public:
     // Should be called in main loop
     void handleClient();
     
-    // === Emergency Settings Getters ===
-    float getEmergencyWaterLevel() const { return emergencyWaterLevel_cm; }
-    int getEmergencyNotifFreq() const { return emergencyNotifFreq_ms; }
-    float getUrgentEmergencyWaterLevel() const { return urgentEmergencyWaterLevel_cm; }
-    int getHornOnDuration() const { return hornOnDuration_ms; }
-    int getHornOffDuration() const { return hornOffDuration_ms; }
+    // === Emergency Settings Getters — delegate to SettingsStore ===
+    float getEmergencyWaterLevel()       const { return settingsStore ? settingsStore->getEmergencyWaterLevel()       : 30.0f; }
+    int   getEmergencyNotifFreq()        const { return settingsStore ? settingsStore->getEmergencyNotifFreq()        : 900000; }
+    float getUrgentEmergencyWaterLevel() const { return settingsStore ? settingsStore->getUrgentEmergencyWaterLevel() : 50.0f; }
+    int   getHornOnDuration()            const { return settingsStore ? settingsStore->getHornOnDuration()            : 1000; }
+    int   getHornOffDuration()           const { return settingsStore ? settingsStore->getHornOffDuration()           : 1000; }
     
     // === AP Password Getter ===
     String getAPPassword() const { return apPassword; }
