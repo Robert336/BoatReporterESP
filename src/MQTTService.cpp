@@ -5,11 +5,16 @@
 #include <WiFi.h>
 
 static constexpr const char* MQTT_PREFS_NAMESPACE = "mqtt";
-static constexpr const char* DEFAULT_MQTT_HOST     = "192.168.2.41";
-static constexpr uint16_t    DEFAULT_MQTT_PORT     = 1883;
+static constexpr const char* DEFAULT_MQTT_HOST     = "mqtt.bilgerise.garageforge.ca";
+static constexpr uint16_t    DEFAULT_MQTT_PORT     = 8883;
+static constexpr bool        DEFAULT_MQTT_TLS      = true;  // domain default is a WAN TLS broker (Let's Encrypt CA)
 static constexpr uint32_t    RECONNECT_INITIAL_MS  = 5000;
 static constexpr uint32_t    RECONNECT_MAX_MS      = 30000;
 static constexpr uint32_t    DRAIN_BUDGET_MS        = 50;   // max time to spend publishing per loop()
+// Must stay strictly below WDT_TIMEOUT_S (10s, defined in main.cpp). A TLS
+// WiFiClientSecure defaults to a 30s TCP-connect timeout; exceeding the WDT
+// on the loop task when the broker is unreachable is the guaranteed result.
+static constexpr uint32_t    MQTT_CONNECT_TIMEOUT_S = 3;
 
 MQTTService* MQTTService::s_instance = nullptr;
 
@@ -21,7 +26,7 @@ MQTTService* MQTTService::s_instance = nullptr;
 MQTTService::MQTTService()
     : client(wifiClient)
     , brokerPort(DEFAULT_MQTT_PORT)
-    , useTls(false)
+    , useTls(DEFAULT_MQTT_TLS)
     , m_initialized(false)
     , cachedBrokerConfigExists(false)
     , recheckBrokerConfig(true)
@@ -258,14 +263,14 @@ void MQTTService::readNvs() {
     String p = "";
     String t = "";
     brokerPort = DEFAULT_MQTT_PORT;
-    useTls = false;
+    useTls = DEFAULT_MQTT_TLS;
     if (preferences.begin(MQTT_PREFS_NAMESPACE, true)) {
         h = preferences.getString("host", DEFAULT_MQTT_HOST);
         brokerPort = preferences.getUShort("port", DEFAULT_MQTT_PORT);
         u = preferences.getString("user", "");
         p = preferences.getString("pass", "");
         t = preferences.getString("topic", "");
-        useTls = preferences.getBool("tls", false);
+        useTls = preferences.getBool("tls", DEFAULT_MQTT_TLS);
         preferences.end();
     }
 
@@ -287,10 +292,16 @@ void MQTTService::applyServerConfig() {
     // CA (Let's Encrypt roots) — required when exposing the broker over WAN.
     // The hostname passed to setServer() doubles as the TLS SNI / CN to verify,
     // so always use a domain name (not a bare IP) for a TLS broker.
+    // Bound the transport-level TCP connect timeout so a blocked connect() to an
+    // unreachable broker cannot hold the loop task longer than the task WDT
+    // allows. WiFiClientSecure defaults to 30s; WiFiClient defaults to 3s but
+    // we make it explicit for both. setTimeout() argument is in seconds.
     if (useTls) {
         secureClient.setCACert(MQTT_ROOT_CA_BUNDLE);
+        secureClient.setTimeout(MQTT_CONNECT_TIMEOUT_S);
         client.setClient(secureClient);
     } else {
+        wifiClient.setTimeout(MQTT_CONNECT_TIMEOUT_S);
         client.setClient(wifiClient);
     }
 
