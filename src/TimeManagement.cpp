@@ -60,7 +60,7 @@ void TimeManagement::sync() {
     if (time(NULL) - lastSyncTime < SYNC_EXPIRY) return; // Guard against already synced RTC
     if (syncStatus == SNTP_SYNCING) return; // Guard if currently syncing
 
-    initSNTPSync(); // Sync RTC
+    initSNTPSync("pool.ntp.org", 0); // Sync RTC non-blocking; onSNTPSync callback sets syncStatus when NTP responds
 }
 
 bool TimeManagement::initSNTPSync(const char* server, uint32_t maxWaitMs) {
