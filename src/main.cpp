@@ -50,6 +50,19 @@ static constexpr bool USE_MOCK = false;
 #endif
 static constexpr int LIGHT_PIN = 12;
 
+// Genuinely-unused GPIOs driven LOW at boot for a defined idle state (avoids
+// floating high-impedance inputs picking up noise in a wet/electrically-busy
+// boat enclosure). This is a CURATED ALLOWLIST, not a loop over all GPIOs —
+// driving the wrong pin on an ESP32-WROOM-32 crashes or bricks the device.
+//
+// DO NOT add pins to this list without checking the WROOM-32 pin map. Excluded:
+//   - 6-11        SPI flash — driving these crashes the chip instantly
+//   - 34/35/36/39 input-only, no output driver — pinMode(OUTPUT) is illegal
+//   - 1/3         UART0 TX/RX — serial console
+//   - 0/2/5/15    strapping pins — driving at/after boot is risky and pointless
+//   - 12,19,21,22,23,32  already used by LED/horn/I2C/button/water sensor
+static constexpr int UNUSED_GPIOS[] = {4, 13, 14, 16, 17, 18, 25, 26, 27, 33};
+
 // Task watchdog: tightened now that checkForUpdates() runs off-loop on an OTA task.
 // The longest blocking call remaining in loop() is <1 s, so 10 s gives ample margin.
 static constexpr uint32_t WDT_TIMEOUT_S = 10;
@@ -83,6 +96,15 @@ NotificationWorker notifier;
 MQTTService mqtt;
 void setup() {
     Serial.begin(115200);
+
+    // Drive unused GPIOs to a defined LOW state before any peripheral init.
+    // See UNUSED_GPIOS above — curated allowlist, never a loop over all pins.
+    for (int pin : UNUSED_GPIOS) {
+        pinMode(pin, OUTPUT);
+        digitalWrite(pin, LOW);
+    }
+    LOG_SETUP("[SETUP] %u unused GPIOs driven LOW",
+              (unsigned)(sizeof(UNUSED_GPIOS) / sizeof(UNUSED_GPIOS[0])));
 
     // Initialize NVS FIRST (before any Preferences usage)
     esp_err_t ret = nvs_flash_init();
@@ -409,7 +431,7 @@ void loop() {
         // ArduinoJson builder — NaN-proof by construction (item A3).
         // ArduinoJson v6 serializes float NaN as "null" when assigned nullptr;
         // assigning a float directly serializes the numeric value.
-        StaticJsonDocument<256> doc;
+        StaticJsonDocument<384> doc;
         if (isnan(currentReading.level_cm)) {
             doc["level_cm"] = nullptr;
         } else {
@@ -425,8 +447,14 @@ void loop() {
         doc["sensor_error"] = smCtx.sensorError;
         doc["valid"]        = currentReading.valid;
         doc["rssi"]         = wifiMgr.getRSSI();
+        // ESP32-WROOM-32 internal die temperature. UNCALIBRATED and inaccurate
+        // for absolute temperature (self-heats with CPU/WiFi load, varies part to
+        // part) — useful only as a RELATIVE diagnostic trend of the chip itself,
+        // NOT ambient/cabin temperature. temperatureRead() is declared by the
+        // Arduino-ESP32 core (via Arduino.h).
+        doc["chip_temp_c"]  = (float)((int)(temperatureRead() * 100 + 0.5f)) / 100.0f;
 
-        char payload[160];
+        char payload[256];
         serializeJson(doc, payload, sizeof(payload));
         mqtt.publishTelemetry(payload);
         lastTelemetryTime = millis();
