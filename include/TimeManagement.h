@@ -3,6 +3,12 @@
 // This module will handle supplying the most accurate timestamps available to the system
 // We leverage the ESP32's RTC (persistent across resets), high-resolution timer (80MHz),
 // and SNTP synchronization for accurate time keeping
+//
+// Under UNIT_TESTING the whole header is inert: native builds use the mock in
+// test/mocks/MockTimeManagement.h instead, and this header pulls in ESP-IDF
+// (esp_sntp.h etc.) which does not exist on the native platform.
+#ifndef UNIT_TESTING
+
 #include <cstdint>
 #include <sys/time.h>
 #include <time.h>
@@ -81,6 +87,8 @@ class TimeManagement {
         // maxWaitMs: Maximum time to wait for initial sync
         // Returns: true if sync initiated successfully
         bool initSNTPSync(const char* server = "pool.ntp.org", uint32_t maxWaitMs = SNTP_MAX_WAIT);
-        
+
 };
+
+#endif // UNIT_TESTING
 

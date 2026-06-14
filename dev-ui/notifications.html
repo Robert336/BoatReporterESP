@@ -26,8 +26,8 @@ label{display:block;font-size:13px;color:#78716c;margin:10px 0 6px}
 label .hint{font-weight:normal;color:#a8a29e;margin-left:4px}
 .input{display:flex;align-items:stretch;background:#f5f5f4;border:1px solid #e7e5e4;border-radius:10px;overflow:hidden;transition:border-color .15s}
 .input:focus-within{border-color:#1c1917;background:#fff}
-.input input,.input textarea{flex:1;border:0;background:transparent;padding:10px 12px;font-size:15px;font-family:inherit;color:inherit;width:100%;min-width:0;resize:none}
-.input input:focus,.input textarea:focus{outline:0}
+.input input,.input textarea,.input select{flex:1;border:0;background:transparent;padding:10px 12px;font-size:15px;font-family:inherit;color:inherit;width:100%;min-width:0;resize:vertical}
+.input input:focus,.input textarea:focus,.input select:focus{outline:0}
 .input .sfx{align-self:center;padding-right:12px;font-size:13px;color:#78716c}
 .actions{display:flex;gap:8px;margin-top:14px}
 .btn{flex:1;padding:12px;background:#1c1917;color:#fff;border:0;border-radius:10px;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer;transition:background .15s}
@@ -39,17 +39,19 @@ label .hint{font-weight:normal;color:#a8a29e;margin-left:4px}
 .msg.ok{color:#65a30d}
 .msg.bad{color:#dc2626}
 .helptext{font-size:12px;color:#a8a29e;margin-top:6px}
+.divider{border:0;border-top:1px solid #f0eeed;margin:14px 0}
 </style>
 </head>
 <body>
 <div class="app">
 <header>
-<a href="/settings" class="back" aria-label="Back">‹</a>
+<a href="/settings" class="back" aria-label="Back">&#8249;</a>
 <h1>Notifications</h1>
 </header>
 
+<!-- SMS / Twilio -->
 <div class="card" id="sms">
-<div class="head"><h2>SMS · Twilio</h2><span class="pill" id="sms_pill"><span class="dot" id="sms_dot"></span><span id="sms_label">…</span></span></div>
+<div class="head"><h2>SMS · Twilio</h2><span class="pill" id="sms_pill"><span class="dot" id="sms_dot"></span><span id="sms_label">...</span></span></div>
 <label>Phone number</label>
 <div class="input"><input type="tel" id="phone" placeholder="+1234567890"></div>
 <div class="helptext">Include country code (e.g. +1 for US/CA)</div>
@@ -58,13 +60,27 @@ label .hint{font-weight:normal;color:#a8a29e;margin-left:4px}
 <button class="btn secondary" id="test_sms" onclick="testSMS()">Test</button>
 </div>
 <div class="msg" id="sms_msg"></div>
+<hr class="divider">
+<h2 style="margin-bottom:10px">Twilio API credentials</h2>
+<div class="helptext" style="margin-bottom:10px">Find these in your <a href="https://console.twilio.com" target="_blank" rel="noopener" style="color:#44403c">Twilio Console</a>. Write-only — values are not displayed after saving.</div>
+<label>Account SID <span class="hint">starts with AC</span></label>
+<div class="input"><input type="text" id="twilio_sid" placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" autocomplete="off"></div>
+<label>Auth token</label>
+<div class="input"><input type="password" id="twilio_token" placeholder="write-only" autocomplete="new-password"></div>
+<label>Messaging Service SID <span class="hint">starts with MG</span></label>
+<div class="input"><input type="text" id="twilio_svcsid" placeholder="MGxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" autocomplete="off"></div>
+<div class="actions">
+<button class="btn" onclick="saveTwilioCreds()">Save Credentials</button>
+</div>
+<div class="msg" id="twilio_msg"></div>
 </div>
 
+<!-- Discord -->
 <div class="card" id="discord">
-<div class="head"><h2>Discord</h2><span class="pill" id="disc_pill"><span class="dot" id="disc_dot"></span><span id="disc_label">…</span></span></div>
+<div class="head"><h2>Discord</h2><span class="pill" id="disc_pill"><span class="dot" id="disc_dot"></span><span id="disc_label">...</span></span></div>
 <label>Webhook URL</label>
-<div class="input"><input type="url" id="webhook" placeholder="https://discord.com/api/webhooks/…"></div>
-<div class="helptext">Server Settings → Integrations → Webhooks</div>
+<div class="input"><input type="url" id="webhook" placeholder="https://discord.com/api/webhooks/..."></div>
+<div class="helptext">Server Settings &rarr; Integrations &rarr; Webhooks</div>
 <div class="actions">
 <button class="btn" onclick="saveWebhook()">Save</button>
 <button class="btn secondary" id="test_disc" onclick="testDisc()">Test</button>
@@ -72,8 +88,51 @@ label .hint{font-weight:normal;color:#a8a29e;margin-left:4px}
 <div class="msg" id="disc_msg"></div>
 </div>
 
+<!-- Custom HTTP -->
+<div class="card" id="custom">
+<div class="head"><h2>Custom HTTP</h2><span class="pill" id="cust_pill"><span class="dot" id="cust_dot"></span><span id="cust_label">...</span></span></div>
+<div class="helptext" style="margin-bottom:10px">POST any message to any HTTP endpoint. Use <code style="background:#f5f5f4;padding:1px 4px;border-radius:4px">{{message}}</code> in the body template where the alert text should appear.</div>
+<label>Endpoint URL</label>
+<div class="input"><input type="url" id="cust_endpoint" placeholder="https://hooks.example.com/alert"></div>
+<label>Content-Type</label>
+<div class="input">
+<select id="cust_ctype">
+<option value="application/json">application/json</option>
+<option value="application/x-www-form-urlencoded">application/x-www-form-urlencoded</option>
+<option value="text/plain">text/plain</option>
+</select>
+</div>
+<label>Authentication</label>
+<div class="input">
+<select id="cust_auth" onchange="authToggle()">
+<option value="none">None</option>
+<option value="basic">Basic (username + password)</option>
+<option value="bearer">Bearer token</option>
+</select>
+</div>
+<div id="cust_basic_fields" style="display:none">
+<label>Username</label>
+<div class="input"><input type="text" id="cust_user" placeholder="username" autocomplete="off"></div>
+<label>Password</label>
+<div class="input"><input type="password" id="cust_secret" placeholder="write-only" autocomplete="new-password"></div>
+</div>
+<div id="cust_bearer_field" style="display:none">
+<label>Token <span class="hint">write-only</span></label>
+<div class="input"><input type="password" id="cust_token" placeholder="write-only" autocomplete="new-password"></div>
+</div>
+<label>Body template</label>
+<div class="input"><textarea id="cust_tmpl" rows="3" placeholder='{"text":"{{message}}"}'></textarea></div>
+<div class="helptext"><code style="background:#f5f5f4;padding:1px 4px;border-radius:4px">{{message}}</code> is replaced with the alert text. For JSON content-type it is automatically escaped.</div>
+<div class="actions">
+<button class="btn" onclick="saveCustom()">Save</button>
+<button class="btn secondary" id="test_cust" onclick="testCustom()">Test</button>
+</div>
+<div class="msg" id="cust_msg"></div>
+</div>
+
+<!-- MQTT -->
 <div class="card" id="mqtt">
-<div class="head"><h2>MQTT broker</h2><span class="pill" id="mqtt_pill"><span class="dot" id="mqtt_dot"></span><span id="mqtt_label">…</span></span></div>
+<div class="head"><h2>MQTT broker</h2><span class="pill" id="mqtt_pill"><span class="dot" id="mqtt_dot"></span><span id="mqtt_label">...</span></span></div>
 <label>Broker host</label>
 <div class="input"><input type="text" id="mqtt_host" placeholder="192.168.2.41"></div>
 <label>Port</label>
@@ -86,7 +145,7 @@ label .hint{font-weight:normal;color:#a8a29e;margin-left:4px}
 <div class="input"><input type="password" id="mqtt_pass" placeholder="anonymous"></div>
 <label>Base topic <span class="hint">optional</span></label>
 <div class="input"><input type="text" id="mqtt_topic" placeholder="boat/aabbcc"></div>
-<div class="helptext">Logs publish to &lt;topic&gt;/log · availability at &lt;topic&gt;/availability</div>
+<div class="helptext">Logs publish to &lt;topic&gt;/log &middot; availability at &lt;topic&gt;/availability</div>
 <div class="actions">
 <button class="btn" onclick="saveMqtt()">Save</button>
 <button class="btn secondary" id="test_mqtt" onclick="testMqtt()">Test</button>
@@ -105,8 +164,28 @@ function loadNotif(){
 fetch('/notifications').then(r=>r.json()).then(d=>{
 el('phone').value=d.phoneNumber||'';
 setPill('sms_dot','sms_label',d.hasPhoneNumber?'ok':'',d.hasPhoneNumber?'configured':'off');
+
 el('webhook').value=d.discordWebhook||'';
 setPill('disc_dot','disc_label',d.hasDiscordWebhook?'ok':'',d.hasDiscordWebhook?'configured':'off');
+
+// Custom channel
+if(d.hasCustomChannel){
+  el('cust_endpoint').value=d.customEndpoint||'';
+  if(d.customCtype){
+    var sel=el('cust_ctype');
+    for(var i=0;i<sel.options.length;i++){if(sel.options[i].value===d.customCtype){sel.selectedIndex=i;break}}
+  }
+  if(d.customAuth){
+    var asel=el('cust_auth');
+    for(var i=0;i<asel.options.length;i++){if(asel.options[i].value===d.customAuth){asel.selectedIndex=i;break}}
+    authToggle();
+  }
+  el('cust_tmpl').value=d.customTmpl||'';
+  setPill('cust_dot','cust_label','ok','configured');
+}else{
+  setPill('cust_dot','cust_label','','off');
+}
+
 el('mqtt_host').value=d.mqttHost||'';
 el('mqtt_port').value=d.mqttPort||1883;
 el('mqtt_user').value=d.mqttUser||'';
@@ -115,25 +194,80 @@ el('mqtt_tls').checked=!!d.mqttTls;
 if(d.mqttConfigured&&d.mqttConnected)setPill('mqtt_dot','mqtt_label','ok','connected');
 else if(d.mqttConfigured)setPill('mqtt_dot','mqtt_label','warn','disconnected');
 else setPill('mqtt_dot','mqtt_label','','off');
-}).catch(e=>{})
+}).catch(function(){})
 }
-// Refresh only the MQTT connection pill; never touch input fields so it
-// can't clobber what the user is mid-typing.
-function pollMqttStatus(){
+
+// Refresh only live-polling pills (MQTT + Custom)
+function pollStatus(){
 fetch('/notifications/status').then(r=>r.json()).then(d=>{
 if(d.mqttConfigured&&d.mqttConnected)setPill('mqtt_dot','mqtt_label','ok','connected');
 else if(d.mqttConfigured)setPill('mqtt_dot','mqtt_label','warn','disconnected');
 else setPill('mqtt_dot','mqtt_label','','off');
-}).catch(e=>{})
+if(d.hasCustomChannel)setPill('cust_dot','cust_label','ok','configured');
+else setPill('cust_dot','cust_label','','off');
+}).catch(function(){})
 }
+
+function authToggle(){
+var v=el('cust_auth').value;
+el('cust_basic_fields').style.display=(v==='basic')?'':'none';
+el('cust_bearer_field').style.display=(v==='bearer')?'':'none';
+}
+
 function post(url,body,msgId,okText){
 return fetch(url,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body}).then(r=>r.json()).then(d=>{
-if(d.success){flash(msgId,okText||'✓ Saved','ok');return true}
-flash(msgId,'✗ '+(d.error||'failed'),'bad');return false
-}).catch(e=>{flash(msgId,'Error: '+e.message,'bad');return false})
+if(d.success){flash(msgId,okText||'Saved','ok');return true}
+flash(msgId,(d.error||'Failed'),'bad');return false
+}).catch(function(e){flash(msgId,'Error: '+e.message,'bad');return false})
 }
-function savePhone(){var v=el('phone').value;if(!v){flash('sms_msg','Enter phone number','bad');return}post('/notifications/phone','phone='+encodeURIComponent(v),'sms_msg').then(ok=>{if(ok)loadNotif()})}
-function saveWebhook(){var v=el('webhook').value;if(!v){flash('disc_msg','Enter webhook URL','bad');return}post('/notifications/discord','webhook='+encodeURIComponent(v),'disc_msg').then(ok=>{if(ok)loadNotif()})}
+
+function savePhone(){
+var v=el('phone').value;
+if(!v){flash('sms_msg','Enter phone number','bad');return}
+post('/notifications/phone','phone='+encodeURIComponent(v),'sms_msg').then(function(ok){if(ok)loadNotif()})
+}
+
+function saveTwilioCreds(){
+var sid=el('twilio_sid').value.trim();
+var token=el('twilio_token').value;
+var svc=el('twilio_svcsid').value.trim();
+if(!sid&&!token&&!svc){flash('twilio_msg','Enter at least one credential','bad');return}
+var body='';
+if(sid)body+='sid='+encodeURIComponent(sid)+'&';
+if(token)body+='token='+encodeURIComponent(token)+'&';
+if(svc)body+='svc_sid='+encodeURIComponent(svc);
+post('/notifications/twilio',body,'twilio_msg','Credentials saved').then(function(ok){
+if(ok){el('twilio_sid').value='';el('twilio_token').value='';el('twilio_svcsid').value='';loadNotif()}
+})
+}
+
+function saveWebhook(){
+var v=el('webhook').value;
+if(!v){flash('disc_msg','Enter webhook URL','bad');return}
+post('/notifications/discord','webhook='+encodeURIComponent(v),'disc_msg').then(function(ok){if(ok)loadNotif()})
+}
+
+function saveCustom(){
+var ep=el('cust_endpoint').value;
+if(!ep){flash('cust_msg','Enter endpoint URL','bad');return}
+var tmpl=el('cust_tmpl').value;
+if(!tmpl){flash('cust_msg','Enter a body template','bad');return}
+var auth=el('cust_auth').value;
+var body='endpoint='+encodeURIComponent(ep)
++'&ctype='+encodeURIComponent(el('cust_ctype').value)
++'&auth='+encodeURIComponent(auth)
++'&tmpl='+encodeURIComponent(tmpl);
+if(auth==='basic'){
+body+='&user='+encodeURIComponent(el('cust_user').value);
+var s=el('cust_secret').value;if(s)body+='&secret='+encodeURIComponent(s);
+}else if(auth==='bearer'){
+var t=el('cust_token').value;if(t)body+='&user='+encodeURIComponent(t);
+}
+post('/notifications/custom',body,'cust_msg').then(function(ok){
+if(ok){el('cust_secret').value='';el('cust_token').value='';loadNotif()}
+})
+}
+
 function saveMqtt(){
 var h=el('mqtt_host').value;if(!h){flash('mqtt_msg','Enter broker host','bad');return}
 var body='host='+encodeURIComponent(h)
@@ -142,29 +276,31 @@ var body='host='+encodeURIComponent(h)
 +'&pass='+encodeURIComponent(el('mqtt_pass').value)
 +'&topic='+encodeURIComponent(el('mqtt_topic').value)
 +'&tls='+(el('mqtt_tls').checked?'1':'0');
-post('/notifications/mqtt',body,'mqtt_msg').then(ok=>{if(ok){el('mqtt_pass').value='';loadNotif()}})
+post('/notifications/mqtt',body,'mqtt_msg').then(function(ok){if(ok){el('mqtt_pass').value='';loadNotif()}})
 }
-// Convenience: flip the port to the conventional TLS/plain default when the
-// box is toggled, but only if the field is empty or on the other default.
+
 function tlsToggle(){
 var p=el('mqtt_port');
 if(el('mqtt_tls').checked){if(!p.value||p.value==='1883')p.value='8883'}
 else{if(p.value==='8883')p.value='1883'}
 }
+
 function testChan(url,btnId,msgId){
-var btn=el(btnId);btn.disabled=true;var old=btn.textContent;btn.textContent='…';
-flash(msgId,'Sending…','');
+var btn=el(btnId);btn.disabled=true;var old=btn.textContent;btn.textContent='...';
+flash(msgId,'Sending...','');
 fetch(url,{method:'POST'}).then(r=>r.json()).then(d=>{
 btn.disabled=false;btn.textContent=old;
-flash(msgId,d.success?'✓ '+(d.message||'sent'):'✗ '+(d.error||'failed'),d.success?'ok':'bad');
-}).catch(e=>{btn.disabled=false;btn.textContent=old;flash(msgId,'Error: '+e.message,'bad')})
+flash(msgId,d.success?(d.message||'Sent'):(d.error||'Failed'),d.success?'ok':'bad');
+}).catch(function(e){btn.disabled=false;btn.textContent=old;flash(msgId,'Error: '+e.message,'bad')})
 }
+
 function testSMS(){testChan('/notifications/test/sms','test_sms','sms_msg')}
 function testDisc(){testChan('/notifications/test/discord','test_disc','disc_msg')}
+function testCustom(){testChan('/notifications/test/custom','test_cust','cust_msg')}
 function testMqtt(){testChan('/notifications/test/mqtt','test_mqtt','mqtt_msg')}
 
 loadNotif();
-setInterval(pollMqttStatus,5000);
+setInterval(pollStatus,5000);
 if(location.hash){setTimeout(function(){var t=document.querySelector(location.hash);if(t)t.scrollIntoView({behavior:'smooth',block:'start'})},100)}
 </script>
 </body>

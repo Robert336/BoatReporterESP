@@ -1,3 +1,12 @@
+// LOAD-BEARING GUARD: this whole TU is excluded from native builds because it
+// hard-includes <Arduino.h>/<Wire.h>, which have no native shim. With
+// test_build_src=yes, native compiles all of src/ for EVERY test suite, so
+// removing this guard breaks the native build for ALL suites (test_notifications,
+// test_state_machine, ...) with a misleading "<Arduino.h> not found", not just
+// test_sensor. The trade-off: test_sensor cannot link the real implementation
+// natively (see the mock note in WaterPressureSensor.h). To re-enable native
+// test_sensor, add an Arduino.h/Wire.h native shim instead of dropping this guard.
+#ifndef UNIT_TESTING
 #include "WaterPressureSensor.h"
 #include "Logger.h"
 #include <Arduino.h>
@@ -310,3 +319,5 @@ float WaterPressureSensor::calculateMedianFromBuffer() {
     }
 }
 
+
+#endif // UNIT_TESTING
