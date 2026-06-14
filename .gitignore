@@ -22,5 +22,9 @@ server-stack/certs/*
 !server-stack/certs/.gitkeep
 server-stack/letsencrypt/
 server-stack/mosquitto/config/passwd
+# Local broker backups / per-deployment config overrides (keep tracked templates only).
+# The tracked acl is a commented template; real per-device entries are kept local
+# via `git update-index --skip-worktree server-stack/mosquitto/config/acl`.
+server-stack/mosquitto/config/*.bak
 server-stack/secrets/*
 !server-stack/secrets/cloudflare.ini.example
