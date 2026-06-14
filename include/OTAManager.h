@@ -95,8 +95,6 @@ private:
     VersionInfo   versionInfo;
     unsigned long lastCheckTime;
     String        lastError;
-    bool          firstBootAfterUpdate;
-    bool          rollbackOccurred;
 
     // FreeRTOS primitives for the background check task
     SemaphoreHandle_t stateMux;      // Mutex protecting currentState / versionInfo / lastError

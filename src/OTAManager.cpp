@@ -9,7 +9,7 @@
 
 OTAManager::OTAManager(NotificationWorker* notif)
     : notifier(notif), currentState(OTAState::IDLE),
-      lastCheckTime(0), firstBootAfterUpdate(false), rollbackOccurred(false),
+      lastCheckTime(0),
       stateMux(nullptr), checkTaskHandle(nullptr), checkRequested(false) {
 
     versionInfo.currentVersion = FIRMWARE_VERSION;
@@ -131,56 +131,71 @@ void OTAManager::runCheckTask() {
 }
 
 void OTAManager::checkFirstBoot() {
+    // Read update-pending state from NVS (read-only open).
     if (!preferences.begin(OTA_PREFERENCES_NAMESPACE, true)) {
         LOG_CRITICAL("[OTA] Failed to open preferences for first boot check");
         return;
     }
 
-    firstBootAfterUpdate = preferences.getBool("first_boot", false);
-    rollbackOccurred = preferences.getBool("rollback", false);
-    String previousVersion = preferences.getString("prev_version", "");
+    bool updatePending    = preferences.getBool("upd_pending", false);
+    String prevVersion    = preferences.getString("prev_version", "");
+    String targetVersion  = preferences.getString("target_version", "");
 
     preferences.end();
 
-    // Check for rollback by examining the OTA partition state
+    // The OTA partition state is the authoritative "new image first boot" signal.
+    // ESP_OTA_IMG_PENDING_VERIFY means the bootloader just ran this image for the
+    // first time and is waiting for us to confirm it's healthy.
+    //
+    // Note: bootloader auto-rollback (reverting to the previous image when a new
+    // image fails to call esp_ota_mark_app_valid_cancel_rollback()) requires
+    // CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE in the IDF build config. If that option
+    // is disabled, a crashing new image crash-loops rather than rolling back —
+    // handling that scenario is out of scope here.
     const esp_partition_t* running = esp_ota_get_running_partition();
     esp_ota_img_states_t ota_state;
-    if (esp_ota_get_state_partition(running, &ota_state) == ESP_OK) {
-        if (ota_state == ESP_OTA_IMG_PENDING_VERIFY) {
-            // Mark this boot as valid
-            esp_ota_mark_app_valid_cancel_rollback();
-            LOG_INFO("[OTA] New firmware validated successfully");
-        }
-    }
+    bool isPendingVerify = (esp_ota_get_state_partition(running, &ota_state) == ESP_OK
+                            && ota_state == ESP_OTA_IMG_PENDING_VERIFY);
 
-    // Send notifications if needed
-    if (firstBootAfterUpdate && !previousVersion.isEmpty()) {
-        char msg[NOTIFICATION_MESSAGE_BUFFER_SIZE];
-        snprintf(msg, sizeof(msg),
-                 "BilgeRise: Firmware updated successfully! v%s -> v%s. System online.",
-                 previousVersion.c_str(), versionInfo.currentVersion.c_str());
-        sendNotification(msg);
-        LOG_INFO("[OTA] %s", msg);
+    if (isPendingVerify) {
+        // New image's first boot — confirm it so the bootloader won't revert.
+        esp_ota_mark_app_valid_cancel_rollback();
+        LOG_INFO("[OTA] New firmware validated successfully");
+
+        if (updatePending && !prevVersion.isEmpty()) {
+            // currentVersion here is the new (target) version now running.
+            char msg[NOTIFICATION_MESSAGE_BUFFER_SIZE];
+            snprintf(msg, sizeof(msg),
+                     "BilgeRise: Firmware updated successfully! v%s -> v%s. System online.",
+                     prevVersion.c_str(), versionInfo.currentVersion.c_str());
+            sendNotification(msg);
+            LOG_INFO("[OTA] %s", msg);
+        }
         clearFirstBootFlag();
-    } else if (rollbackOccurred && !previousVersion.isEmpty()) {
+    } else if (updatePending) {
+        // We set upd_pending before restarting into a freshly-flashed image, but
+        // the running partition is already confirmed/valid — the bootloader rolled
+        // the new image back because it never called mark_app_valid.
         char msg[NOTIFICATION_MESSAGE_BUFFER_SIZE];
         snprintf(msg, sizeof(msg),
                  "BilgeRise: New firmware v%s failed to boot. Rolled back to v%s. System stable.",
-                 previousVersion.c_str(), versionInfo.currentVersion.c_str());
+                 targetVersion.c_str(), versionInfo.currentVersion.c_str());
         sendNotification(msg);
         LOG_CRITICAL("[OTA] %s", msg);
         clearFirstBootFlag();
     }
+    // else: normal boot with no pending update — nothing to do.
 }
 
 void OTAManager::setFirstBootFlag() {
     if (!preferences.begin(OTA_PREFERENCES_NAMESPACE, false)) {
-        LOG_CRITICAL("[OTA] Failed to open preferences to set first boot flag");
+        LOG_CRITICAL("[OTA] Failed to open preferences to set update pending flag");
         return;
     }
 
-    preferences.putBool("first_boot", true);
-    preferences.putString("prev_version", versionInfo.currentVersion);
+    preferences.putBool("upd_pending", true);
+    preferences.putString("prev_version", versionInfo.currentVersion);   // version running now (old)
+    preferences.putString("target_version", versionInfo.availableVersion); // version being installed
     preferences.end();
 }
 
@@ -189,9 +204,14 @@ void OTAManager::clearFirstBootFlag() {
         return;
     }
 
-    preferences.putBool("first_boot", false);
-    preferences.putBool("rollback", false);
+    preferences.remove("upd_pending");
     preferences.remove("prev_version");
+    preferences.remove("target_version");
+
+    // Migration: remove legacy keys from old installs so they don't linger.
+    preferences.remove("first_boot");
+    preferences.remove("rollback");
+
     preferences.end();
 }
 
@@ -533,7 +553,20 @@ bool OTAManager::downloadAndInstall(const String& url, size_t expectedSize) {
 
     HTTPClient http;
     http.begin(url);
-    http.setTimeout((uint16_t)120);
+
+    // GitHub release asset URLs (browser_download_url) return an HTTP 302 to
+    // objects.githubusercontent.com. Without this, GET() fails with HTTP 302.
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+    // Note: for PRIVATE repos the redirect target is a pre-signed S3 URL that
+    // rejects an Authorization header. This project's repo is public and the
+    // token is only added when set, so the existing logic below is left as-is.
+
+    // HTTPClient::setTimeout() takes uint16_t milliseconds (max ~65535 ms).
+    // FIRMWARE_DOWNLOAD_TIMEOUT_MS is 120 000 ms but that overflows uint16_t,
+    // so cap it at 60 000 ms. This is the socket/header timeout only — the full
+    // download is bounded by the DOWNLOAD_TIMEOUT_MS watchdog in the read loop.
+    // The previous value of (uint16_t)120 was only 120 ms (a bug).
+    http.setTimeout((uint16_t)60000);
 
     if (!config.githubToken.isEmpty()) {
         http.addHeader("Authorization", "Bearer " + config.githubToken);
