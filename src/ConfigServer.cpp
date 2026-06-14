@@ -9,10 +9,15 @@
 // CORE LIFECYCLE METHODS
 // ============================================================================
 
-ConfigServer::ConfigServer(WaterPressureSensor* sensor, SendSMS* sms, SendDiscord* discord,
-                           OTAManager* ota, MQTTService* mqtt, SettingsStore* settings)
+ConfigServer::ConfigServer(WaterPressureSensor* sensor,
+                           SmsChannel*          sms,
+                           DiscordChannel*      discord,
+                           CustomChannel*       custom,
+                           OTAManager*          ota,
+                           MQTTService*         mqtt,
+                           SettingsStore*       settings)
     : server(nullptr), waterSensor(sensor), smsService(sms), discordService(discord),
-      otaManager(ota), mqttService(mqtt), settingsStore(settings) {
+      customService(custom), otaManager(ota), mqttService(mqtt), settingsStore(settings) {
     // Generate unique AP password from chip ID
     uint64_t chipId = ESP.getEfuseMac();
     uint32_t id = (uint32_t)(chipId & 0xFFFFFFFF);
@@ -154,6 +159,9 @@ void ConfigServer::startSetupMode() {
     
     // Route: POST /notifications/phone → set SMS phone number
     server->on("/notifications/phone", HTTP_POST, [this]() { handleSetPhoneNumber(); });
+
+    // Route: POST /notifications/twilio → set Twilio account SID / auth token / messaging service SID
+    server->on("/notifications/twilio", HTTP_POST, [this]() { handleSetTwilioCreds(); });
     
     // Route: POST /notifications/discord → set Discord webhook URL
     server->on("/notifications/discord", HTTP_POST, [this]() { handleSetDiscordWebhook(); });
@@ -163,6 +171,12 @@ void ConfigServer::startSetupMode() {
     
     // Route: POST /notifications/test/discord → send test Discord message
     server->on("/notifications/test/discord", HTTP_POST, [this]() { handleTestDiscord(); });
+
+    // Route: POST /notifications/custom → configure custom HTTP channel
+    server->on("/notifications/custom", HTTP_POST, [this]() { handleSetCustomChannel(); });
+
+    // Route: POST /notifications/test/custom → send test custom channel message
+    server->on("/notifications/test/custom", HTTP_POST, [this]() { handleTestCustom(); });
 
     // Route: POST /notifications/mqtt → configure MQTT broker
     server->on("/notifications/mqtt", HTTP_POST, [this]() { handleSetMqttConfig(); });
@@ -755,9 +769,9 @@ void ConfigServer::handleTestEmergencyPin() {
 
 void ConfigServer::handleGetNotifications() {
     serverStartTime = millis();
-    
+
     String json = "{";
-    
+
     // SMS phone number
     json += "\"hasPhoneNumber\":";
     if (smsService && smsService->hasPhoneNumber()) {
@@ -770,7 +784,11 @@ void ConfigServer::handleGetNotifications() {
     } else {
         json += "false";
     }
-    
+
+    // SMS: whether Twilio API credentials are configured (no secret values returned)
+    json += ",\"hasTwilioCreds\":";
+    json += (smsService && smsService->isConfigured()) ? "true" : "false";
+
     // Discord webhook
     json += ",\"hasDiscordWebhook\":";
     if (discordService && discordService->hasWebhookUrl()) {
@@ -780,6 +798,24 @@ void ConfigServer::handleGetNotifications() {
         } else {
             json += "false";
         }
+    } else {
+        json += "false";
+    }
+
+    // Custom HTTP channel
+    json += ",\"hasCustomChannel\":";
+    if (customService && customService->isConfigured()) {
+        char epBuf[CUSTOM_ENDPOINT_MAX];
+        char ctBuf[CUSTOM_CTYPE_MAX];
+        char authBuf[CUSTOM_AUTH_MAX];
+        char tmplBuf[CUSTOM_TMPL_MAX];
+        customService->getConfig(epBuf, sizeof(epBuf), ctBuf, sizeof(ctBuf),
+                                 authBuf, sizeof(authBuf), tmplBuf, sizeof(tmplBuf));
+        json += "true";
+        json += ",\"customEndpoint\":\"" + String(epBuf) + "\"";
+        json += ",\"customCtype\":\"" + String(ctBuf) + "\"";
+        json += ",\"customAuth\":\"" + String(authBuf) + "\"";
+        json += ",\"customTmpl\":\"" + String(tmplBuf) + "\"";
     } else {
         json += "false";
     }
@@ -815,14 +851,16 @@ void ConfigServer::handleNotificationsStatus() {
 
     // Lean, secret-free status for periodic polling (e.g. the live MQTT pill).
     // Booleans only — no host/phone/webhook values — so it stays cheap to fetch.
-    bool hasPhone   = smsService && smsService->hasPhoneNumber();
+    bool hasPhone   = smsService     && smsService->hasPhoneNumber();
     bool hasWebhook = discordService && discordService->hasWebhookUrl();
+    bool hasCustom  = customService  && customService->isConfigured();
     bool mqttCfg    = mqttService && mqttService->hasBrokerConfig();
     bool mqttConn   = mqttCfg && mqttService->isConnected();
 
     String json = "{";
-    json += "\"hasPhoneNumber\":";    json += hasPhone   ? "true" : "false";
+    json += "\"hasPhoneNumber\":";     json += hasPhone   ? "true" : "false";
     json += ",\"hasDiscordWebhook\":"; json += hasWebhook ? "true" : "false";
+    json += ",\"hasCustomChannel\":";  json += hasCustom  ? "true" : "false";
     json += ",\"mqttConfigured\":";    json += mqttCfg    ? "true" : "false";
     json += ",\"mqttConnected\":";     json += mqttConn   ? "true" : "false";
     json += "}";
@@ -860,12 +898,110 @@ void ConfigServer::handleSetDiscordWebhook() {
     if (server->hasArg("webhook")) {
         String webhook = server->arg("webhook");
         discordService->updateWebhookUrl(webhook.c_str());
-        
+
         String json = "{\"success\":true,\"message\":\"Discord webhook updated\"}";
         server->send(200, "application/json", json);
-        LOG_INFO("[CONFIG] Discord webhook updated: %s", webhook.c_str());
+        LOG_INFO("[CONFIG] Discord webhook updated");
     } else {
         server->send(400, "application/json", "{\"error\":\"Missing webhook parameter\"}");
+    }
+}
+
+void ConfigServer::handleSetTwilioCreds() {
+    serverStartTime = millis();
+
+    if (!smsService) {
+        server->send(503, "application/json", "{\"error\":\"SMS service not available\"}");
+        return;
+    }
+
+    String sid    = server->arg("sid");
+    String token  = server->arg("token");
+    String svcSid = server->arg("svc_sid");
+
+    if (sid.isEmpty() && token.isEmpty() && svcSid.isEmpty()) {
+        server->send(400, "application/json", "{\"error\":\"No Twilio credentials provided\"}");
+        return;
+    }
+
+    smsService->updateTwilioCreds(
+        sid.isEmpty()    ? nullptr : sid.c_str(),
+        token.isEmpty()  ? nullptr : token.c_str(),
+        svcSid.isEmpty() ? nullptr : svcSid.c_str()
+    );
+
+    server->send(200, "application/json", "{\"success\":true,\"message\":\"Twilio credentials updated\"}");
+    LOG_INFO("[CONFIG] Twilio credentials updated");
+}
+
+void ConfigServer::handleSetCustomChannel() {
+    serverStartTime = millis();
+
+    if (!customService) {
+        server->send(503, "application/json", "{\"error\":\"Custom channel not available\"}");
+        return;
+    }
+
+    // Require at minimum an endpoint and a body template
+    if (!server->hasArg("endpoint") || server->arg("endpoint").isEmpty()) {
+        server->send(400, "application/json", "{\"error\":\"Missing endpoint parameter\"}");
+        return;
+    }
+    if (!server->hasArg("tmpl") || server->arg("tmpl").isEmpty()) {
+        server->send(400, "application/json", "{\"error\":\"Missing tmpl (body template) parameter\"}");
+        return;
+    }
+
+    String endpoint = server->arg("endpoint");
+    String ctype    = server->hasArg("ctype")    ? server->arg("ctype")    : "application/json";
+    String auth     = server->hasArg("auth")     ? server->arg("auth")     : "none";
+    String user     = server->hasArg("user")     ? server->arg("user")     : "";
+    String secret   = server->hasArg("secret")   ? server->arg("secret")   : "";
+    String tmpl     = server->arg("tmpl");
+
+    // Sanitise auth type to one of the three accepted values
+    if (auth != "basic" && auth != "bearer") auth = "none";
+
+    customService->updateConfig(
+        endpoint.c_str(),
+        ctype.c_str(),
+        auth.c_str(),
+        user.isEmpty()   ? nullptr : user.c_str(),
+        secret.isEmpty() ? nullptr : secret.c_str(),
+        tmpl.c_str()
+    );
+
+    server->send(200, "application/json", "{\"success\":true,\"message\":\"Custom channel updated\"}");
+    LOG_INFO("[CONFIG] Custom HTTP channel updated: %s", endpoint.c_str());
+}
+
+void ConfigServer::handleTestCustom() {
+    serverStartTime = millis();
+
+    if (!customService) {
+        server->send(503, "application/json", "{\"error\":\"Custom channel not available\"}");
+        return;
+    }
+
+    if (!customService->isConfigured()) {
+        server->send(400, "application/json", "{\"error\":\"Custom channel not configured. Set endpoint and body template first.\"}");
+        return;
+    }
+
+    if (!WiFi.isConnected()) {
+        server->send(503, "application/json", "{\"error\":\"WiFi not connected. Cannot send custom notification.\"}");
+        return;
+    }
+
+    LOG_INFO("[TEST] Sending test custom HTTP notification...");
+    bool success = customService->send("BilgeRise Test: This is a test message from your ESP32 boat monitor.");
+
+    if (success) {
+        LOG_INFO("[TEST] Test custom notification sent successfully!");
+        server->send(200, "application/json", "{\"success\":true,\"message\":\"Test custom notification sent!\"}");
+    } else {
+        LOG_INFO("[TEST] Test custom notification failed");
+        server->send(500, "application/json", "{\"success\":false,\"error\":\"Failed to send test notification. Check serial log for details.\"}");
     }
 }
 

@@ -1,3 +1,4 @@
+#ifndef UNIT_TESTING
 #include <Arduino.h>
 #include "LightCode.h"
 #include "Logger.h"
@@ -72,3 +73,4 @@ void LightCode::update() {
         digitalWrite(ledPin, ledState ? HIGH : LOW);
     }
 }
+#endif // UNIT_TESTING

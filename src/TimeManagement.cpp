@@ -1,3 +1,5 @@
+#ifndef UNIT_TESTING
+
 #include "TimeManagement.h"
 #include <Arduino.h>
 
@@ -177,3 +179,5 @@ void TimeManagement::onSNTPSync(struct timeval *tv) {
     instance.lastSyncTime = tv->tv_sec;
     ESP_LOGI(TAG, "SNTP sync completed via callback");
 }
+
+#endif // UNIT_TESTING
