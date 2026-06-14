@@ -37,26 +37,35 @@ Key facts:
   per-device cert is needed; the CA is compiled into the firmware. Auth is
   username/password, one user per device (no mTLS).
 
-## Dynamic DNS via systemd timer
+## Dynamic DNS (compose service)
 
-`ddns/cloudflare-ddns.sh` updates the Cloudflare A record to the host's current
-public IP (reading `CF_API_TOKEN` / `CF_ZONE` / `CF_RECORD` from `.env`). The
-README shows a cron example; the live host instead uses a **systemd timer**
-(unit files in [`ddns/systemd/`](ddns/systemd/)):
+The host's public IP is dynamic, so the Cloudflare A record must be kept current.
+This runs as the **`cloudflare-ddns` service in
+[docker-compose.yml](docker-compose.yml)** — a tiny container
+([`ddns/Dockerfile`](ddns/Dockerfile)) that runs the bundled
+[`ddns/cloudflare-ddns.sh`](ddns/cloudflare-ddns.sh) every `DDNS_INTERVAL`
+seconds (default 300). Keeping it in compose makes the whole stack one source of
+truth — no host cron or systemd timer, nothing in `/etc`, and it reproduces on
+any host with `docker compose up -d`.
 
-```bash
-# Adjust ExecStart path / User in the .service first, then:
-sudo cp ddns/systemd/cloudflare-ddns.{service,timer} /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now cloudflare-ddns.timer
+Required in `.env`:
 
-# Verify:
-systemctl list-timers cloudflare-ddns.timer      # next/last run
-journalctl -u cloudflare-ddns.service -n 5       # "updated ... -> <ip>" / "already <ip>"
+```ini
+CF_API_TOKEN=…                          # Cloudflare token, Zone:DNS:Edit on the zone
+CF_ZONE=garageforge.ca                  # the zone (root domain)
+CF_RECORD=mqtt.bilgerise.garageforge.ca # the full A record to keep updated
+DDNS_INTERVAL=300                       # optional, seconds between checks
 ```
 
-> These unit files live **outside the repo** once installed (`/etc/systemd/`),
-> so they are not captured by a repo backup — reinstall them after a reimage.
+Bring it up / watch it:
+
+```bash
+docker compose up -d --build cloudflare-ddns   # build image + start
+docker compose logs -f cloudflare-ddns         # "updated ... -> <ip>" / "already <ip>"
+```
+
+The record MUST stay **DNS-only (grey-cloud)** — the script enforces
+`proxied:false`, but don't flip it on in the dashboard either.
 
 ## Troubleshooting: device can't reach the broker
 
