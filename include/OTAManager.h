@@ -8,6 +8,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/semphr.h>
+#include <atomic>
 #include "NotificationWorker.h"
 
 constexpr const char OTA_PREFERENCES_NAMESPACE[] = "ota_config";
@@ -89,15 +90,22 @@ private:
     NotificationWorker* notifier;
     Preferences preferences;
 
-    // State (guarded by stateMux for cross-task access)
-    OTAState      currentState;
+    // Concurrency model (three tasks touch this state: the Core 0 check task,
+    // the Core 1 loop task, and the web-server task via the getters):
+    //   - currentState: std::atomic — read/written lock-free from any task.
+    //   - lastError / versionInfo / lastCheckTime: String/struct fields that are
+    //     NOT safe to copy while another task mutates them, so every access goes
+    //     through stateMux. Write lastError via setError(); read via getLastError().
+    //   - versionInfo.currentVersion is set once in the constructor and then
+    //     treated as immutable, so it may be read lock-free.
+    std::atomic<OTAState> currentState;
     OTAConfig     config;
     VersionInfo   versionInfo;
     unsigned long lastCheckTime;
     String        lastError;
 
     // FreeRTOS primitives for the background check task
-    SemaphoreHandle_t stateMux;      // Mutex protecting currentState / versionInfo / lastError
+    SemaphoreHandle_t stateMux;      // Mutex protecting lastError / versionInfo / lastCheckTime
     TaskHandle_t      checkTaskHandle;
     volatile bool     checkRequested; // Set by loop task, consumed by check task
 
@@ -105,9 +113,10 @@ private:
     void loadConfig();
     void saveConfig();
     void sendNotification(const char* message);
+    void setError(const String& msg);   // Thread-safe write to lastError (takes stateMux)
     bool checkForUpdates();
     bool compareVersions(const String& v1, const String& v2);
-    bool downloadAndInstall(const String& url, size_t expectedSize);
+    bool downloadAndInstall(const String& url, size_t expectedSize, const String& expectedSha256);
     void checkFirstBoot();
     void setFirstBootFlag();
     void clearFirstBootFlag();
@@ -146,12 +155,13 @@ public:
     void setAutoInstall(bool enabled);
     void setNotificationsEnabled(bool enabled);
 
-    // Getters (lock-free for simple booleans; use mutex for String fields)
-    OTAState getState() const { return currentState; }
-    String getCurrentVersion() const { return versionInfo.currentVersion; }
-    String getAvailableVersion() const { return versionInfo.availableVersion; }
-    String getLastError() const { return lastError; }
-    bool isUpdateAvailable() const { return currentState == OTAState::UPDATE_AVAILABLE; }
+    // Getters (currentState is atomic; String fields that the check task may
+    // mutate are copied under stateMux — see getAvailableVersion/getLastError).
+    OTAState getState() const { return currentState.load(); }
+    String getCurrentVersion() const { return versionInfo.currentVersion; } // immutable after ctor
+    String getAvailableVersion() const;   // locks stateMux (defined in .cpp)
+    String getLastError() const;          // locks stateMux (defined in .cpp)
+    bool isUpdateAvailable() const { return currentState.load() == OTAState::UPDATE_AVAILABLE; }
     bool isAutoCheckEnabled() const { return config.autoCheckEnabled; }
     bool isAutoInstallEnabled() const { return config.autoInstallEnabled; }
     bool areNotificationsEnabled() const { return config.notificationsEnabled; }
