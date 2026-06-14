@@ -6,10 +6,10 @@
 
 constexpr uint32_t NotificationWorker::RETRY_BACKOFF_MS[3];
 
-void NotificationWorker::begin(SendSMS* sms, SendDiscord* discord, bool dryRunMode) {
-    smsService     = sms;
-    discordService = discord;
-    dryRun         = dryRunMode;
+void NotificationWorker::begin(NotificationChannel** channels, size_t count, bool dryRunMode) {
+    channelRegistry = channels;
+    channelCount    = count;
+    dryRun          = dryRunMode;
 
     fifoQueue        = xQueueCreate(FIFO_DEPTH, sizeof(NotifMsg));
     emergencyMailbox = xQueueCreate(1, sizeof(NotifMsg));
@@ -76,36 +76,23 @@ void NotificationWorker::taskEntry(void* arg) {
 }
 
 void NotificationWorker::deliver(NotifMsg& msg) {
-    // Track per-channel so a channel that already succeeded is never re-sent.
-    // Use the channels bitmask so adding a third channel only requires adding
-    // an entry to the table below, not touching this loop.
-    struct ChanEntry {
-        uint8_t     flag;
-        const char* name;
-        bool (*send)(void* svc, const char* body);
-        void*       service;
-    };
-
-    // Channel dispatch table — extend here for future channels
-    ChanEntry channels[] = {
-        { CHAN_SMS,     "SMS",     [](void* s, const char* b) { return static_cast<SendSMS*>(s)->send(b); },     smsService     },
-        { CHAN_DISCORD, "Discord", [](void* s, const char* b) { return static_cast<SendDiscord*>(s)->send(b); }, discordService },
-    };
-    constexpr size_t NUM_CHANNELS = sizeof(channels) / sizeof(channels[0]);
-
-    // pending bitmask: start with requested channels that have a live service
+    // pending bitmask: only channels that are requested AND configured.
+    // Unconfigured channels are skipped silently — not an error, just not set up yet.
     uint8_t pending = 0;
-    for (size_t i = 0; i < NUM_CHANNELS; i++) {
-        if ((msg.channels & channels[i].flag) && channels[i].service) {
-            pending |= channels[i].flag;
+    for (size_t i = 0; i < channelCount; i++) {
+        NotificationChannel* ch = channelRegistry[i];
+        if (ch && (msg.channels & ch->channelFlag()) && ch->isConfigured()) {
+            pending |= ch->channelFlag();
         }
     }
 
     for (uint8_t attempt = 1; attempt <= SEND_ATTEMPTS && pending; attempt++) {
-        for (size_t i = 0; i < NUM_CHANNELS; i++) {
-            if (pending & channels[i].flag) {
-                if (channels[i].send(channels[i].service, msg.body)) {
-                    pending &= ~channels[i].flag;
+        for (size_t i = 0; i < channelCount; i++) {
+            NotificationChannel* ch = channelRegistry[i];
+            if (!ch) continue;
+            if (pending & ch->channelFlag()) {
+                if (ch->send(msg.body)) {
+                    pending &= ~ch->channelFlag();
                 }
             }
         }
@@ -118,10 +105,12 @@ void NotificationWorker::deliver(NotifMsg& msg) {
         }
     }
 
-    for (size_t i = 0; i < NUM_CHANNELS; i++) {
-        if (pending & channels[i].flag) {
+    // Log any channels that exhausted all retries
+    for (size_t i = 0; i < channelCount; i++) {
+        NotificationChannel* ch = channelRegistry[i];
+        if (ch && (pending & ch->channelFlag())) {
             LOG_CRITICAL("[NOTIFIER] %s send GAVE UP after %u attempts: %.60s",
-                         channels[i].name, SEND_ATTEMPTS, msg.body);
+                         ch->name(), SEND_ATTEMPTS, msg.body);
         }
     }
 }

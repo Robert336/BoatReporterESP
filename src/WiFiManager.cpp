@@ -1,3 +1,4 @@
+#ifndef UNIT_TESTING
 #include "WiFiManager.h"
 #include "Logger.h"
 
@@ -304,3 +305,4 @@ const char* WiFiManager::reasonToString(uint8_t reason) {
         default:  return "unknown";
     }
 }
+#endif // UNIT_TESTING

@@ -6,8 +6,9 @@
 #include <Preferences.h>
 #include "WiFiManager.h"
 #include "WaterPressureSensor.h"
-#include "SendSMS.h"
-#include "SendDiscord.h"
+#include "SmsChannel.h"
+#include "DiscordChannel.h"
+#include "CustomChannel.h"
 #include "OTAManager.h"
 #include "MQTTService.h"
 #include "SettingsStore.h"
@@ -54,8 +55,9 @@ private:
     WebServer* server;
     DNSServer* dnsServer = nullptr;         // DNS server for captive portal
     WaterPressureSensor* waterSensor;
-    SendSMS* smsService;
-    SendDiscord* discordService;
+    SmsChannel*     smsService;
+    DiscordChannel* discordService;
+    CustomChannel*  customService;
     OTAManager* otaManager;
     MQTTService* mqttService;
     SettingsStore* settingsStore;           // Single source of truth for alarm thresholds
@@ -95,9 +97,12 @@ private:
     void handleGetNotifications();          // GET: Return current notification settings
     void handleNotificationsStatus();       // GET: Lean status-only JSON (booleans, no secrets) for polling
     void handleSetPhoneNumber();            // POST: Set SMS phone number
+    void handleSetTwilioCreds();            // POST: Set Twilio account SID / auth token / svc SID
     void handleSetDiscordWebhook();         // POST: Set Discord webhook URL
+    void handleSetCustomChannel();          // POST: Set custom HTTP channel config
     void handleTestSMS();                   // POST: Send a test SMS message
     void handleTestDiscord();               // POST: Send a test Discord message
+    void handleTestCustom();                // POST: Send a test custom channel message
     void handleSetMqttConfig();             // POST: Configure MQTT broker
     void handleTestMqtt();                  // POST: Send a test MQTT message
     
@@ -116,9 +121,13 @@ private:
     void handleOTASettings();               // POST: Configure OTA settings
     
 public:
-    ConfigServer(WaterPressureSensor* sensor = nullptr, SendSMS* sms = nullptr,
-                 SendDiscord* discord = nullptr, OTAManager* ota = nullptr,
-                 MQTTService* mqtt = nullptr, SettingsStore* settings = nullptr);
+    ConfigServer(WaterPressureSensor* sensor  = nullptr,
+                 SmsChannel*          sms     = nullptr,
+                 DiscordChannel*      discord = nullptr,
+                 CustomChannel*       custom  = nullptr,
+                 OTAManager*          ota     = nullptr,
+                 MQTTService*         mqtt    = nullptr,
+                 SettingsStore*       settings = nullptr);
     ~ConfigServer();
     
     // Start AP + Web server

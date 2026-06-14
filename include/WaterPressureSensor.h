@@ -3,7 +3,11 @@
 #include <cstdint>
 #include <cmath>
 #include "TimeManagement.h"
+// Real ADS1115 driver only on hardware; native tests use test/mocks/MockADS1115.h
+// (included before this header) to provide the Adafruit_ADS1115 type.
+#ifndef UNIT_TESTING
 #include <Adafruit_ADS1X15.h>
+#endif
 
 
 static constexpr int I2C_SDA_PIN = 21;
