@@ -38,7 +38,7 @@ First launch initializes InfluxDB (org/bucket/token from `.env`) and auto-loads
 the Grafana datasource + the **Boat Reporter — Bilge Monitor** dashboard.
 
 > For how the live broker is actually deployed (Docker on the host, router DMZ,
-> dynamic IP, systemd DDNS) and a runbook for when a device can't connect, see
+> dynamic IP, Cloudflare DDNS) and a runbook for when a device can't connect, see
 > [DEPLOYMENT.md](DEPLOYMENT.md).
 
 - **Grafana:** `http://<pi-ip>:3000` — log in with `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD`.
@@ -91,8 +91,9 @@ ISP rotates the IP:
             /path/to/server-stack/ddns/cloudflare-ddns.sh >> /var/log/ddns.log 2>&1
 ```
 
-On a systemd host, use the timer units in [`ddns/systemd/`](ddns/systemd/)
-instead of cron — see [DEPLOYMENT.md](DEPLOYMENT.md#dynamic-dns-via-systemd-timer).
+Or — simplest — run it as the bundled **`cloudflare-ddns` compose service** (set
+`CF_*` in `.env`; no host cron needed) — see
+[DEPLOYMENT.md](DEPLOYMENT.md#dynamic-dns-compose-service).
 (DuckDNS works equally well if you'd rather not manage a domain.)
 
 ### 2. TLS certificate (Let's Encrypt, DNS-01)

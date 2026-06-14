@@ -85,6 +85,24 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
 
+  # Dynamic DNS: keeps the broker's Cloudflare A record pointed at the host's
+  # current public IP (residential IP is dynamic). Runs the bundled script
+  # (ddns/cloudflare-ddns.sh) on an interval — replaces the old host systemd
+  # timer so the whole DDNS setup lives in this compose file.
+  # Only needed for WAN/TLS deployments; the record MUST stay DNS-only (grey
+  # cloud). Harmless to leave running on a LAN-only setup if CF_* are unset
+  # (it will just log and retry).
+  cloudflare-ddns:
+    build: ./ddns
+    image: boat-cloudflare-ddns
+    container_name: boat-cloudflare-ddns
+    restart: unless-stopped
+    environment:
+      CF_API_TOKEN: ${CF_API_TOKEN}
+      CF_ZONE: ${CF_ZONE}
+      CF_RECORD: ${CF_RECORD}
+      DDNS_INTERVAL: ${DDNS_INTERVAL:-300}
+
 volumes:
   mosquitto-data:
   mosquitto-log:
