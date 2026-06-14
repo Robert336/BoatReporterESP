@@ -4,8 +4,18 @@
 #include "Logger.h"
 #include "Version.h"
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <esp_ota_ops.h>
 #include <esp_task_wdt.h>
+#include "mbedtls/sha256.h"
+
+// Full Mozilla root CA bundle, embedded in the firmware by the ESP-IDF mbedTLS
+// component (CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y in the precompiled
+// arduino-esp32 SDK). Pointing WiFiClientSecure at this bundle lets us verify the
+// TLS chain for BOTH api.github.com and the objects.githubusercontent.com
+// (Fastly) redirect target without shipping or pinning any certificate ourselves,
+// and it survives CA rotation on either host.
+extern const uint8_t rootca_crt_bundle_start[] asm("_binary_x509_crt_bundle_start");
 
 OTAManager::OTAManager(NotificationWorker* notif)
     : notifier(notif), currentState(OTAState::IDLE),
@@ -31,18 +41,18 @@ OTAManager::~OTAManager() {
 void OTAManager::begin() {
     LOG_INFO("[OTA] Initializing OTA Manager v%s", versionInfo.currentVersion.c_str());
 
-    // Recover from any interrupted update state (device rebooted during update)
-    if (currentState == OTAState::DOWNLOADING ||
-        currentState == OTAState::INSTALLING ||
-        currentState == OTAState::CHECKING) {
+    // Recover from any interrupted update state (device rebooted during update).
+    // Runs single-threaded before the check task is spawned, so no lock needed.
+    OTAState bootState = currentState.load();
+    if (bootState == OTAState::DOWNLOADING ||
+        bootState == OTAState::INSTALLING ||
+        bootState == OTAState::CHECKING) {
         LOG_INFO("[OTA] Recovering from interrupted update state");
-        currentState = OTAState::IDLE;
+        currentState.store(OTAState::IDLE);
         lastError = "Update interrupted by reboot";
-    }
-
-    if (currentState == OTAState::FAILED) {
+    } else if (bootState == OTAState::FAILED) {
         LOG_INFO("[OTA] Clearing previous FAILED state on boot");
-        currentState = OTAState::IDLE;
+        currentState.store(OTAState::IDLE);
     }
 
     // Load configuration from NVS
@@ -77,15 +87,12 @@ void OTAManager::begin() {
 void OTAManager::loopInstallOnly() {
     // Auto-recover from FAILED state after some time to allow retry
     static unsigned long failedStateTime = 0;
-    if (currentState == OTAState::FAILED) {
+    if (currentState.load() == OTAState::FAILED) {
         if (failedStateTime == 0) {
             failedStateTime = millis();
         } else if (millis() - failedStateTime > FAILED_STATE_RECOVERY_MS) {
             LOG_INFO("[OTA] Auto-recovering from FAILED state");
-            if (xSemaphoreTake(stateMux, pdMS_TO_TICKS(50)) == pdTRUE) {
-                currentState = OTAState::IDLE;
-                xSemaphoreGive(stateMux);
-            }
+            currentState.store(OTAState::IDLE);
             failedStateTime = 0;
         }
         return;
@@ -94,7 +101,7 @@ void OTAManager::loopInstallOnly() {
     }
 
     // Check if auto-install is enabled and update is available
-    if (config.autoInstallEnabled && currentState == OTAState::UPDATE_AVAILABLE) {
+    if (config.autoInstallEnabled && currentState.load() == OTAState::UPDATE_AVAILABLE) {
         LOG_INFO("[OTA] Auto-install enabled and update available - starting automatic installation");
         startUpdate(nullptr);
     }
@@ -112,7 +119,8 @@ void OTAManager::runCheckTask() {
         vTaskDelay(pdMS_TO_TICKS(1000)); // Wake every second to check timer
 
         // Don't interfere while downloading/installing on the loop task
-        if (currentState == OTAState::DOWNLOADING || currentState == OTAState::INSTALLING) {
+        OTAState s = currentState.load();
+        if (s == OTAState::DOWNLOADING || s == OTAState::INSTALLING) {
             continue;
         }
 
@@ -266,6 +274,34 @@ void OTAManager::sendNotification(const char* message) {
     notifier->enqueue(message);
 }
 
+// lastError is a heap-backed String written by the check task (Core 0) and the
+// loop task (Core 1) and read by the web-server task. Every access goes through
+// stateMux so a reader never copies the String while a writer reallocates it.
+void OTAManager::setError(const String& msg) {
+    if (xSemaphoreTake(stateMux, pdMS_TO_TICKS(100)) == pdTRUE) {
+        lastError = msg;
+        xSemaphoreGive(stateMux);
+    }
+}
+
+String OTAManager::getLastError() const {
+    String copy;
+    if (xSemaphoreTake(stateMux, pdMS_TO_TICKS(100)) == pdTRUE) {
+        copy = lastError;
+        xSemaphoreGive(stateMux);
+    }
+    return copy;
+}
+
+String OTAManager::getAvailableVersion() const {
+    String copy;
+    if (xSemaphoreTake(stateMux, pdMS_TO_TICKS(100)) == pdTRUE) {
+        copy = versionInfo.availableVersion;
+        xSemaphoreGive(stateMux);
+    }
+    return copy;
+}
+
 bool OTAManager::manualCheckForUpdates() {
     // Signal the background task rather than calling checkForUpdates() directly
     // from the loop task (which would block loop() for up to API_TIMEOUT_MS).
@@ -276,25 +312,19 @@ bool OTAManager::manualCheckForUpdates() {
 bool OTAManager::checkForUpdates() {
     // Check WiFi connectivity first
     if (!WiFi.isConnected()) {
-        if (xSemaphoreTake(stateMux, pdMS_TO_TICKS(100)) == pdTRUE) {
-            lastError = "No WiFi connection";
-            xSemaphoreGive(stateMux);
-        }
+        setError("No WiFi connection");
         LOG_INFO("[OTA] No WiFi connection");
         return false;
     }
 
     if (config.githubOwner.isEmpty() || config.githubRepo.isEmpty()) {
-        if (xSemaphoreTake(stateMux, pdMS_TO_TICKS(100)) == pdTRUE) {
-            lastError = "GitHub repository not configured";
-            currentState = OTAState::IDLE;
-            xSemaphoreGive(stateMux);
-        }
+        setError("GitHub repository not configured");
+        currentState.store(OTAState::IDLE);
         return false;
     }
 
+    currentState.store(OTAState::CHECKING);
     if (xSemaphoreTake(stateMux, pdMS_TO_TICKS(100)) == pdTRUE) {
-        currentState = OTAState::CHECKING;
         lastCheckTime = millis();
         xSemaphoreGive(stateMux);
     }
@@ -305,8 +335,17 @@ bool OTAManager::checkForUpdates() {
     String url = "https://api.github.com/repos/" + config.githubOwner + "/" +
                  config.githubRepo + "/releases/latest";
 
+    // Verify the TLS chain against the embedded Mozilla root bundle. No insecure
+    // fallback — a failed handshake fails the check rather than trusting the peer.
+    WiFiClientSecure client;
+    client.setCACertBundle(rootca_crt_bundle_start);
+
     HTTPClient http;
-    http.begin(url);
+    if (!http.begin(client, url)) {
+        setError("Failed to start HTTPS connection");
+        currentState.store(OTAState::FAILED);
+        return false;
+    }
     http.setTimeout(API_TIMEOUT_MS);
     http.addHeader("User-Agent", "ESP32-BilgeRise");
 
@@ -320,48 +359,41 @@ bool OTAManager::checkForUpdates() {
         const char* e = "GitHub API rate limited - try again later";
         LOG_INFO("[OTA] %s", e);
         http.end();
-        if (xSemaphoreTake(stateMux, pdMS_TO_TICKS(100)) == pdTRUE) {
-            lastError = e;
-            currentState = OTAState::FAILED;
-            xSemaphoreGive(stateMux);
-        }
+        setError(e);
+        currentState.store(OTAState::FAILED);
         return false;
     }
 
     if (httpCode != HTTP_CODE_OK) {
         LOG_INFO("[OTA] GitHub API request failed: %d", httpCode);
         http.end();
-        if (xSemaphoreTake(stateMux, pdMS_TO_TICKS(100)) == pdTRUE) {
-            lastError = "GitHub API request failed: " + String(httpCode);
-            currentState = OTAState::FAILED;
-            xSemaphoreGive(stateMux);
-        }
+        setError("GitHub API request failed: " + String(httpCode));
+        currentState.store(OTAState::FAILED);
         return false;
     }
 
     // --- P4: Filtered ArduinoJson parse — only fields we need are buffered ---
-    // Filter: keep tag_name and assets[].{name,browser_download_url,size}
-    StaticJsonDocument<128> filter;
+    // Filter: keep tag_name and assets[].{name,browser_download_url,size,digest}
+    StaticJsonDocument<160> filter;
     filter["tag_name"] = true;
     JsonObject assetFilter = filter["assets"].createNestedObject();
     assetFilter["name"]                 = true;
     assetFilter["browser_download_url"] = true;
     assetFilter["size"]                 = true;
+    assetFilter["digest"]               = true;
 
-    // Payload document: tag_name (32B) + one asset entry (URL ~120B + name ~20B + size 8B)
-    // A generous 512 B is more than enough for the filtered subset.
-    StaticJsonDocument<512> doc;
+    // Payload document: tag_name + a few asset entries (each ~URL 120B + name 20B +
+    // size 8B + digest "sha256:"+64hex ~72B). 1 KB leaves headroom for releases
+    // that carry several assets alongside firmware.bin.
+    StaticJsonDocument<1024> doc;
     DeserializationError error = deserializeJson(doc, *http.getStreamPtr(),
                                                  DeserializationOption::Filter(filter));
     http.end();
 
     if (error) {
         LOG_INFO("[OTA] Failed to parse GitHub API response: %s", error.c_str());
-        if (xSemaphoreTake(stateMux, pdMS_TO_TICKS(100)) == pdTRUE) {
-            lastError = "Failed to parse GitHub API response";
-            currentState = OTAState::FAILED;
-            xSemaphoreGive(stateMux);
-        }
+        setError("Failed to parse GitHub API response");
+        currentState.store(OTAState::FAILED);
         return false;
     }
 
@@ -369,11 +401,8 @@ bool OTAManager::checkForUpdates() {
     const char* tag_name = doc["tag_name"];
     if (!tag_name) {
         LOG_INFO("[OTA] No tag_name in release");
-        if (xSemaphoreTake(stateMux, pdMS_TO_TICKS(100)) == pdTRUE) {
-            lastError = "No tag_name in release";
-            currentState = OTAState::FAILED;
-            xSemaphoreGive(stateMux);
-        }
+        setError("No tag_name in release");
+        currentState.store(OTAState::FAILED);
         return false;
     }
 
@@ -382,9 +411,10 @@ bool OTAManager::checkForUpdates() {
         latestVersion = latestVersion.substring(1);
     }
 
-    // Find firmware.bin asset
+    // Find firmware.bin asset (and capture its SHA256 digest for verification)
     JsonArray assets = doc["assets"];
     String downloadUrl = "";
+    String firmwareSha256 = "";
     size_t firmwareSize = 0;
 
     for (JsonObject asset : assets) {
@@ -392,17 +422,22 @@ bool OTAManager::checkForUpdates() {
         if (name && String(name) == "firmware.bin") {
             downloadUrl = String(asset["browser_download_url"].as<const char*>());
             firmwareSize = asset["size"];
+            // GitHub returns "digest":"sha256:<hex>" on release assets. Strip the
+            // algorithm prefix so we keep the bare 64-char hex digest.
+            const char* digest = asset["digest"];
+            if (digest) {
+                String d = String(digest);
+                int colon = d.indexOf(':');
+                firmwareSha256 = (colon >= 0) ? d.substring(colon + 1) : d;
+            }
             break;
         }
     }
 
     if (downloadUrl.isEmpty()) {
         LOG_INFO("[OTA] No firmware.bin found in release");
-        if (xSemaphoreTake(stateMux, pdMS_TO_TICKS(100)) == pdTRUE) {
-            lastError = "No firmware.bin found in release";
-            currentState = OTAState::FAILED;
-            xSemaphoreGive(stateMux);
-        }
+        setError("No firmware.bin found in release");
+        currentState.store(OTAState::FAILED);
         return false;
     }
 
@@ -413,9 +448,10 @@ bool OTAManager::checkForUpdates() {
         versionInfo.availableVersion = latestVersion;
         versionInfo.downloadUrl      = downloadUrl;
         versionInfo.firmwareSize     = firmwareSize;
-        currentState = updateAvailable ? OTAState::UPDATE_AVAILABLE : OTAState::IDLE;
+        versionInfo.firmwareHash     = firmwareSha256;
         xSemaphoreGive(stateMux);
     }
+    currentState.store(updateAvailable ? OTAState::UPDATE_AVAILABLE : OTAState::IDLE);
 
     if (updateAvailable) {
         char msg[SHORT_MESSAGE_BUFFER_SIZE];
@@ -426,6 +462,9 @@ bool OTAManager::checkForUpdates() {
         LOG_INFO("[OTA] %s", msg);
         LOG_INFO("[OTA] Download URL: %s", downloadUrl.c_str());
         LOG_INFO("[OTA] Size: %u bytes", firmwareSize);
+        if (firmwareSha256.isEmpty()) {
+            LOG_CRITICAL("[OTA] WARNING: release has no SHA256 digest — install will be refused");
+        }
     } else {
         LOG_INFO("[OTA] Already on latest version v%s", versionInfo.currentVersion.c_str());
     }
@@ -469,72 +508,93 @@ int OTAManager::parseVersionComponent(const String& version, int component) {
 }
 
 bool OTAManager::startUpdate(const char* password) {
-    if (currentState != OTAState::UPDATE_AVAILABLE) {
-        lastError = "No update available";
-        LOG_INFO("[OTA] %s", lastError.c_str());
+    if (currentState.load() != OTAState::UPDATE_AVAILABLE) {
+        setError("No update available");
+        LOG_INFO("[OTA] No update available");
         return false;
+    }
+
+    // Snapshot the version info under the mutex so the check task can't mutate
+    // these Strings out from under us mid-update.
+    String url, expectedHash, availVer, curVer;
+    size_t fwSize = 0;
+    if (xSemaphoreTake(stateMux, pdMS_TO_TICKS(100)) == pdTRUE) {
+        url          = versionInfo.downloadUrl;
+        expectedHash = versionInfo.firmwareHash;
+        availVer     = versionInfo.availableVersion;
+        curVer       = versionInfo.currentVersion;
+        fwSize       = versionInfo.firmwareSize;
+        xSemaphoreGive(stateMux);
     }
 
     // Check password if configured
     if (!config.updatePassword.isEmpty()) {
         if (!password || config.updatePassword != String(password)) {
-            lastError = "Invalid password";
-            LOG_INFO("[OTA] Update blocked: %s", lastError.c_str());
+            setError("Invalid password");
+            LOG_INFO("[OTA] Update blocked: Invalid password");
             return false;
         }
     }
 
-    // Pre-flight validation checks
-    if (!validateFirmwareSize(versionInfo.firmwareSize)) {
-        lastError = "Firmware size validation failed";
-        LOG_CRITICAL("[OTA] %s", lastError.c_str());
-        currentState = OTAState::FAILED;
+    // Fail closed: never flash firmware we can't verify against a known digest.
+    if (expectedHash.isEmpty()) {
+        setError("No SHA256 digest in release - refusing to flash unverified firmware");
+        LOG_CRITICAL("[OTA] No SHA256 digest in release - refusing to flash unverified firmware");
+        currentState.store(OTAState::FAILED);
         return false;
     }
 
-    if (!checkFlashSpace(versionInfo.firmwareSize)) {
-        lastError = "Not enough flash space for firmware";
-        LOG_CRITICAL("[OTA] %s - required: %u bytes, available: %u bytes",
-                  lastError.c_str(), versionInfo.firmwareSize, ESP.getFreeSketchSpace());
-        currentState = OTAState::FAILED;
+    // Pre-flight validation checks
+    if (!validateFirmwareSize(fwSize)) {
+        setError("Firmware size validation failed");
+        LOG_CRITICAL("[OTA] Firmware size validation failed");
+        currentState.store(OTAState::FAILED);
+        return false;
+    }
+
+    if (!checkFlashSpace(fwSize)) {
+        setError("Not enough flash space for firmware");
+        LOG_CRITICAL("[OTA] Not enough flash space - required: %u bytes, available: %u bytes",
+                  fwSize, ESP.getFreeSketchSpace());
+        currentState.store(OTAState::FAILED);
         return false;
     }
 
     if (!checkHeapAvailable(OTA_BUFFER_SIZE * 2)) {
-        lastError = "Insufficient heap memory for download";
-        LOG_CRITICAL("[OTA] %s - free heap: %u bytes", lastError.c_str(), ESP.getFreeHeap());
-        currentState = OTAState::FAILED;
+        setError("Insufficient heap memory for download");
+        LOG_CRITICAL("[OTA] Insufficient heap memory - free heap: %u bytes", ESP.getFreeHeap());
+        currentState.store(OTAState::FAILED);
         return false;
     }
 
     if (!checkSignalStrength()) {
-        lastError = "WiFi signal too weak for reliable download";
-        LOG_CRITICAL("[OTA] %s - RSSI: %d dBm (minimum: %d dBm)",
-                     lastError.c_str(), WiFi.RSSI(), OTA_MIN_RSSI_DBM);
-        currentState = OTAState::FAILED;
+        setError("WiFi signal too weak for reliable download");
+        LOG_CRITICAL("[OTA] WiFi signal too weak - RSSI: %d dBm (minimum: %d dBm)",
+                     WiFi.RSSI(), OTA_MIN_RSSI_DBM);
+        currentState.store(OTAState::FAILED);
         return false;
     }
 
     char msg[NOTIFICATION_MESSAGE_BUFFER_SIZE];
     snprintf(msg, sizeof(msg),
              "BilgeRise: Starting firmware update from v%s to v%s. Device may be offline for 1-2 minutes.",
-             versionInfo.currentVersion.c_str(), versionInfo.availableVersion.c_str());
+             curVer.c_str(), availVer.c_str());
     sendNotification(msg);
     LOG_INFO("[OTA] %s", msg);
 
-    bool success = downloadAndInstall(versionInfo.downloadUrl, versionInfo.firmwareSize);
+    bool success = downloadAndInstall(url, fwSize, expectedHash);
 
     if (success) {
         setFirstBootFlag();
-        currentState = OTAState::SUCCESS;
+        currentState.store(OTAState::SUCCESS);
         LOG_INFO("[OTA] Update successful! Restarting immediately...");
         ESP.restart();
     } else {
-        currentState = OTAState::FAILED;
+        currentState.store(OTAState::FAILED);
 
         snprintf(msg, sizeof(msg),
                  "BilgeRise: Firmware update FAILED - %s. Still running v%s.",
-                 lastError.c_str(), versionInfo.currentVersion.c_str());
+                 getLastError().c_str(), curVer.c_str());
         sendNotification(msg);
         LOG_CRITICAL("[OTA] %s", msg);
     }
@@ -542,17 +602,27 @@ bool OTAManager::startUpdate(const char* password) {
     return success;
 }
 
-bool OTAManager::downloadAndInstall(const String& url, size_t expectedSize) {
+bool OTAManager::downloadAndInstall(const String& url, size_t expectedSize, const String& expectedSha256) {
     if (!WiFi.isConnected()) {
-        lastError = "No WiFi connection";
-        LOG_CRITICAL("[OTA] %s", lastError.c_str());
+        setError("No WiFi connection");
+        LOG_CRITICAL("[OTA] No WiFi connection");
         return false;
     }
 
-    currentState = OTAState::DOWNLOADING;
+    currentState.store(OTAState::DOWNLOADING);
+
+    // Verify the TLS chain against the embedded Mozilla root bundle. The same
+    // client is reused across the GitHub 302 redirect to objects.githubusercontent.com,
+    // so a CA bundle (not a pinned cert) is what makes both hops verifiable.
+    WiFiClientSecure client;
+    client.setCACertBundle(rootca_crt_bundle_start);
 
     HTTPClient http;
-    http.begin(url);
+    if (!http.begin(client, url)) {
+        setError("Failed to start HTTPS download");
+        LOG_CRITICAL("[OTA] Failed to start HTTPS download");
+        return false;
+    }
 
     // GitHub release asset URLs (browser_download_url) return an HTTP 302 to
     // objects.githubusercontent.com. Without this, GET() fails with HTTP 302.
@@ -561,11 +631,9 @@ bool OTAManager::downloadAndInstall(const String& url, size_t expectedSize) {
     // rejects an Authorization header. This project's repo is public and the
     // token is only added when set, so the existing logic below is left as-is.
 
-    // HTTPClient::setTimeout() takes uint16_t milliseconds (max ~65535 ms).
-    // FIRMWARE_DOWNLOAD_TIMEOUT_MS is 120 000 ms but that overflows uint16_t,
-    // so cap it at 60 000 ms. This is the socket/header timeout only — the full
-    // download is bounded by the DOWNLOAD_TIMEOUT_MS watchdog in the read loop.
-    // The previous value of (uint16_t)120 was only 120 ms (a bug).
+    // HTTPClient::setTimeout() takes uint16_t milliseconds (max ~65535 ms). This
+    // is the socket/header timeout only — the full download is bounded by the
+    // DOWNLOAD_TIMEOUT_MS watchdog in the read loop.
     http.setTimeout((uint16_t)60000);
 
     if (!config.githubToken.isEmpty()) {
@@ -575,8 +643,8 @@ bool OTAManager::downloadAndInstall(const String& url, size_t expectedSize) {
     int httpCode = http.GET();
 
     if (httpCode != HTTP_CODE_OK) {
-        lastError = "Download failed: HTTP " + String(httpCode);
-        LOG_CRITICAL("[OTA] %s", lastError.c_str());
+        setError("Download failed: HTTP " + String(httpCode));
+        LOG_CRITICAL("[OTA] Download failed: HTTP %d", httpCode);
         http.end();
         return false;
     }
@@ -584,8 +652,8 @@ bool OTAManager::downloadAndInstall(const String& url, size_t expectedSize) {
     int contentLength = http.getSize();
 
     if (contentLength <= 0) {
-        lastError = "Invalid content length (zero or unknown)";
-        LOG_CRITICAL("[OTA] %s", lastError.c_str());
+        setError("Invalid content length (zero or unknown)");
+        LOG_CRITICAL("[OTA] Invalid content length (zero or unknown)");
         http.end();
         return false;
     }
@@ -605,13 +673,19 @@ bool OTAManager::downloadAndInstall(const String& url, size_t expectedSize) {
     LOG_INFO("[OTA] Downloading firmware: %d bytes", contentLength);
 
     if (!Update.begin(contentLength)) {
-        lastError = "Not enough space for update";
-        LOG_CRITICAL("[OTA] %s", lastError.c_str());
+        setError("Not enough space for update");
+        LOG_CRITICAL("[OTA] Not enough space for update");
         http.end();
         return false;
     }
 
-    currentState = OTAState::INSTALLING;
+    currentState.store(OTAState::INSTALLING);
+
+    // Hash the payload as it streams so we can verify the firmware against the
+    // release's published SHA256 BEFORE committing the image to the boot partition.
+    mbedtls_sha256_context shaCtx;
+    mbedtls_sha256_init(&shaCtx);
+    mbedtls_sha256_starts_ret(&shaCtx, 0); // 0 = SHA-256 (not SHA-224)
 
     WiFiClient* stream = http.getStreamPtr();
 
@@ -625,9 +699,10 @@ bool OTAManager::downloadAndInstall(const String& url, size_t expectedSize) {
     while (http.connected() && written < contentLength) {
         esp_task_wdt_reset(); // Download runs on the loop task; keep feeding the dog
         if (millis() - downloadStart > DOWNLOAD_TIMEOUT_MS) {
-            lastError = "Download timeout - exceeded 5 minutes";
-            LOG_CRITICAL("[OTA] %s", lastError.c_str());
+            setError("Download timeout - exceeded 5 minutes");
+            LOG_CRITICAL("[OTA] Download timeout - exceeded 5 minutes");
             Update.abort();
+            mbedtls_sha256_free(&shaCtx);
             http.end();
             return false;
         }
@@ -641,13 +716,15 @@ bool OTAManager::downloadAndInstall(const String& url, size_t expectedSize) {
 
             size_t bytesWritten = Update.write(buffer, bytesRead);
             if (bytesWritten != bytesRead) {
-                lastError = "Write error";
-                LOG_CRITICAL("[OTA] %s", lastError.c_str());
+                setError("Write error");
+                LOG_CRITICAL("[OTA] Write error");
                 Update.abort();
+                mbedtls_sha256_free(&shaCtx);
                 http.end();
                 return false;
             }
 
+            mbedtls_sha256_update_ret(&shaCtx, buffer, bytesRead);
             written += bytesWritten;
 
             size_t progress = (written * 100) / contentLength;
@@ -657,9 +734,10 @@ bool OTAManager::downloadAndInstall(const String& url, size_t expectedSize) {
             }
         } else {
             if (millis() - lastDataTime > STALL_TIMEOUT_MS) {
-                lastError = "Download stalled - no data for 30 seconds";
-                LOG_CRITICAL("[OTA] %s", lastError.c_str());
+                setError("Download stalled - no data for 30 seconds");
+                LOG_CRITICAL("[OTA] Download stalled - no data for 30 seconds");
                 Update.abort();
+                mbedtls_sha256_free(&shaCtx);
                 http.end();
                 return false;
             }
@@ -671,23 +749,44 @@ bool OTAManager::downloadAndInstall(const String& url, size_t expectedSize) {
     http.end();
 
     if (written != contentLength) {
-        lastError = "Download incomplete";
-        LOG_CRITICAL("[OTA] %s: %u/%d bytes", lastError.c_str(), written, contentLength);
+        setError("Download incomplete");
+        LOG_CRITICAL("[OTA] Download incomplete: %u/%d bytes", written, contentLength);
+        Update.abort();
+        mbedtls_sha256_free(&shaCtx);
+        return false;
+    }
+
+    // Finalize the hash and verify it BEFORE committing the image. A mismatch
+    // means corruption or tampering — abort without activating the partition.
+    uint8_t hash[32];
+    mbedtls_sha256_finish_ret(&shaCtx, hash);
+    mbedtls_sha256_free(&shaCtx);
+
+    char hashHex[65];
+    for (int i = 0; i < 32; i++) {
+        snprintf(hashHex + (i * 2), 3, "%02x", hash[i]);
+    }
+
+    if (!expectedSha256.equalsIgnoreCase(hashHex)) {
+        setError("Firmware SHA256 mismatch - aborting install");
+        LOG_CRITICAL("[OTA] Firmware SHA256 mismatch - expected %s, got %s",
+                     expectedSha256.c_str(), hashHex);
         Update.abort();
         return false;
     }
 
+    LOG_INFO("[OTA] Firmware SHA256 verified: %s", hashHex);
     LOG_INFO("[OTA] Download complete: %u bytes", written);
 
     if (!Update.end(true)) {
-        lastError = "Update.end() failed";
-        LOG_CRITICAL("[OTA] %s: %s", lastError.c_str(), Update.errorString());
+        setError(String("Update.end() failed: ") + Update.errorString());
+        LOG_CRITICAL("[OTA] Update.end() failed: %s", Update.errorString());
         return false;
     }
 
     if (!Update.isFinished()) {
-        lastError = "Update not finished";
-        LOG_CRITICAL("[OTA] %s", lastError.c_str());
+        setError("Update not finished");
+        LOG_CRITICAL("[OTA] Update not finished");
         return false;
     }
 
