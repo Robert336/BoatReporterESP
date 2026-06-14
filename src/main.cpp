@@ -1,3 +1,7 @@
+// main.cpp is excluded entirely from unit test builds — it depends on
+// FreeRTOS, Arduino, and all hardware peripherals.
+#ifndef UNIT_TESTING
+
 #include <Arduino.h>
 #include <WiFi.h>
 #include <nvs_flash.h>
@@ -9,8 +13,10 @@
 #include "ConfigServer.h"
 #include "LightCode.h"
 #include "WaterPressureSensor.h"
-#include "SendSMS.h"
-#include "SendDiscord.h"
+#include "SmsChannel.h"
+#include "DiscordChannel.h"
+#include "CustomChannel.h"
+#include "NotifyChannelFlags.h"
 #include "OTAManager.h"
 #include "NotificationWorker.h"
 #include "StateMachine.h"
@@ -65,18 +71,16 @@ LightCode light(LIGHT_PIN);
 TimeManagement& rtc = TimeManagement::getInstance();
 WiFiManager& wifiMgr = WiFiManager::getInstance();
 WaterPressureSensor waterSensor(USE_MOCK); // false = use real sensor, not mock data
-SendSMS sms;
-SendDiscord discord;
+SmsChannel     smsChannel;
+DiscordChannel discordChannel;
+CustomChannel  customChannel;
 
-// Logger publishes logs via MQTT; Discord kept for OTA / direct emergency sends
-SendDiscord* g_discord = &discord;
 
-#ifndef UNIT_TESTING
 // NotificationWorker and MQTTService use FreeRTOS/Arduino APIs not available in
-// unit test builds — instantiate them only when compiling for real hardware.
+// unit test builds — the outer #ifndef UNIT_TESTING at the top of this file
+// excludes everything below.
 NotificationWorker notifier;
 MQTTService mqtt;
-// Exclude setup() and loop() when building unit tests to avoid conflicts with test harness
 void setup() {
     Serial.begin(115200);
 
@@ -108,8 +112,14 @@ void setup() {
     mqtt.begin();
     LOG_SETUP("[SETUP] MQTTService initialized");
 
-    // Start notification worker on Core 0 — SMS/Discord HTTP calls no longer block Core 1
-    notifier.begin(&sms, &discord, USE_MOCK);
+    // Load NVS caches for all channels before the notifier task starts
+    smsChannel.loadCache();
+    discordChannel.loadCache();
+    customChannel.loadCache();
+
+    // Start notification worker on Core 0 — all HTTP sends happen there, not on Core 1
+    static NotificationChannel* channels[] = { &smsChannel, &discordChannel, &customChannel };
+    notifier.begin(channels, 3, USE_MOCK);
     LOG_SETUP("[SETUP] NotificationWorker started on Core 0%s", USE_MOCK ? " (dry-run mode)" : "");
 
     // Initialize OTAManager early to check for rollback/first boot after update
@@ -119,7 +129,7 @@ void setup() {
 
     // Initialize ConfigServer early to load calibration from NVS
     // This ensures saved calibration is applied before first sensor reading
-    configServer = new ConfigServer(&waterSensor, &sms, &discord, otaManager, &mqtt, &settingsStore);
+    configServer = new ConfigServer(&waterSensor, &smsChannel, &discordChannel, &customChannel, otaManager, &mqtt, &settingsStore);
     LOG_SETUP("[SETUP] ConfigServer initialized - calibration loaded from NVS");
 
     // Print unique device AP password for easy access
@@ -427,7 +437,6 @@ void loop() {
     // so this delay is safe and does not affect responsiveness.
     vTaskDelay(pdMS_TO_TICKS(10));
 }
-#endif // UNIT_TESTING
 
 
 /*
@@ -462,3 +471,5 @@ void IRAM_ATTR handleButtonPress() {
         }
     }
 }
+
+#endif // UNIT_TESTING

@@ -1,3 +1,4 @@
+#ifndef UNIT_TESTING
 #include "SettingsStore.h"
 #include "Logger.h"
 
@@ -54,3 +55,5 @@ void SettingsStore::save(const SettingsValues& v) {
     vals = v; // Update in-RAM copy atomically
     LOG_INFO("[SETTINGS] Saved to NVS");
 }
+
+#endif // UNIT_TESTING

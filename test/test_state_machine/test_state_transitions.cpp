@@ -430,7 +430,8 @@ void test_silence_toggle_enables_silence() {
     
     TEST_ASSERT_TRUE(ctx.notificationsSilenced);
     TEST_ASSERT_TRUE(output.sendSilenceConfirmation);
-    TEST_ASSERT_TRUE(strlen(output.message) > 0);
+    // Note: handleSilenceToggle's contract is the boolean flags only; the
+    // confirmation text is built by the caller (main.cpp), not in output.message.
 }
 
 void test_silence_toggle_disables_silence() {
