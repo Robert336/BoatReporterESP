@@ -1,0 +1,11 @@
+[Unit]
+Description=Cloudflare DDNS update for the BoatReporter broker A record
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Run as the user that owns server-stack/.env (so the script can read CF_API_TOKEN).
+User=robert
+# Adjust this path to wherever the repo lives on the host.
+ExecStart=/home/robert/projects/BoatReporterESP/server-stack/ddns/cloudflare-ddns.sh
