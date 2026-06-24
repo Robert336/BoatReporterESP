@@ -6,6 +6,38 @@
 #include "compressed_pages.h"
 
 // ============================================================================
+// NETWORK STACK INSTRUMENTATION (dev build only)
+//
+// Logs per-request wall-clock time and free-heap delta for the hot-path
+// handlers (static pages + polled JSON endpoints) so the WebServer/AP-mode
+// network stack can be profiled without a debugger attached. Compiled out
+// entirely under PRODUCTION_BUILD — not just silenced via LOG_DEBUG — since
+// micros()/ESP.getFreeHeap() run on every request and PRODUCTION_BUILD
+// firmware shouldn't pay for that on a path this hot.
+// ============================================================================
+#ifndef PRODUCTION_BUILD
+class ScopedRequestProfiler {
+public:
+    explicit ScopedRequestProfiler(const char* label)
+        : label_(label), startUs_(micros()), startHeap_(ESP.getFreeHeap()) {}
+    ~ScopedRequestProfiler() {
+        uint32_t elapsedUs = micros() - startUs_;
+        uint32_t endHeap = ESP.getFreeHeap();
+        LOG_DEBUG("[PERF] %-18s %6lu us  heap %u -> %u (%ld)",
+                  label_, (unsigned long)elapsedUs, startHeap_, endHeap,
+                  (long)endHeap - (long)startHeap_);
+    }
+private:
+    const char* label_;
+    uint32_t startUs_;
+    uint32_t startHeap_;
+};
+#define PROFILE_REQUEST(label) ScopedRequestProfiler _reqProfiler(label)
+#else
+#define PROFILE_REQUEST(label) ((void)0)
+#endif
+
+// ============================================================================
 // CORE LIFECYCLE METHODS
 // ============================================================================
 
@@ -257,9 +289,22 @@ void ConfigServer::handleClient() {
     if (dnsServer) {
         dnsServer->processNextRequest();
     }
-    
+
     // Handle web server requests
+#ifndef PRODUCTION_BUILD
+    uint32_t dispatchStartUs = micros();
     server->handleClient();
+    uint32_t dispatchUs = micros() - dispatchStartUs;
+    // Idle polls with no client return in a handful of microseconds; only log
+    // when a real request was actually read/parsed/dispatched/written, so this
+    // captures pure socket+routing overhead (handler body time is logged
+    // separately by PROFILE_REQUEST and is a subset of this number).
+    if (dispatchUs > 1000) {
+        LOG_DEBUG("[PERF] %-18s %6lu us", "handleClient()", (unsigned long)dispatchUs);
+    }
+#else
+    server->handleClient();
+#endif
 
     // Handle server timeout
     if ((millis() - serverStartTime) >= SERVER_TIMEOUT_MS) {
@@ -284,22 +329,27 @@ void ConfigServer::sendCachedPage(const char* data, size_t len, const char* cont
 }
 
 void ConfigServer::handleRoot() {
+    PROFILE_REQUEST("GET /");
     sendCachedPage((const char*)INDEX_HTML_GZ, INDEX_HTML_GZ_LEN, "text/html");
 }
 
 void ConfigServer::handleWiFiConfig() {
+    PROFILE_REQUEST("GET /wifi-config");
     sendCachedPage((const char*)WIFI_CONFIG_HTML_GZ, WIFI_CONFIG_HTML_GZ_LEN, "text/html");
 }
 
 void ConfigServer::handleNotificationsPage() {
+    PROFILE_REQUEST("GET /notifications");
     sendCachedPage((const char*)NOTIFICATIONS_HTML_GZ, NOTIFICATIONS_HTML_GZ_LEN, "text/html");
 }
 
 void ConfigServer::handleSettings() {
+    PROFILE_REQUEST("GET /settings");
     sendCachedPage((const char*)SETTINGS_HTML_GZ, SETTINGS_HTML_GZ_LEN, "text/html");
 }
 
 void ConfigServer::handleInit() {
+    PROFILE_REQUEST("GET /init");
     String json = "{";
 
     bool connected = WiFiManager::getInstance().isConnected();
@@ -338,6 +388,7 @@ void ConfigServer::handleInit() {
 }
 
 void ConfigServer::handleSettingsInit() {
+    PROFILE_REQUEST("GET /settings/init");
     String json = "{";
 
     // notifications block (mirrors fields settings.html reads from /notifications)
@@ -373,6 +424,7 @@ void ConfigServer::handleSettingsInit() {
 }
 
 void ConfigServer::handleDebugInit() {
+    PROFILE_REQUEST("GET /debug/init");
     String json = "{\"reading\":";
 
     if (!waterSensor) {
@@ -441,6 +493,7 @@ void ConfigServer::handleSubmit() {
 }
 
 void ConfigServer::handleStatus() {
+    PROFILE_REQUEST("GET /status");
     // Return connection status as JSON
     String json = "{";
     json += "\"connected\":" + String(WiFiManager::getInstance().isConnected() ? "true" : "false") + ",";
@@ -1164,6 +1217,7 @@ void ConfigServer::handleTestMqtt() {
 // ============================================================================
 
 void ConfigServer::handleGetReading() {
+    PROFILE_REQUEST("GET /read");
     serverStartTime = millis();
 
     if (!waterSensor) {
@@ -1193,6 +1247,7 @@ void ConfigServer::handleGetReading() {
 }
 
 void ConfigServer::handleDebug() {
+    PROFILE_REQUEST("GET /debug");
     sendCachedPage((const char*)DEBUG_HTML_GZ, DEBUG_HTML_GZ_LEN, "text/html");
 }
 
