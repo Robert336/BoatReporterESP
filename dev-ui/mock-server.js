@@ -1,12 +1,38 @@
 const express = require('express');
 const cors = require('cors');
+const fs = require('fs');
+const zlib = require('zlib');
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Pre-gzip each page once at startup, mirroring scripts/compress_html.py + the
+// const uint8_t arrays in src/compressed_pages.h. Sending a pre-computed buffer
+// (instead of piping through a streaming compressor) lets us set a real
+// Content-Length instead of Transfer-Encoding: chunked, matching ConfigServer.cpp's
+// send_P(), which always knows the final gzipped length up front.
+function gzipPage(filename) {
+    return zlib.gzipSync(fs.readFileSync(__dirname + '/' + filename), { level: 9 });
+}
+
+const gzippedPages = {
+    index: gzipPage('index.html'),
+    settings: gzipPage('settings.html'),
+    notifications: gzipPage('notifications.html'),
+    wifiConfig: gzipPage('wifi-config.html'),
+    debug: gzipPage('debug.html'),
+};
+
+function sendGzippedPage(res, buf) {
+    res.set('Content-Type', 'text/html');
+    res.set('Content-Encoding', 'gzip');
+    res.set('Content-Length', buf.length);
+    res.end(buf);
+}
 
 // Mock state data (simulates NVS storage on ESP32)
 let mockState = {
@@ -16,6 +42,7 @@ let mockState = {
     connected: true,
     ip: '192.168.1.100',
     rssi: -45,
+    storedNetworks: ['MyWiFi', 'BoatWiFi'], // mirrors WiFiManager::getStoredSSIDs()
 
     // Sensor calibration
     zeroPoint_mv: 500,
@@ -74,11 +101,11 @@ setInterval(() => {
 // PAGE ROUTES — match firmware paths exactly
 // ============================================================================
 
-app.get('/', (req, res) => res.sendFile(__dirname + '/index.html'));
-app.get('/settings', (req, res) => res.sendFile(__dirname + '/settings.html'));
-app.get('/notifications-page', (req, res) => res.sendFile(__dirname + '/notifications.html'));
-app.get('/wifi-config', (req, res) => res.sendFile(__dirname + '/wifi-config.html'));
-app.get('/debug', (req, res) => res.sendFile(__dirname + '/debug.html'));
+app.get('/', (req, res) => sendGzippedPage(res, gzippedPages.index));
+app.get('/settings', (req, res) => sendGzippedPage(res, gzippedPages.settings));
+app.get('/notifications-page', (req, res) => sendGzippedPage(res, gzippedPages.notifications));
+app.get('/wifi-config', (req, res) => sendGzippedPage(res, gzippedPages.wifiConfig));
+app.get('/debug', (req, res) => sendGzippedPage(res, gzippedPages.debug));
 
 // ============================================================================
 // INIT ENDPOINT (combined load for dashboard)
@@ -124,6 +151,26 @@ app.post('/config', (req, res) => {
     mockState.ssid = ssid;
     mockState.password = password;
     mockState.connected = true;
+    if (!mockState.storedNetworks.includes(ssid)) {
+        mockState.storedNetworks.push(ssid);
+    }
+    res.json({ success: true });
+});
+
+// GET /wifi/networks — stored SSID list (matches WiFiManager::getStoredSSIDs())
+app.get('/wifi/networks', (req, res) => {
+    res.json(mockState.storedNetworks);
+});
+
+// POST /wifi/remove — remove a stored network by SSID
+app.post('/wifi/remove', (req, res) => {
+    const ssid = req.body.ssid;
+    if (!ssid) {
+        res.status(400).json({ success: false, message: 'Missing ssid' });
+        return;
+    }
+    mockState.storedNetworks = mockState.storedNetworks.filter(s => s !== ssid);
+    console.log(`[WIFI] Removed stored network: ${ssid}`);
     res.json({ success: true });
 });
 
