@@ -40,8 +40,8 @@ uint32_t lastStatusLogTime = 0;
 static constexpr uint32_t TELEMETRY_INTERVAL_MS = 60000; // Publish telemetry every 60 seconds
 uint32_t lastTelemetryTime = 0;
 
-static constexpr int BUTTON_PIN = 23; // GPIO
-static constexpr int ALERT_PIN = 19; // GPIO
+static constexpr int BUTTON_PIN = 27; // GPIO
+static constexpr int ALERT_PIN = 26; // GPIO
 static constexpr int SENSOR_PIN = 32; // Water sensor analog pin ADC1 because wifi is required
 #ifdef ENABLE_MOCK_MODE
 static constexpr bool USE_MOCK = true;
@@ -60,8 +60,8 @@ static constexpr int LIGHT_PIN = 12;
 //   - 34/35/36/39 input-only, no output driver — pinMode(OUTPUT) is illegal
 //   - 1/3         UART0 TX/RX — serial console
 //   - 0/2/5/15    strapping pins — driving at/after boot is risky and pointless
-//   - 12,19,21,22,23,32  already used by LED/horn/I2C/button/water sensor
-static constexpr int UNUSED_GPIOS[] = {4, 13, 14, 16, 17, 18, 25, 26, 27, 33};
+//   - 12,21,22,26,27,32  already used by LED/I2C/horn/button/water sensor
+static constexpr int UNUSED_GPIOS[] = {4, 13, 14, 16, 17, 18, 19, 23, 25, 33};
 
 // Task watchdog: tightened now that checkForUpdates() runs off-loop on an OTA task.
 // The longest blocking call remaining in loop() is <1 s, so 10 s gives ample margin.
