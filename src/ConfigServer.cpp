@@ -795,7 +795,7 @@ void ConfigServer::handleTestEmergencyPin() {
     LOG_INFO("[TEST] Testing emergency pin output...");
     
     // Set the pin HIGH for 2 seconds to test the connected device
-    const int ALERT_PIN = 19; // GPIO 19 as defined in main.cpp
+    const int ALERT_PIN = 26; // GPIO 26 as defined in main.cpp
     digitalWrite(ALERT_PIN, HIGH);
     LOG_INFO("[TEST] Emergency pin set HIGH");
     
