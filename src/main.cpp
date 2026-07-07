@@ -269,9 +269,9 @@ void loop() {
         } else if (silenceOut.sendUnsilenceConfirmation) {
             LOG_EVENT("[EVENT] Emergency notifications RE-ENABLED by button hold - WiFi: %d", wifiMgr.isConnected());
         }
-        if (silenceOut.setHornState) {
-            digitalWrite(ALERT_PIN, silenceOut.hornOn ? HIGH : LOW);
-        }
+        // ALERT_PIN isn't written here — updateStateMachine() runs later this
+        // same iteration and its output.alertPinOn already reflects the
+        // silence flag just toggled above.
     }
 
     // Reset silence toggle flag when button is released
@@ -320,11 +320,15 @@ void loop() {
     // Execute side effects from state machine output
     // ------------------------------------------------------------------
 
-    // Horn GPIO
+    // Horn transition logging (Tier 2 pulse edges only)
     if (out.setHornState) {
-        digitalWrite(ALERT_PIN, out.hornOn ? HIGH : LOW);
         LOG_DEBUG("[HORN] Horn %s", out.hornOn ? "ON" : "OFF");
     }
+
+    // Alert pin (GPIO 26) — dedicated emergency indicator, driven every
+    // iteration: solid for Tier 1, pulsing for Tier 2. GPIO 12's status LED
+    // no longer reacts to EMERGENCY at all (see the state-change switch below).
+    digitalWrite(ALERT_PIN, out.alertPinOn ? HIGH : LOW);
 
     // Sensor recovery notification
     if (out.sendSensorRecoveryNotification) {
@@ -397,7 +401,10 @@ void loop() {
                 light.setPattern(PATTERN_FAST_BLINK);
                 break;
             case EMERGENCY:
-                light.setPattern(PATTERN_SOLID);
+                // Force off explicitly — otherwise a pattern left over from
+                // NORMAL (e.g. the WiFi-disconnected double blink) would
+                // keep running through the whole emergency.
+                light.setPattern(PATTERN_OFF);
                 break;
         }
 

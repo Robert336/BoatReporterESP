@@ -364,6 +364,46 @@ void test_horn_pulses_in_urgent_emergency() {
 }
 
 // ============================================================================
+// TEST: Alert Pin (GPIO 26) — dedicated emergency indicator
+// ============================================================================
+
+void test_alert_pin_off_outside_emergency() {
+    StateMachineContext ctx = createDefaultContext();
+    ctx.currentState = NORMAL;
+
+    TEST_ASSERT_FALSE(computeAlertPinState(ctx));
+}
+
+void test_alert_pin_solid_in_tier1_emergency() {
+    StateMachineContext ctx = createDefaultContext();
+    ctx.currentState = EMERGENCY;
+    ctx.urgentEmergencyConditions = false;
+
+    TEST_ASSERT_TRUE(computeAlertPinState(ctx));
+}
+
+void test_alert_pin_follows_horn_in_tier2_emergency() {
+    StateMachineContext ctx = createDefaultContext();
+    ctx.currentState = EMERGENCY;
+    ctx.urgentEmergencyConditions = true;
+    ctx.hornCurrentlyOn = false;
+
+    TEST_ASSERT_FALSE(computeAlertPinState(ctx));
+
+    ctx.hornCurrentlyOn = true;
+    TEST_ASSERT_TRUE(computeAlertPinState(ctx));
+}
+
+void test_alert_pin_off_when_silenced() {
+    StateMachineContext ctx = createDefaultContext();
+    ctx.currentState = EMERGENCY;
+    ctx.urgentEmergencyConditions = false;
+    ctx.notificationsSilenced = true;
+
+    TEST_ASSERT_FALSE(computeAlertPinState(ctx));
+}
+
+// ============================================================================
 // TEST: Full State Machine Update
 // ============================================================================
 
@@ -415,6 +455,7 @@ void test_full_update_horn_activation() {
     TEST_ASSERT_TRUE(output.setHornState);
     TEST_ASSERT_TRUE(output.hornOn);
     TEST_ASSERT_TRUE(ctx.hornCurrentlyOn);
+    TEST_ASSERT_TRUE(output.alertPinOn); // GPIO 26 mirrors the horn while pulsing
 }
 
 // ============================================================================
@@ -550,7 +591,13 @@ void runAllTests() {
     RUN_TEST(test_horn_off_without_urgent_conditions);
     RUN_TEST(test_horn_off_when_silenced);
     RUN_TEST(test_horn_pulses_in_urgent_emergency);
-    
+
+    // Alert pin (GPIO 26) tests
+    RUN_TEST(test_alert_pin_off_outside_emergency);
+    RUN_TEST(test_alert_pin_solid_in_tier1_emergency);
+    RUN_TEST(test_alert_pin_follows_horn_in_tier2_emergency);
+    RUN_TEST(test_alert_pin_off_when_silenced);
+
     // Full state machine update tests
     RUN_TEST(test_full_update_normal_to_emergency);
     RUN_TEST(test_full_update_emergency_notification);
