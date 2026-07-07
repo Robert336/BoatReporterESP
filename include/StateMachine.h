@@ -93,6 +93,11 @@ struct StateMachineOutput {
     bool setHornState;
     bool hornOn;
 
+    // Alert output (GPIO 26) — the dedicated emergency indicator, computed
+    // fresh every call. Unlike hornOn/setHornState this isn't edge-triggered;
+    // the caller writes it to the pin unconditionally each loop iteration.
+    bool alertPinOn;
+
     // Notification flags
     bool sendEmergencyNotification;
     bool sendSilenceConfirmation;
@@ -119,6 +124,7 @@ struct StateMachineOutput {
         newState(NORMAL),
         setHornState(false),
         hornOn(false),
+        alertPinOn(false),
         sendEmergencyNotification(false),
         sendSilenceConfirmation(false),
         sendUnsilenceConfirmation(false),
@@ -262,6 +268,24 @@ inline bool shouldHornBeOn(const StateMachineContext& ctx,
     return ctx.hornCurrentlyOn; // Maintain current state
 }
 
+// Pure function: alert output (GPIO 26) state — solid for Tier 1, pulsing
+// (mirrors the horn timer) for Tier 2.
+inline bool computeAlertPinState(const StateMachineContext& ctx) {
+    if (ctx.currentState != EMERGENCY) {
+        return false;
+    }
+
+    if (ctx.notificationsSilenced) {
+        return false;
+    }
+
+    if (ctx.urgentEmergencyConditions) {
+        return ctx.hornCurrentlyOn; // Tier 2: pulsing, driven by the horn timer
+    }
+
+    return true; // Tier 1: solid on
+}
+
 // Main state machine update function.
 // Parameters:
 //   ctx           - mutable state context (updated in place)
@@ -382,6 +406,10 @@ inline StateMachineOutput updateStateMachine(StateMachineContext& ctx,
             ctx.hornCurrentlyOn = false;
         }
     }
+
+    // Alert output (GPIO 26) reflects the current tier every iteration,
+    // independent of the horn's edge-triggered setHornState/hornOn pair.
+    output.alertPinOn = computeAlertPinState(ctx);
 
     return output;
 }

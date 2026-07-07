@@ -10,7 +10,7 @@ Project by: Robert Mazza and David Miller
 ## Features
 
 - **Real-time Water Level Monitoring** - Uses a pressure sensor with ADS1115 16-bit ADC (I2C, 100 kHz, address 0x48) for accurate readings; usable range 5–100 cm
-- **Two-Tier Emergency System** - Tier 1 (configurable threshold, default 30 cm) sends SMS and Discord alerts; Tier 2 (urgent threshold, default 50 cm) activates a pulsing horn/relay on GPIO 26
+- **Two-Tier Emergency System** - Tier 1 (configurable threshold, default 30 cm) sends SMS/Discord alerts and lights the GPIO 26 alert output solid; Tier 2 (urgent threshold, default 50 cm) pulses that same output as a horn/relay alarm
 - **Emergency Alerts** - Automatic SMS (via Twilio) and Discord notifications including current water level and rate-of-change (cm/30 min)
 - **Rate-of-Change Display** - Main dashboard shows water level trend (e.g. `+2.1 cm / 30 min`) once 5+ minutes of readings are available; also included in emergency alert messages
 - **Notification Worker** - SMS/Discord HTTP calls run on a dedicated FreeRTOS task (Core 0); latest-wins coalescing prevents stale-message backlogs after WiFi outages
@@ -18,7 +18,7 @@ Project by: Robert Mazza and David Miller
 - **OTA Firmware Updates** - Remote updates via GitHub Releases; automatic checking and installation enabled by default
 - **MQTT Logging** - Streams all log output to a configurable MQTT broker; LWT availability topic for Home Assistant integration
 - **Two-Point Calibration** - Accurate sensor calibration for your specific setup
-- **Multiple System States** - NORMAL, ERROR, EMERGENCY, and CONFIG modes with LED indicators (including WiFi-disconnected double-blink)
+- **Multiple System States** - NORMAL, ERROR, EMERGENCY, and CONFIG modes; the GPIO 12 status LED shows NORMAL/ERROR/CONFIG (including WiFi-disconnected double-blink) while the GPIO 26 alert output is a dedicated, separate indicator for EMERGENCY
 - **Sensor Hardening** - I2C bus auto-recovery, stuck/over-range reading detection, and sustained sensor-failure owner notifications
 - **Task Watchdog** - Automatic reboot if the main loop stalls (60-second timeout)
 - **NTP Time Synchronization** - Accurate timestamping of events
@@ -42,8 +42,8 @@ Project by: Robert Mazza and David Miller
 - **[Waterproof Project Enclosure](https://www.amazon.ca/Joinfworld-Electrical-Weatherproof-Waterproof-Electronics/dp/B0CHHJ49QN/ref=sr_1_8?crid=3C7ILQXJLYSO3&dib=eyJ2IjoiMSJ9.itg-wqa0bqsnR-cUJo6fzYikmA3OMskYzqljCFmk52v1y3qn0hi1PC8ILrdtbgT4HE7UAAoFXGWZFn6tE4gI7W_WRKH2ASw1S0vpI9JhWVqrqLCKfe7WgIq_BQKKqKetrXRs4eGAjfvaSHo_VKQ_PJjTUrTT23Jxn_F6ca-loeDIo-0vWd_L4UQgRkNe_Ka3_7cn_4Yj0nyI6oqbpfx9nv60K-aO0rvSgj96ciUNCT_H8xum_43NzhiX_yr1inJe8F7jKMhLvhqOy4eaa779hUBsOliKjPBOWydym8DBAcQ.FHX2YvkBUMjSXofxsz8-xosB_f_NBN1s8CKg61tdu4c&dib_tag=se&keywords=project+box+enclosure&qid=1780177844&sprefix=project+box+enclos%2Caps%2C248&sr=8-8&xpid=_efXN9DbDxWap)** - Weatherproof enclosure to house the ESP32, ADS1115, buck converter, and supporting components. Essential for marine environments to protect electronics from moisture and bilge splashes.
 - **[7-Pin Waterproof Connector](https://www.amazon.ca/Connector-Waterproof-Electrical-Connectors-Industrial/dp/B09PNJYF2T/ref=sr_1_6?crid=1UBYD16V9DN08&dib=eyJ2IjoiMSJ9.i5gKI7-nhw8LQdAvSWXsemdckThUMJjlPy25Tt4w3eC7Hc1UPwUNUeGvt4H77PjB99flRrhWpKpc8xXiRb1TOGBrDPVTe7otSOg79o6ogIHpsYftz5exQB4pbcsWc5hBiqLiKfUGoo5q_rfpVwSOKBTJyBCrKeA--b3F0uQ0cqiXyl39wt7BND_KOQUpnKnqlfVyV_IoGXib2p4Omvqb2cIQIh53Yca4ruITGd2-CZ3fLK2n4pkBI-3G53yJRWBQ6hnyuDNkP5vpEB09-DqFoyw2oTaj0K33CWBfnxoD3MU._YgcrDNKYhUAWoeM6CAtNEiL14hw2lAii4s4Y_q7tI8&dib_tag=se&keywords=7+pin+connector&qid=1780177874&sprefix=7+pin+c%2Caps%2C824&sr=8-6)** - Waterproof connector for running external wiring (power in, sensor, alert output, button) through the enclosure wall. Keeps the enclosure sealed while allowing field-removable connections.
 - **Push Button** - For entering configuration mode (normally open, pull-up configured in software)
-- **LED Indicator** - Built-in LED works, or connect external LED
-- **Alert Output Device** (Optional) - Connect to GPIO 26 (buzzer, relay, larger indicator light, etc.)
+- **LED Indicator** - Built-in LED works, or connect external LED. Only shows NORMAL/ERROR/CONFIG — never lights for EMERGENCY
+- **Alert Output Device** (Optional) - Connect to GPIO 26 (buzzer, relay, larger indicator light, etc.). Dedicated to EMERGENCY: solid for Tier 1, pulsing for Tier 2
 
 ## Wiring Diagram
 
@@ -59,8 +59,8 @@ GND       -->   GND (both sides)        GND
 ESP32 Pin       Component
 ---------       ---------
 GPIO 27   <--   Push Button (other side to GND)
-GPIO 26   -->   Alert Output (buzzer/relay/LED)
-Built-in LED    Status Indicator
+GPIO 26   -->   Alert Output (buzzer/relay/LED) — EMERGENCY only
+Built-in LED    Status Indicator (GPIO 12) — NORMAL/ERROR/CONFIG only
 
 ADS1115
 -------
@@ -229,9 +229,10 @@ The system uses two independently configurable thresholds, both set via the web 
 **Tier 1 — Message Notifications (default: 30 cm)**
 - When water exceeds this level for more than 5 seconds continuously, EMERGENCY state triggers
 - Sends SMS and Discord alerts at the configured notification frequency (default: 15 minutes)
+- GPIO 26 (the alert output) holds solid ON
 
 **Tier 2 — Horn/Relay Alarm (default: 50 cm)**
-- When water reaches this higher threshold, GPIO 26 pulses (default: 1 s on / 1 s off)
+- When water reaches this higher threshold, GPIO 26 pulses instead of holding solid (default: 1 s on / 1 s off)
 - Both tiers activate simultaneously if water is above the Tier 2 threshold
 
 > **Note:** The **EMERGENCY** mode is designed as a critical alert—when the threshold is reached, the device will activate the alert output and send emergency notifications.   
@@ -279,13 +280,24 @@ See [`server-stack/README.md`](server-stack/README.md) for a full broker + dashb
 
 ### LED Status Indicators
 
+Two independent outputs, on separate pins, cover status and emergencies — nothing is shared between them.
+
+**Status LED (GPIO 12)** — reflects NORMAL/ERROR/CONFIG only; goes dark and stays dark during EMERGENCY:
+
 | Pattern | State | Meaning |
 |---------|-------|---------|
 | **OFF** | NORMAL | Normal operation, water level OK, WiFi connected |
 | **Double Blink** | NORMAL | Normal operation but WiFi is disconnected |
 | **Slow Blink** | CONFIG | Configuration mode active (web interface available) |
 | **Fast Blink** | ERROR | Sensor error detected (check wiring/sensor) |
-| **Solid ON** | EMERGENCY | Water level exceeded threshold! Sending alerts |
+
+**Alert Output (GPIO 26)** — the dedicated emergency indicator, silent/off in every other state:
+
+| Pattern | Tier | Meaning |
+|---------|------|---------|
+| **Solid ON** | Tier 1 | Water level ≥ emergency threshold — SMS/Discord alerts sending |
+| **Pulsing** | Tier 2 | Water level ≥ urgent threshold — horn/relay alarm pulsing (default 1s on / 1s off) |
+| **OFF** | — | Not in EMERGENCY, or notifications silenced via button hold |
 
 ### System States
 
@@ -315,10 +327,10 @@ The device operates in four states:
 ### Alert Behavior
 
 When in EMERGENCY state:
-- **Tier 1** (water ≥ emergency threshold): SMS and Discord notifications sent with current water level and rate-of-change (e.g. `+3.2 cm/30min`, omitted if fewer than two 5-minute snapshots exist yet). Repeats at a configurable interval (default **15 minutes**, set via web UI).
-- **Tier 2** (water ≥ urgent threshold): GPIO 26 pulses the alert output (default 1 second ON / 1 second OFF). Configure horn durations via web UI.
+- **Tier 1** (water ≥ emergency threshold): SMS and Discord notifications sent with current water level and rate-of-change (e.g. `+3.2 cm/30min`, omitted if fewer than two 5-minute snapshots exist yet), repeating at a configurable interval (default **15 minutes**, set via web UI); GPIO 26 holds solid ON.
+- **Tier 2** (water ≥ urgent threshold): GPIO 26 pulses instead of holding solid (default 1 second ON / 1 second OFF). Configure horn durations via web UI.
 - Notification delivery is handled by a background FreeRTOS task (Core 0). If a prior emergency alert is undelivered when the next one fires (e.g. WiFi outage), the older message is replaced so the owner receives the most current water level — not a backlog of stale readings.
-- Silence toggle (5-second button hold) suppresses both the horn and message notifications. The alert output is shut off immediately on silence.
+- Silence toggle (5-second button hold) suppresses both GPIO 26 and message notifications. The alert output is shut off immediately on silence, for either tier.
 - Serial monitor logs all events at 115200 baud; logs also stream to the MQTT broker if configured.
 
 ## Customization
@@ -327,8 +339,8 @@ When in EMERGENCY state:
 
 ```cpp
 static constexpr int BUTTON_PIN = 27;              // Config button GPIO
-static constexpr int ALERT_PIN = 26;               // Alert output GPIO (pulses in Tier 2 emergency)
-static constexpr int LIGHT_PIN = 12;               // Status LED GPIO
+static constexpr int ALERT_PIN = 26;               // Alert output GPIO — EMERGENCY only (solid Tier 1, pulsing Tier 2)
+static constexpr int LIGHT_PIN = 12;               // Status LED GPIO — NORMAL/ERROR/CONFIG only, never EMERGENCY
 
 static constexpr int EMERGENCY_TIMEOUT_MS = 5000;  // Sustained time before EMERGENCY state triggers (5 s)
 
