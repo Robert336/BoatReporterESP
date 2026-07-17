@@ -283,6 +283,33 @@ void WiFiManager::maintainConnection() {
     if (now - _lastReconnectAttempt >= RECONNECT_INTERVAL_MS) {
         _lastReconnectAttempt = now;
         _reconnectAttemptCount++;
+
+        // H1/H2: don't retry the same dead AP forever. WiFi.reconnect() only
+        // re-associates with the last BSSID/SSID — it never scans, so a
+        // permanently-gone AP stalls reconnection indefinitely even when another
+        // stored network is in range. After RECONNECT_FALLBACK_ATTEMPTS failed
+        // cycles, fall back to a full connectToBestNetwork() scan-and-pick.
+        //
+        // H2: for "sticky" disconnect reasons (handshake/beacon timeouts, auth
+        // fail) that are known to sometimes leave the radio in a state a plain
+        // reconnect() can't recover, escalate sooner — do a full
+        // WiFi.disconnect(true) teardown before the rescan.
+        bool sticky = isStickyDisconnectReason(_lastDisconnectReason);
+        uint32_t threshold = sticky ? RECONNECT_ESCALATION_ATTEMPTS_STICKY
+                                    : RECONNECT_FALLBACK_ATTEMPTS;
+        if (_reconnectAttemptCount >= threshold) {
+            LOG_NETWORK("[WIFI] %u reconnect attempt(s) failed (reason %u/%s) - full rescan",
+                        _reconnectAttemptCount, _lastDisconnectReason,
+                        reasonToString(_lastDisconnectReason));
+            if (sticky) {
+                WiFi.disconnect(true);
+            }
+            _reconnectAttemptCount = 0;
+            _lastDisconnectReason = 0;
+            connectToBestNetwork();
+            return;
+        }
+
         LOG_NETWORK("[WIFI] Reconnect attempt #%u (down %lus)",
                     _reconnectAttemptCount,
                     (unsigned long)((now - _disconnectedSince) / 1000));
@@ -316,6 +343,21 @@ const char* WiFiManager::reasonToString(uint8_t reason) {
         case 204: return "handshake-timeout";
         case 205: return "connection-fail";
         default:  return "unknown";
+    }
+}
+
+bool WiFiManager::isStickyDisconnectReason(uint8_t reason) {
+    // Reasons that, in practice on the ESP32 Arduino core, sometimes leave the
+    // radio in a state a plain WiFi.reconnect() cannot recover from — a full
+    // WiFi.disconnect(true) teardown followed by a fresh begin()/scan is needed.
+    switch (reason) {
+        case 15:  // 4WAY_HANDSHAKE_TIMEOUT
+        case 200: // BEACON_TIMEOUT
+        case 202: // AUTH_FAIL
+        case 204: // HANDSHAKE_TIMEOUT
+            return true;
+        default:
+            return false;
     }
 }
 #endif // UNIT_TESTING
