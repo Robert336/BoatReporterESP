@@ -20,6 +20,9 @@
 
 static constexpr uint32_t SNTP_MAX_WAIT = 10000;
 static constexpr time_t SYNC_EXPIRY = 86400; // One day in seconds
+// H4: throttle application-level SNTP re-init attempts so sync() (called every
+// loop) doesn't restart the client every iteration while waiting for a callback.
+static constexpr time_t SNTP_REINIT_INTERVAL_S = 60;
 static constexpr int TIME_STR_BUFFER = 64;
 
 struct Timestamp {
@@ -75,7 +78,8 @@ class TimeManagement {
         
         SNTPSyncStatus syncStatus;
         time_t lastSyncTime;       // Unix time of last SNTP sync
-        
+        time_t lastSyncInitTime;   // H4: unix time of last SNTP (re)init attempt
+
         bool isMocked;
         char timeStringBuffer[TIME_STR_BUFFER]; // Buffer for formatted time strings
         
