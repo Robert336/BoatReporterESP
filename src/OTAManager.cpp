@@ -698,6 +698,20 @@ bool OTAManager::downloadAndInstall(const String& url, size_t expectedSize, cons
 
     while (http.connected() && written < contentLength) {
         esp_task_wdt_reset(); // Download runs on the loop task; keep feeding the dog
+
+        // C2: don't let a firmware download blind the flood sensor. The
+        // download owns the loop task for up to 5 minutes, during which
+        // waterSensor.readLevel() and the state machine never run. Abort
+        // (and leave the current firmware intact) if a Tier-1+ flood
+        // condition appears mid-download — flood monitoring takes priority.
+        if (floodCheckCb && floodCheckCb(floodCheckCtx)) {
+            setError("OTA aborted - flood condition detected mid-download");
+            LOG_CRITICAL("[OTA] Flood condition detected mid-download - aborting to preserve flood monitoring");
+            Update.abort();
+            mbedtls_sha256_free(&shaCtx);
+            http.end();
+            return false;
+        }
         if (millis() - downloadStart > DOWNLOAD_TIMEOUT_MS) {
             setError("Download timeout - exceeded 5 minutes");
             LOG_CRITICAL("[OTA] Download timeout - exceeded 5 minutes");
@@ -890,6 +904,11 @@ void OTAManager::setNotificationsEnabled(bool enabled) {
     config.notificationsEnabled = enabled;
     saveConfig();
     LOG_INFO("[OTA] Notifications %s", enabled ? "enabled" : "disabled");
+}
+
+uint32_t OTAManager::getCheckTaskStackHighWaterMark() const {
+    if (!checkTaskHandle) return 0;
+    return (uint32_t)uxTaskGetStackHighWaterMark(checkTaskHandle);
 }
 
 #endif // UNIT_TESTING
