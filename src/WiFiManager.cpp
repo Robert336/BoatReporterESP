@@ -1,6 +1,7 @@
 #ifndef UNIT_TESTING
 #include "WiFiManager.h"
 #include "Logger.h"
+#include <esp_task_wdt.h>
 
 
 // Singleton instance getter
@@ -166,6 +167,12 @@ void WiFiManager::connectToBestNetwork() {
     }
     
     LOG_NETWORK("[WIFI] Scanning for available networks...");
+    // The scan is a single blocking call (~2-5s on 2.4GHz) and runs on the
+    // loop task, which is subscribed to the 10s task watchdog. Feed the dog
+    // before the scan so a slow/crowded-band scan can't trip it (C1). The
+    // call is a no-op if the WDT isn't armed yet (e.g. during boot, before
+    // esp_task_wdt_add() runs in setup()).
+    esp_task_wdt_reset();
     int numNetworks = WiFi.scanNetworks();
     LOG_NETWORK("[WIFI] Scan found %d network(s):", numNetworks);
     for (int i = 0; i < numNetworks; i++) {
@@ -203,6 +210,12 @@ void WiFiManager::connectToBestNetwork() {
 
         unsigned long startTime = millis();
         while (WiFi.status() != WL_CONNECTED && (millis() - startTime) < CONNECT_TIMEOUT_MS) {
+            // Feed the task watchdog on every iteration. This connect loop
+            // can block for up to CONNECT_TIMEOUT_MS (15s) — longer than the
+            // 10s WDT — and is reachable from loop() via stopSetupMode()
+            // after the config-portal idle timeout (C1). delay() does NOT
+            // feed the ESP-IDF task watchdog, so an explicit reset is required.
+            esp_task_wdt_reset();
             delay(500);
         }
 
