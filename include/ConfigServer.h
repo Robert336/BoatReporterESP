@@ -36,7 +36,7 @@ constexpr int DNS_PORT = 53; // Standard DNS port for captive portal
 constexpr float DEFAULT_EMERGENCY_WATER_LEVEL_CM = 30.0f;
 constexpr int DEFAULT_EMERGENCY_NOTIF_FREQ_MS = 900000; // 15 minutes
 
-// Default urgent emergency settings (Tier 2 - Horn Alarm)
+// Default urgent emergency settings (Tier 2)
 constexpr float DEFAULT_URGENT_EMERGENCY_WATER_LEVEL_CM = 50.0f;
 constexpr int DEFAULT_HORN_ON_DURATION_MS = 1000;  // 1 second on
 constexpr int DEFAULT_HORN_OFF_DURATION_MS = 1000; // 1 second off

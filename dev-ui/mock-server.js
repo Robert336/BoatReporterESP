@@ -60,8 +60,6 @@ let mockState = {
     emergencyWaterLevel_cm: 30.0,
     emergencyNotifFreq_ms: 900000, // 15 minutes
     urgentEmergencyWaterLevel_cm: 50.0,
-    hornOnDuration_ms: 1000,
-    hornOffDuration_ms: 1000,
 
     // SMS / Discord
     hasPhoneNumber: true,
@@ -256,8 +254,6 @@ app.get('/emergency-settings', (req, res) => {
         emergencyWaterLevel_cm: mockState.emergencyWaterLevel_cm,
         emergencyNotifFreq_ms: mockState.emergencyNotifFreq_ms,
         urgentEmergencyWaterLevel_cm: mockState.urgentEmergencyWaterLevel_cm,
-        hornOnDuration_ms: mockState.hornOnDuration_ms,
-        hornOffDuration_ms: mockState.hornOffDuration_ms,
     });
 });
 

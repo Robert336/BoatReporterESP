@@ -32,9 +32,9 @@ void SettingsStore::load() {
 
     prefs.end();
 
-    LOG_INFO("[SETTINGS] Loaded from NVS: emerg=%.1f cm, freq=%d ms, urgent=%.1f cm, horn %d/%d ms",
+    LOG_INFO("[SETTINGS] Loaded from NVS: emerg=%.1f cm, freq=%d ms, urgent=%.1f cm",
              vals.emergencyWaterLevel_cm, vals.emergencyNotifFreq_ms,
-             vals.urgentEmergencyWaterLevel_cm, vals.hornOnDuration_ms, vals.hornOffDuration_ms);
+             vals.urgentEmergencyWaterLevel_cm);
 }
 
 void SettingsStore::save(const SettingsValues& v) {

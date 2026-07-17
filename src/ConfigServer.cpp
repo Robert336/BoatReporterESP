@@ -167,14 +167,10 @@ void ConfigServer::startSetupMode() {
         float el  = settingsStore ? settingsStore->getEmergencyWaterLevel()       : 30.0f;
         int   ef  = settingsStore ? settingsStore->getEmergencyNotifFreq()        : 900000;
         float ul  = settingsStore ? settingsStore->getUrgentEmergencyWaterLevel() : 50.0f;
-        int   hon = settingsStore ? settingsStore->getHornOnDuration()            : 1000;
-        int   hof = settingsStore ? settingsStore->getHornOffDuration()           : 1000;
         String json = "{";
         json += "\"emergencyWaterLevel_cm\":" + String(el, 2) + ",";
         json += "\"emergencyNotifFreq_ms\":" + String(ef) + ",";
-        json += "\"urgentEmergencyWaterLevel_cm\":" + String(ul, 2) + ",";
-        json += "\"hornOnDuration_ms\":" + String(hon) + ",";
-        json += "\"hornOffDuration_ms\":" + String(hof);
+        json += "\"urgentEmergencyWaterLevel_cm\":" + String(ul, 2);
         json += "}";
         server->send(200, "application/json", json);
         serverStartTime = millis();
