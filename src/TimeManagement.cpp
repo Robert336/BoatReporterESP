@@ -15,7 +15,7 @@ TimeManagement& TimeManagement::getInstance() {
 
 
 TimeManagement::TimeManagement(bool mock) 
-    : isMocked(mock), syncStatus(SNTP_NOT_STARTED), lastSyncTime(0) {
+    : isMocked(mock), syncStatus(SNTP_NOT_STARTED), lastSyncTime(0), lastSyncInitTime(0) {
     
     if (!isMocked) {
         // Get current SNTP sync status
@@ -59,10 +59,25 @@ Timestamp TimeManagement::getCurrentTimestamp() {
 }
 
 void TimeManagement::sync() {
-    if (time(NULL) - lastSyncTime < SYNC_EXPIRY) return; // Guard against already synced RTC
-    if (syncStatus == SNTP_SYNCING) return; // Guard if currently syncing
-
-    initSNTPSync("pool.ntp.org", 0); // Sync RTC non-blocking; onSNTPSync callback sets syncStatus when NTP responds
+    // H4: the original initSNTPSync() only did anything the very first time
+    // (syncStatus == SNTP_NOT_STARTED) — every subsequent call, including the
+    // intended 24h re-trigger after SYNC_EXPIRY, was a silent no-op, leaving
+    // the app entirely dependent on ESP-IDF's own internal SNTP polling with
+    // no application-level fallback if the first sync at boot failed (no WiFi
+    // yet, DNS to pool.ntp.org blocked by a captive portal, etc.).
+    time_t now = time(NULL);
+    if (now - lastSyncTime < SYNC_EXPIRY) return; // Fresh enough — nothing to do
+    // Throttle re-init so we don't restart SNTP every loop while waiting for a
+    // callback (which may take seconds, or never come if the network is down).
+    if (now - lastSyncInitTime < SNTP_REINIT_INTERVAL_S) return;
+    lastSyncInitTime = now;
+    // Restart the SNTP client so a failed/degraded attempt gets re-kicked.
+    // stopSNTPSync() resets syncStatus to SNTP_NOT_STARTED, letting the
+    // subsequent initSNTPSync() actually reconfigure and re-init the service.
+    if (syncStatus != SNTP_NOT_STARTED) {
+        stopSNTPSync();
+    }
+    initSNTPSync("pool.ntp.org", 0); // Non-blocking; onSNTPSync callback sets syncStatus
 }
 
 bool TimeManagement::initSNTPSync(const char* server, uint32_t maxWaitMs) {
