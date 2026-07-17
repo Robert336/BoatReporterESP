@@ -54,4 +54,15 @@ docker run --rm \
 mkdir -p certs
 cp -L "letsencrypt/live/$DOMAIN/fullchain.pem" certs/fullchain.pem
 cp -L "letsencrypt/live/$DOMAIN/privkey.pem"   certs/privkey.pem
-echo "✓ Cert for $DOMAIN copied to certs/. Restart broker: docker compose restart mosquitto"
+
+# certbot runs as root inside Docker, leaving files owned by root.
+# Fix that now so future renewals (run by the host user) can succeed.
+if command -v sudo >/dev/null 2>&1 && [[ "$(id -u)" -ne 0 ]]; then
+  sudo chown -R "$(id -u):$(id -g)" letsencrypt/ 2>/dev/null || true
+else
+  chown -R "$(id -u):$(id -g)" letsencrypt/ 2>/dev/null || true
+fi
+
+echo "✓ Cert for $DOMAIN copied to certs/."
+echo "  Restart broker:  docker compose restart mosquitto"
+echo "  Install auto-renewal:  sudo ./scripts/setup-cert-renewal.sh"

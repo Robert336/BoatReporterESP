@@ -87,6 +87,8 @@ curl -s https://api.ipify.org                    # the host's actual public IP
 openssl s_client -connect 127.0.0.1:8883 -servername mqtt.bilgerise.garageforge.ca </dev/null \
   | openssl x509 -noout -subject -dates
 #    Should show the Let's Encrypt cert, correct CN, in-date.
+#    EXPIRED? → The renewal automation failed. Run ./scripts/renew-cert.sh manually.
+#    WRONG CN? → You changed MQTT_DOMAIN in .env but didn't re-issue the cert.
 
 # 3. Is the port published/forwarded inside the host?
 ss -tlnp | grep 8883                              # docker-proxy on 0.0.0.0:8883
@@ -101,7 +103,57 @@ mosquitto_pub -h mqtt.bilgerise.garageforge.ca -p 8883 --capath /etc/ssl/certs \
 #    CONNACK (0) → fully working.  Hangs → DMZ/forward not pointing at the host.
 ```
 
-Note: ESP TLS validation needs a synced clock, so the **first connect(s) after a
-cold boot fail** (clock ~1970 → cert "not yet valid") until NTP lands, then
-succeed on retry/backoff. Brief post-boot `-1`s that clear on their own are
-expected, not a misconfiguration.
+⚠️ **NTP-dependent TLS bootstrap.** After a cold boot the ESP32 clock is ~1970.
+TLS cert validation will reject the broker cert as "not yet valid" until NTP
+syncs. The firmware's exponential backoff eventually succeeds once the clock is
+correct, but **telemetry is silently dropped for the first 1–3 minutes** after
+boot. On a device that's power-cycled frequently (e.g. solar/battery setups),
+consider whether you need an RTC module or a battery-backed NVRAM clock.
+
+---
+
+## Certificate renewal automation (CRITICAL)
+
+Let's Encrypt certificates expire every **90 days**. The fleet will lose trust
+in the broker the moment the leaf cert expires. You must automate renewal.
+
+### One-time setup
+
+```bash
+# Run once after you've issued the first certificate:
+cd server-stack
+sudo ./scripts/setup-cert-renewal.sh
+```
+
+This installs a **systemd timer** (`boat-cert-renewal.timer`) that runs
+`scripts/renew-cert.sh` every Sunday at 03:00. The script only restarts
+Mosquitto when the certificate has actually changed, so devices are not kicked
+off the broker on every check.
+
+### Verify it is scheduled
+
+```bash
+systemctl status boat-cert-renewal.timer
+# Next run column should show a future date.
+
+# Force a dry-run check:
+sudo systemctl start boat-cert-renewal.service
+journalctl -u boat-cert-renewal.service --no-pager
+```
+
+### Why not just cron?
+
+The timer is self-documenting (`systemctl cat boat-cert-renewal.timer`), runs
+with the correct `$PWD`, and persists across reboots without needing a cron
+service to be enabled. If you prefer cron, run `renew-cert.sh` from a weekly
+crontab entry instead — the script is daemon-agnostic.
+
+### Manual emergency renewal
+
+If the certificate has already expired and devices are offline:
+
+```bash
+cd server-stack
+./scripts/renew-cert.sh          # forces issuance + restart
+docker compose restart mosquitto  # belt-and-suspenders
+```
