@@ -108,8 +108,20 @@ echo "MQTT_DOMAIN=mqtt.example.com" >> .env                # your hostname
 ./scripts/issue-cert.sh                                    # writes certs/{fullchain,privkey}.pem
 ```
 
-Let's Encrypt certs expire every 90 days — re-run `issue-cert.sh` from cron
-(e.g. weekly) and `docker compose restart mosquitto` afterwards to reload.
+Let's Encrypt certs expire every 90 days. **Automate renewal** so the fleet
+doesn't lose connectivity:
+
+```bash
+# One-time setup after the first successful certificate:
+sudo ./scripts/setup-cert-renewal.sh   # installs a weekly systemd timer
+```
+
+See [DEPLOYMENT.md](DEPLOYMENT.md#certificate-renewal-automation-critical) for
+verification commands and emergency manual renewal.
+
+> The automation uses `scripts/renew-cert.sh`, which checks expiry and only
+> restarts Mosquitto when the certificate actually changes. Raw `issue-cert.sh`
+> is still useful for initial issuance or emergency manual runs.
 
 ### 3. Broker auth + ACLs
 
@@ -145,6 +157,13 @@ In the device UI → **Notifications → MQTT broker**:
 | Broker host | `mqtt.example.com` (the **domain**, not an IP — it's verified against the cert) |
 | Port | `8883` |
 | Use TLS encryption | ✅ |
+| Username / Password | the `boat-<mac>` credentials you created |
+
+> ⚠️ **NTP bootstrap delay:** On a cold boot the ESP32 clock starts at ~1970,
+> so the first TLS connections will fail with "certificate not yet valid" until
+> NTP syncs (usually 10–60 s after WiFi association). The firmware retries with
+> exponential backoff, but **expect 1–3 minutes of dropped telemetry after every
+> power cycle**. This is normal and not a cert/config bug.
 | Username / Password | the `boat-<mac>` credentials you created |
 
 The firmware validates the broker cert against its bundled Let's Encrypt roots
