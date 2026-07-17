@@ -38,7 +38,7 @@ constexpr size_t PROGRESS_LOG_INTERVAL_PERCENT = 10;
 constexpr unsigned long DOWNLOAD_LOOP_DELAY_MS = 1;
 
 // OTA check task stack and priority
-constexpr uint32_t    OTA_TASK_STACK    = 8192;
+constexpr uint32_t    OTA_TASK_STACK    = 10240;
 constexpr UBaseType_t OTA_TASK_PRIORITY = 1;
 constexpr BaseType_t  OTA_TASK_CORE     = 0;
 
@@ -132,6 +132,16 @@ private:
     static void checkTaskEntry(void* arg);
     void runCheckTask();
 
+    // Flood-watch: optional callback invoked inside the OTA download loop so a
+    // firmware download (which owns the loop task for up to DOWNLOAD_TIMEOUT_MS
+    // = 5 min) can be aborted mid-stream if a Tier-1+ flood condition appears.
+    // Without this, waterSensor.readLevel() / updateStateMachine() never run
+    // during a download — a silent monitoring gap (C2). Returns true = abort.
+    // Set to nullptr (default) to disable the check.
+    typedef bool (*FloodCheckCallback)(void* ctx);
+    FloodCheckCallback floodCheckCb = nullptr;
+    void*              floodCheckCtx = nullptr;
+
 public:
     OTAManager(NotificationWorker* notifier = nullptr);
     ~OTAManager();
@@ -154,6 +164,16 @@ public:
     void setAutoCheck(bool enabled, unsigned long intervalMs = DEFAULT_CHECK_INTERVAL_MS);
     void setAutoInstall(bool enabled);
     void setNotificationsEnabled(bool enabled);
+
+    // Register a flood-watch callback consulted during the OTA download loop
+    // so an in-flight firmware download aborts if a flood condition appears
+    // (C2). The callback is invoked on the loop task and must be non-blocking
+    // and reentrant-safe; ctx is passed back verbatim.
+    void setFloodWatch(FloodCheckCallback cb, void* ctx) { floodCheckCb = cb; floodCheckCtx = ctx; }
+
+    // Stack high-water mark for the background check task (for H5 diagnostics).
+    // Returns 0 if the task isn't running.
+    uint32_t getCheckTaskStackHighWaterMark() const;
 
     // Getters (currentState is atomic; String fields that the check task may
     // mutate are copied under stateMux — see getAvailableVersion/getLastError).
