@@ -2,6 +2,7 @@
 #include "WiFiManager.h"
 #include "Logger.h"
 #include <esp_task_wdt.h>
+#include <esp_timer.h>
 
 
 // Singleton instance getter
@@ -221,8 +222,8 @@ void WiFiManager::connectToBestNetwork() {
 
         if (WiFi.status() == WL_CONNECTED) {
             isWiFiConnected = true;
-            _connectedSince = millis();
-            _disconnectedSince = 0;
+            _connectedSinceUs = esp_timer_get_time();
+            _disconnectedSinceUs = 0;
             _reconnectAttemptCount = 0;
             LOG_NETWORK("[WIFI] Connected! IP: %s", WiFi.localIP().toString().c_str());
         } else {
@@ -256,13 +257,14 @@ void WiFiManager::disconnect() {
 
 void WiFiManager::maintainConnection() {
     if (WiFi.status() == WL_CONNECTED) {
-        if (_disconnectedSince != 0) {
-            // Just came back up
-            LOG_NETWORK("[WIFI] Reconnected after %u attempt(s), was down %lus",
+        if (_disconnectedSinceUs != 0) {
+            // Just came back up. Duration is computed from the 64-bit monotonic
+                       // microsecond timer so it stays correct across a millis() rollover (H6).
+            LOG_NETWORK("[WIFI] Reconnected after %u attempt(s), was down %llus",
                         _reconnectAttemptCount,
-                        (unsigned long)((millis() - _disconnectedSince) / 1000));
-            _connectedSince = millis();
-            _disconnectedSince = 0;
+                        (unsigned long long)((esp_timer_get_time() - _disconnectedSinceUs) / 1000000));
+            _connectedSinceUs = esp_timer_get_time();
+            _disconnectedSinceUs = 0;
             _reconnectAttemptCount = 0;
             _lastDisconnectReason = 0;
         }
@@ -271,13 +273,13 @@ void WiFiManager::maintainConnection() {
 
     uint32_t now = millis();
 
-    if (_disconnectedSince == 0) {
-        _disconnectedSince = now;
+    if (_disconnectedSinceUs == 0) {
+        _disconnectedSinceUs = esp_timer_get_time();
         uint8_t reason = _lastDisconnectReason;
-        LOG_NETWORK("[WIFI] Disconnect reason: %u (%s), was up %lus",
+        LOG_NETWORK("[WIFI] Disconnect reason: %u (%s), was up %llus",
                     reason, reasonToString(reason),
-                    _connectedSince > 0 ? (unsigned long)((now - _connectedSince) / 1000) : 0);
-        _connectedSince = 0;
+                    _connectedSinceUs > 0 ? (unsigned long long)((esp_timer_get_time() - _connectedSinceUs) / 1000000) : 0);
+        _connectedSinceUs = 0;
     }
 
     if (now - _lastReconnectAttempt >= RECONNECT_INTERVAL_MS) {
@@ -310,9 +312,9 @@ void WiFiManager::maintainConnection() {
             return;
         }
 
-        LOG_NETWORK("[WIFI] Reconnect attempt #%u (down %lus)",
+        LOG_NETWORK("[WIFI] Reconnect attempt #%u (down %llus)",
                     _reconnectAttemptCount,
-                    (unsigned long)((now - _disconnectedSince) / 1000));
+                    (unsigned long long)((esp_timer_get_time() - _disconnectedSinceUs) / 1000000));
         WiFi.reconnect();
     }
 }
