@@ -30,9 +30,16 @@ private:
     std::vector<WiFiCredential> storedNetworks;
     bool isWiFiConnected = false;
 
-    // Connection health tracking
-    uint32_t _connectedSince = 0;
-    uint32_t _disconnectedSince = 0;
+    // Connection health tracking.
+    // H6: session-start timestamps are captured in esp_timer_get_time()
+    // microseconds (int64, monotonic, never wraps in practice) rather than
+    // millis() (uint32, wraps every ~49.7 days). The millis()-based timing
+    // *comparisons* in this class are already wrap-safe (unsigned subtraction),
+    // but the *logged* session durations ("was up %lus") were computed from
+    // millis() and went wrong for any single WiFi session lasting across a
+    // rollover. These fields are used solely for logging durations.
+    int64_t _connectedSinceUs = 0;
+    int64_t _disconnectedSinceUs = 0;
     volatile uint8_t _lastDisconnectReason = 0; // written by WiFi event task
     uint32_t _reconnectAttemptCount = 0;
     uint32_t _lastReconnectAttempt = 0;
