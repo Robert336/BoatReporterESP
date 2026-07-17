@@ -10,6 +10,15 @@ static constexpr int MAX_NETWORKS = 10;
 static constexpr int CONNECT_TIMEOUT_MS = 15000; // 15 secs
 static constexpr uint32_t RECONNECT_INTERVAL_MS = 30000; // 30 secs between retry attempts
 
+// H1/H2: after this many consecutive failed WiFi.reconnect() attempts, fall
+// back to a full connectToBestNetwork() scan-and-pick cycle instead of retrying
+// the same (possibly permanently-gone) AP forever.
+static constexpr uint32_t RECONNECT_FALLBACK_ATTEMPTS = 6; // 6 * 30s = 3 min
+// H2: disconnect reasons known to sometimes need a full teardown
+// (WiFi.disconnect(true) + rescan) rather than a lightweight WiFi.reconnect()
+// escalate after fewer attempts.
+static constexpr uint32_t RECONNECT_ESCALATION_ATTEMPTS_STICKY = 2; // 2 * 30s = 1 min
+
 struct WiFiCredential {
     char* ssid;
     char* password;
@@ -32,6 +41,10 @@ private:
     void loadCredentials();
     static void onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info);
     static const char* reasonToString(uint8_t reason);
+    // H2: true for disconnect reasons (4WAY_HANDSHAKE_TIMEOUT, BEACON_TIMEOUT,
+    // HANDSHAKE_TIMEOUT, AUTH_FAIL) that are known to sometimes require a full
+    // disconnect+rescan rather than a plain WiFi.reconnect().
+    static bool isStickyDisconnectReason(uint8_t reason);
 
 public:
     static WiFiManager& getInstance();
