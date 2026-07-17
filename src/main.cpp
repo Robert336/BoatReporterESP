@@ -89,6 +89,25 @@ DiscordChannel discordChannel;
 CustomChannel  customChannel;
 
 
+// C2: flood-watch callback for OTAManager. Consulted inside the OTA download
+// loop so a firmware download (which owns the loop task for up to 5 minutes)
+// aborts if a Tier-1+ flood condition appears mid-download, instead of
+// blinding the flood sensor for the whole download. readLevel() is internally
+// gated to a 1-second sample rate, so calling it from the tight download loop
+// is cheap and returns a fresh-enough reading.
+bool otaFloodCheckCallback(void* ctx) {
+    WaterPressureSensor* sensor = static_cast<WaterPressureSensor*>(ctx);
+    SensorReading r = sensor->readLevel();
+    if (!r.valid) {
+        // Sensor fault is handled by the state-machine error path separately;
+        // it is not a flood condition and shouldn't gate OTA on its own.
+        return false;
+    }
+    const SettingsValues& sv = settingsStore.get();
+    return r.level_cm >= sv.emergencyWaterLevel_cm; // Tier 1+
+}
+
+
 // NotificationWorker and MQTTService use FreeRTOS/Arduino APIs not available in
 // unit test builds — the outer #ifndef UNIT_TESTING at the top of this file
 // excludes everything below.
@@ -147,6 +166,9 @@ void setup() {
     // Initialize OTAManager early to check for rollback/first boot after update
     otaManager = new OTAManager(&notifier);
     otaManager->begin();
+    // C2: let the OTA download loop abort a firmware download if a flood
+    // condition appears mid-download, so the bilge sensor is never blinded.
+    otaManager->setFloodWatch(otaFloodCheckCallback, &waterSensor);
     LOG_SETUP("[SETUP] OTAManager initialized - version %s", FIRMWARE_VERSION);
 
     // Initialize ConfigServer early to load calibration from NVS
