@@ -26,7 +26,7 @@ constexpr const char SETTINGS_STORE_NAMESPACE[] = "emergency";
 struct SettingsValues {
     float emergencyWaterLevel_cm;        // Tier 1 threshold (notification)
     int   emergencyNotifFreq_ms;         // Tier 1 notification interval
-    float urgentEmergencyWaterLevel_cm;  // Tier 2 threshold (horn)
+    float urgentEmergencyWaterLevel_cm;  // Tier 2 threshold
     int   hornOnDuration_ms;
     int   hornOffDuration_ms;
 };

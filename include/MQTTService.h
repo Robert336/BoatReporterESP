@@ -13,7 +13,7 @@ class MQTTService;
     - Persistent connection to a configurable Mosquitto broker (NVS-backed).
     - Non-blocking reconnect with exponential backoff.
     - Internal ring-buffer queue for log messages so LOG_* macros never block
-      the main loop (critical during EMERGENCY horn-pulsing state).
+      the main loop (critical during EMERGENCY alert-pulsing state).
     - LWT on <baseTopic>/availability ("online"/"offline") for HA availability.
     - Generic publish() and subscribe() for future HA sensor/command topics.
     - Subscriber fan-out (PubSubClient supports only one global callback).

@@ -29,7 +29,7 @@ void handleButtonPress();
 
 // The canonical state machine context. All state lives here; loop() is a thin
 // dispatcher that calls updateStateMachine(), reads the output, and executes
-// side effects (horn GPIO, MQTT enqueue, LED pattern).
+// side effects (alert GPIO, MQTT enqueue, LED pattern).
 StateMachineContext smCtx;
 
 // Status logging
@@ -60,7 +60,7 @@ static constexpr int LIGHT_PIN = 12;
 //   - 34/35/36/39 input-only, no output driver — pinMode(OUTPUT) is illegal
 //   - 1/3         UART0 TX/RX — serial console
 //   - 0/2/5/15    strapping pins — driving at/after boot is risky and pointless
-//   - 12,21,22,26,27,32  already used by LED/I2C/horn/button/water sensor
+//   - 12,21,22,26,27,32  already used by LED/I2C/alert/button/water sensor
 static constexpr int UNUSED_GPIOS[] = {4, 13, 14, 16, 17, 18, 19, 23, 25, 33};
 
 // Task watchdog: tightened now that checkForUpdates() runs off-loop on an OTA task.
@@ -320,9 +320,9 @@ void loop() {
     // Execute side effects from state machine output
     // ------------------------------------------------------------------
 
-    // Horn transition logging (Tier 2 pulse edges only)
+    // Alert transition logging (Tier 2 pulse edges only)
     if (out.setHornState) {
-        LOG_DEBUG("[HORN] Horn %s", out.hornOn ? "ON" : "OFF");
+        LOG_DEBUG("[ALERT] Tier 2 pulse %s", out.hornOn ? "ON" : "OFF");
     }
 
     // Alert pin (GPIO 26) — dedicated emergency indicator, driven every
