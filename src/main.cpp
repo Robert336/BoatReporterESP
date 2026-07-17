@@ -449,6 +449,13 @@ void loop() {
                       ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
         LOG_STATUS("[NOTIFIER] Pending=%u, Dropped=%u",
                       notifier.getPendingCount(), notifier.getDropCount());
+        // H5: monitor TLS-task stack headroom empirically. The notifier and
+        // OTA-check tasks both perform mbedTLS handshakes (WiFiClientSecure);
+        // log free-stack high-water marks so a future soak test can confirm
+        // the bumped stack sizes (8KB / 10KB) leave real margin.
+        LOG_STATUS("[STACK] notifier HW=%u, ota_check HW=%u",
+                      notifier.getStackHighWaterMark(),
+                      otaManager ? otaManager->getCheckTaskStackHighWaterMark() : 0);
         lastStatusLogTime = millis();
     }
 
