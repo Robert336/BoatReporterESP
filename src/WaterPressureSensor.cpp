@@ -181,6 +181,12 @@ SensorReading WaterPressureSensor::readLevel() {
         // on the same raw value (P6 fix).
         float computedVolts = ads.computeVolts(rawADC);
         reading.millivolts = computedVolts * 1000.0f;
+        // C3: a successful I2C transaction means the bus is healthy right now,
+        // so reset the lifetime recovery-attempt counter. Without this, 10
+        // transient glitches spread across the device's entire service life
+        // would permanently disable flood detection (busUnrecoverable, only
+        // cleared by reboot) even though every glitch recovered cleanly.
+        busRecoveryAttempts = 0;
         uint32_t now = millis();
         if (now - lastLogTime >= 1000) {
             LOG_DEBUG("WaterPressureSensor: millivolts reading = %.2f mV", reading.millivolts);
