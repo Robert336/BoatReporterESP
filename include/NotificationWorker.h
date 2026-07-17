@@ -5,6 +5,7 @@ class NotificationWorker;
 #include <Arduino.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
+#include <freertos/task.h>
 #include "NotifyChannelFlags.h"
 #include "NotificationChannel.h"
 
@@ -19,13 +20,19 @@ struct NotifMsg {
 // Runs outbound HTTP (SMS, Discord, Custom, …) on Core 0 so the main-loop
 // state machine is never blocked by a 10-second provider timeout.
 //
-// Two channels, joined by a queue set:
-//   - fifoQueue:        one-shot event messages (silence confirm, bus error).
-//                       Each is distinct, so each is delivered.
+// Two queues, drained with strict priority (H3):
 //   - emergencyMailbox: depth-1, written with xQueueOverwrite — a newer
 //                       emergency snapshot replaces an older unsent one. This
 //                       coalesces a backlog so that when WiFi returns after an
-//                       outage the owner gets ONE current alert, not N stale ones.
+//                       outage the owner gets ONE current alert, not N stale
+//                       ones. ALWAYS drained before the FIFO.
+//   - fifoQueue:        one-shot event messages (silence confirm, bus error).
+//                       Each is distinct, so each is delivered.
+// The task blocks on a direct task notification (not a queue set, which makes
+// no ordering guarantee between members). Producers signal via xTaskNotifyGive
+// after posting; on wake the task polls emergency first, then FIFO, so an
+// emergency snapshot present at wake time is always delivered ahead of FIFO
+// backlog accumulated during a WiFi outage.
 class NotificationWorker {
 public:
     NotificationWorker() = default;
@@ -48,6 +55,10 @@ public:
     uint32_t getPendingCount() const;
     uint32_t getDropCount() const { return dropCount; }
 
+    // H5: stack high-water mark for the worker task (bytes of free stack ever
+    // remaining). Returns 0 if the task isn't running.
+    uint32_t getStackHighWaterMark() const;
+
 private:
     static void taskEntry(void* arg);
     void run();
@@ -59,12 +70,12 @@ private:
 
     QueueHandle_t    fifoQueue        = nullptr;
     QueueHandle_t    emergencyMailbox = nullptr;
-    QueueSetHandle_t queueSet         = nullptr;
+    TaskHandle_t     taskHandle       = nullptr;
     uint32_t         dropCount        = 0;
     bool             dryRun           = false;
 
     static constexpr size_t      FIFO_DEPTH    = 8;
-    static constexpr uint32_t    TASK_STACK    = 6144;
+    static constexpr uint32_t    TASK_STACK    = 8192;
     static constexpr UBaseType_t TASK_PRIORITY = 1;
     static constexpr BaseType_t  TASK_CORE     = 0;
 

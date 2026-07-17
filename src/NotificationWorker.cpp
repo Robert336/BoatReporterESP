@@ -13,21 +13,26 @@ void NotificationWorker::begin(NotificationChannel** channels, size_t count, boo
 
     fifoQueue        = xQueueCreate(FIFO_DEPTH, sizeof(NotifMsg));
     emergencyMailbox = xQueueCreate(1, sizeof(NotifMsg));
-    // Set capacity must equal the sum of all member capacities, or adds fail.
-    queueSet         = xQueueCreateSet(FIFO_DEPTH + 1);
-    if (!fifoQueue || !emergencyMailbox || !queueSet) {
-        LOG_CRITICAL("[NOTIFIER] Queue/set allocation FAILED — notifications unavailable");
+    if (!fifoQueue || !emergencyMailbox) {
+        LOG_CRITICAL("[NOTIFIER] Queue allocation FAILED — notifications unavailable");
         return;
     }
-    xQueueAddToSet(fifoQueue, queueSet);
-    xQueueAddToSet(emergencyMailbox, queueSet);
 
-    TaskHandle_t handle = nullptr;
+    // H3: a queue set makes no ordering guarantee between members, so an
+    // emergency snapshot could be deferred behind FIFO backlog accumulated
+    // during a WiFi outage. Block on a direct task notification instead and
+    // poll emergency-then-FIFO on wake for strict priority.
     BaseType_t ok = xTaskCreatePinnedToCore(taskEntry, "notifier", TASK_STACK,
-                                            this, TASK_PRIORITY, &handle, TASK_CORE);
+                                            this, TASK_PRIORITY, &taskHandle, TASK_CORE);
     if (ok != pdPASS) {
         LOG_CRITICAL("[NOTIFIER] Task creation FAILED — notifications will not be delivered");
+        taskHandle = nullptr;
     }
+}
+
+uint32_t NotificationWorker::getStackHighWaterMark() const {
+    if (!taskHandle) return 0;
+    return (uint32_t)uxTaskGetStackHighWaterMark(taskHandle);
 }
 
 bool NotificationWorker::enqueue(const char* message, uint8_t channels) {
@@ -47,6 +52,10 @@ bool NotificationWorker::enqueue(const char* message, uint8_t channels) {
                   dropCount, message);
         return false;
     }
+    // H3: wake the worker so it can drain the queue (emergency first).
+    if (taskHandle) {
+        xTaskNotifyGive(taskHandle);
+    }
     return true;
 }
 
@@ -63,6 +72,11 @@ bool NotificationWorker::enqueueEmergency(const char* message, uint8_t channels)
     msg.channels = channels;
     // Depth-1 overwrite: always succeeds, replacing any older unsent snapshot.
     xQueueOverwrite(emergencyMailbox, &msg);
+    // H3: wake the worker so the emergency snapshot is drained ahead of any
+    // pending FIFO backlog.
+    if (taskHandle) {
+        xTaskNotifyGive(taskHandle);
+    }
     return true;
 }
 
@@ -118,22 +132,23 @@ void NotificationWorker::deliver(NotifMsg& msg) {
 void NotificationWorker::run() {
     NotifMsg msg;
     for (;;) {
-        // Block until either channel has data; the set reports which one.
-        QueueSetMemberHandle_t member = xQueueSelectFromSet(queueSet, portMAX_DELAY);
-
-        // Emergency takes priority. Receiving only after select keeps the set in
-        // sync (per the FreeRTOS queue-set contract). The depth-1 mailbox means
-        // we always read the most recent snapshot the producer left behind, so a
-        // backlog accumulated during an outage collapses to a single send.
-        if (member == emergencyMailbox) {
-            if (xQueueReceive(emergencyMailbox, &msg, 0) == pdTRUE) {
-                deliver(msg);
-            }
-        } else if (member == fifoQueue) {
-            if (xQueueReceive(fifoQueue, &msg, 0) == pdTRUE) {
-                deliver(msg);
-            }
+        // H3: strict priority. Drain the emergency mailbox completely before
+        // touching the FIFO, so an emergency snapshot present at wake time is
+        // always delivered ahead of one-shot events accumulated during a WiFi
+        // outage. Both queues are polled non-blocking; if both are empty the
+        // task blocks on a direct notification from a producer.
+        if (xQueueReceive(emergencyMailbox, &msg, 0) == pdTRUE) {
+            deliver(msg);
+            continue;
         }
+        if (xQueueReceive(fifoQueue, &msg, 0) == pdTRUE) {
+            deliver(msg);
+            continue;
+        }
+        // Nothing pending. Block until a producer (enqueue/enqueueEmergency)
+        // signals. pdTRUE clears the notification count on wake so a signal
+        // that arrived between the polls above and this take is not lost.
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     }
 }
 
