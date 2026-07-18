@@ -24,6 +24,8 @@ h2{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;
 .dot.bad{background:#dc2626}
 label{display:block;font-size:13px;color:#78716c;margin:10px 0 6px}
 label .hint{font-weight:normal;color:#a8a29e;margin-left:4px}
+label .set{font-weight:600;color:#65a30d;margin-left:4px}
+label .unset{font-weight:600;color:#a8a29e;margin-left:4px}
 .input{display:flex;align-items:stretch;background:#f5f5f4;border:1px solid #e7e5e4;border-radius:10px;overflow:hidden;transition:border-color .15s}
 .input:focus-within{border-color:#1c1917;background:#fff}
 .input input,.input select{flex:1;border:0;background:transparent;padding:10px 12px;font-size:15px;font-family:inherit;color:inherit;width:100%;min-width:0}
@@ -37,8 +39,6 @@ label .hint{font-weight:normal;color:#a8a29e;margin-left:4px}
 .btn:active{background:#292524}
 .btn.secondary{background:#fff;color:#1c1917;border:1px solid #e7e5e4}
 .btn.secondary:active{background:#f5f5f4}
-.btn.danger{background:#dc2626}
-.btn.danger:active{background:#b91c1c}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .msg{margin-top:10px;font-size:13px;text-align:center;color:#78716c;min-height:18px}
 .msg.ok{color:#65a30d}
@@ -51,6 +51,11 @@ label .hint{font-weight:normal;color:#a8a29e;margin-left:4px}
 .status.ok{background:#f0fdf4;border-color:#bbf7d0;color:#166534}
 .status.warn{background:#fffbeb;border-color:#fde68a;color:#92400e}
 .status.bad{background:#fef2f2;border-color:#fecaca;color:#991b1b}
+.update-banner{display:none;margin:0 0 12px;padding:14px;border-radius:12px;background:#f0fdf4;border:1px solid #bbf7d0;color:#166534}
+.update-banner.show{display:block}
+.update-banner .ub-title{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;opacity:.8;margin-bottom:4px}
+.update-banner .ub-version{font-size:20px;font-weight:600;letter-spacing:-0.01em;margin-bottom:2px}
+.update-banner .ub-from{font-size:13px;opacity:.8}
 .warn-note{font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-top:10px}
 </style>
 </head>
@@ -66,6 +71,11 @@ label .hint{font-weight:normal;color:#a8a29e;margin-left:4px}
 <div class="head"><h2>Current version</h2><span class="pill" id="state_pill"><span class="dot" id="state_dot"></span><span id="state_label">...</span></span></div>
 <div class="version" id="cur_ver">--</div>
 <div class="subline" id="last_check">Last checked --</div>
+<div class="update-banner" id="update_banner">
+<div class="ub-title">Update available</div>
+<div class="ub-version" id="avail_ver">--</div>
+<div class="ub-from" id="avail_from"></div>
+</div>
 <div class="status" id="update_status">Loading...</div>
 <div class="actions">
 <button class="btn secondary" id="check_btn" onclick="checkUpdates()">Check for updates</button>
@@ -81,12 +91,12 @@ label .hint{font-weight:normal;color:#a8a29e;margin-left:4px}
 <label>GitHub repository <span class="hint">owner/repo</span></label>
 <div class="input"><input type="text" id="gh_repo" placeholder="owner/repository"></div>
 <div class="helptext">Where firmware releases are published</div>
-<label>GitHub token <span class="hint">optional · write-only</span></label>
-<div class="input"><input type="password" id="gh_token" placeholder="Leave blank for public repos" autocomplete="off"></div>
-<div class="helptext">Personal access token for private repositories</div>
-<label>Update password <span class="hint">optional · write-only</span></label>
-<div class="input"><input type="password" id="ota_pwd" placeholder="Leave blank for no password" autocomplete="off"></div>
-<div class="helptext">Require password to install updates manually</div>
+<label>GitHub token <span class="hint" id="token_state">optional · write-only</span></label>
+<div class="input"><input type="password" id="gh_token" placeholder="Leave blank to keep current" autocomplete="off"></div>
+<div class="helptext">Personal access token for private repositories. Leave blank to keep existing.</div>
+<label>Update password <span class="hint" id="pwd_state">optional · write-only</span></label>
+<div class="input"><input type="password" id="ota_pwd" placeholder="Leave blank to keep current" autocomplete="off"></div>
+<div class="helptext">Require password to install updates manually. Leave blank to keep existing.</div>
 </div>
 
 <!-- Automatic updates -->
@@ -116,34 +126,73 @@ function setPill(dot,lbl,state,text){el(dot).className='dot '+state;el(lbl).text
 let checking=false,updating=false;
 
 function applyStatus(d){
+// --- Always populate these, regardless of state ---
 el('cur_ver').textContent=d.currentVersion||'--';
 el('gh_repo').value=d.githubRepo||'';
 el('auto_check').checked=!!d.autoCheckEnabled;
 el('auto_install').checked=!!d.autoInstallEnabled;
 el('check_interval').value=d.checkIntervalHours||24;
 el('notify').checked=!!d.notificationsEnabled;
-el('last_check').textContent='Last checked '+(d.timeSinceLastCheckHours!=null?d.timeSinceLastCheckHours.toFixed(1)+' hours ago':'--');
 
+// Last checked — handle null/undefined gracefully
+var lc=el('last_check');
+if(d.timeSinceLastCheckHours!=null){
+lc.textContent='Last checked '+d.timeSinceLastCheckHours.toFixed(1)+' hours ago';
+}else{
+lc.textContent='Last checked --';
+}
+
+// Token / password "is set" indicators (write-only — never display values)
+var ts=el('token_state');
+if(d.hasGithubToken){ts.textContent='set';ts.className='set'}
+else{ts.textContent='optional · write-only';ts.className='hint'}
+var ps=el('pwd_state');
+if(d.hasUpdatePassword){ps.textContent='set';ps.className='set'}
+else{ps.textContent='optional · write-only';ps.className='hint'}
+
+// Update-available banner — dedicated element with version number
+var banner=el('update_banner');
+if(d.updateAvailable&&d.availableVersion){
+banner.className='update-banner show';
+el('avail_ver').textContent='v'+d.availableVersion;
+el('avail_from').textContent='from v'+(d.currentVersion||'?');
+}else{
+banner.className='update-banner';
+}
+
+// Status line + pill + install button
 var s=el('update_status'),installBtn=el('install_btn');
 var state=d.state||'idle';
-if(state==='checking'){s.className='status warn';s.textContent='Checking for updates...';setPill('state_dot','state_label','warn','checking');installBtn.disabled=true;return}
-if(state==='downloading'||state==='installing'){s.className='status warn';s.textContent='Installing update — device will reboot...';setPill('state_dot','state_label','warn','installing');installBtn.disabled=true;return}
-if(state==='failed'){s.className='status bad';s.textContent='Update failed: '+(d.lastError||'unknown error');setPill('state_dot','state_label','bad','failed');installBtn.disabled=true;return}
-if(d.updateAvailable){
-s.className='status ok';
-s.innerHTML='Update available — v'+(d.availableVersion||'?')+' is ready to install';
+if(state==='checking'){
+s.className='status warn';s.textContent='Checking for updates...';
+setPill('state_dot','state_label','warn','checking');
+installBtn.disabled=true;
+}else if(state==='downloading'||state==='installing'){
+s.className='status warn';s.textContent='Installing update — device will reboot...';
+setPill('state_dot','state_label','warn','installing');
+installBtn.disabled=true;
+}else if(state==='failed'){
+s.className='status bad';s.textContent='Update failed: '+(d.lastError||'unknown error');
+setPill('state_dot','state_label','bad','failed');
+installBtn.disabled=true;
+}else if(d.updateAvailable){
+s.className='status ok';s.textContent='Ready to install';
 setPill('state_dot','state_label','warn','update available');
 installBtn.disabled=false;
 }else{
-s.className='status';
-s.textContent='Up to date';
+s.className='status';s.textContent='Up to date';
 setPill('state_dot','state_label','ok','up to date');
 installBtn.disabled=true;
 }
 }
 
 function loadStatus(){
-return fetch('/ota/status').then(r=>r.json()).then(applyStatus).catch(function(e){console.error(e)})
+return fetch('/ota/status').then(r=>r.json()).then(applyStatus).catch(function(e){
+console.error(e);
+var s=el('update_status');
+s.className='status bad';s.textContent='Failed to load status';
+setPill('state_dot','state_label','bad','offline');
+})
 }
 
 function checkUpdates(){
@@ -197,8 +246,13 @@ body+='&auto_install='+(el('auto_install').checked?'1':'0');
 body+='&check_interval_hours='+encodeURIComponent(el('check_interval').value||'24');
 body+='&notifications_enabled='+(el('notify').checked?'1':'0');
 fetch('/ota/settings',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body}).then(r=>r.json()).then(function(d){
-if(d.success){flash('settings_msg','Saved','ok');el('gh_token').value='';el('ota_pwd').value='';loadStatus()}
-else flash('settings_msg',d.error||'Failed','bad');
+if(d.success){
+flash('settings_msg','Saved','ok');
+el('gh_token').value='';el('ota_pwd').value='';
+loadStatus();
+}else{
+flash('settings_msg',d.error||'Failed','bad');
+}
 }).catch(function(e){flash('settings_msg','Error: '+e.message,'bad')});
 }
 

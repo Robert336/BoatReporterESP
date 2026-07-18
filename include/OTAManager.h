@@ -186,6 +186,8 @@ public:
     bool isAutoInstallEnabled() const { return config.autoInstallEnabled; }
     bool areNotificationsEnabled() const { return config.notificationsEnabled; }
     String getGitHubRepo() const { return config.githubOwner + "/" + config.githubRepo; }
+    bool hasGitHubToken() const { return !config.githubToken.isEmpty(); }
+    bool hasUpdatePassword() const { return !config.updatePassword.isEmpty(); }
     unsigned long getCheckIntervalMs() const { return config.checkIntervalMs; }
     unsigned long getTimeSinceLastCheck() const { return millis() - lastCheckTime; }
 };

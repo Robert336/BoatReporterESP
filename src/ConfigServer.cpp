@@ -1285,6 +1285,8 @@ void ConfigServer::handleOTAStatus() {
     json += "\"autoInstallEnabled\":" + String(otaManager->isAutoInstallEnabled() ? "true" : "false") + ",";
     json += "\"notificationsEnabled\":" + String(otaManager->areNotificationsEnabled() ? "true" : "false") + ",";
     json += "\"githubRepo\":\"" + otaManager->getGitHubRepo() + "\",";
+    json += "\"hasGithubToken\":" + String(otaManager->hasGitHubToken() ? "true" : "false") + ",";
+    json += "\"hasUpdatePassword\":" + String(otaManager->hasUpdatePassword() ? "true" : "false") + ",";
     json += "\"checkIntervalHours\":" + String(otaManager->getCheckIntervalMs() / 3600000) + ",";
     json += "\"timeSinceLastCheckHours\":" + String(otaManager->getTimeSinceLastCheck() / 3600000, 1);
     json += "}";
