@@ -1,185 +1,209 @@
 <!DOCTYPE html>
-<html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>OTA Updates</title>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Firmware · BilgeRise</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="prefetch" href="/settings">
 <style>
-body{font-family:Arial,sans-serif;margin:0;padding:10px;max-width:700px;margin:0 auto;}
-h1{font-size:1.5em;margin:10px 0;}
-.card{border:1px solid #ccc;padding:15px;margin:10px 0;}
-.card h2{font-size:1.1em;margin:0 0 10px 0;border-bottom:1px solid #ddd;padding-bottom:5px;}
-.row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #eee;}
-.row:last-child{border-bottom:none;}
-.label{font-weight:bold;}
-label{display:block;margin:10px 0 5px;font-weight:bold;}
-input,select{width:100%;padding:8px;border:1px solid #ccc;font-size:1em;box-sizing:border-box;}
-button{padding:10px 15px;margin:5px 5px 5px 0;border:1px solid #333;background:#fff;font-size:0.95em;cursor:pointer;}
-button:active{background:#eee;}
-button:disabled{opacity:0.5;cursor:not-allowed;}
-.primary{background:#4CAF50;color:#fff;border-color:#4CAF50;}
-.danger{background:#f44336;color:#fff;border-color:#f44336;}
-.help{font-size:0.85em;color:#666;margin-top:3px;}
-.status{padding:10px;margin:10px 0;border:1px solid #ccc;text-align:center;}
-.status.success{background:#d4edda;border-color:#c3e6cb;color:#155724;}
-.status.error{background:#f8d7da;border-color:#f5c6cb;color:#721c24;}
-.status.warning{background:#fff3cd;border-color:#ffeaa7;color:#856404;}
-.version{font-size:1.5em;text-align:center;margin:10px 0;}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;background:#f7f5f1;color:#1c1917;font-size:16px;line-height:1.4;-webkit-font-smoothing:antialiased}
+.app{max-width:480px;margin:0 auto;padding:16px}
+header{display:flex;align-items:center;gap:8px;padding:8px 0 14px}
+.back{color:#44403c;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;background:#fff;border:1px solid #e7e5e4;font-size:18px;line-height:1}
+.back:active{background:#f5f5f4}
+h1{font-size:20px;font-weight:600;margin:0;letter-spacing:-0.01em}
+h2{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#78716c;margin:0 0 10px}
+.card{background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:18px;margin-bottom:14px}
+.head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:8px}
+.head h2{margin:0}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:#f5f5f4;border:1px solid #e7e5e4;font-size:12px;color:#44403c}
+.dot{width:7px;height:7px;border-radius:50%;background:#a8a29e;flex-shrink:0;display:inline-block}
+.dot.ok{background:#65a30d}
+.dot.warn{background:#ea580c}
+.dot.bad{background:#dc2626}
+label{display:block;font-size:13px;color:#78716c;margin:10px 0 6px}
+label .hint{font-weight:normal;color:#a8a29e;margin-left:4px}
+.input{display:flex;align-items:stretch;background:#f5f5f4;border:1px solid #e7e5e4;border-radius:10px;overflow:hidden;transition:border-color .15s}
+.input:focus-within{border-color:#1c1917;background:#fff}
+.input input,.input select{flex:1;border:0;background:transparent;padding:10px 12px;font-size:15px;font-family:inherit;color:inherit;width:100%;min-width:0}
+.input input:focus,.input select:focus{outline:0}
+.input .sfx{align-self:center;padding-right:12px;font-size:13px;color:#78716c}
+.check{display:flex;align-items:center;gap:8px;margin:10px 0;font-size:15px;color:#1c1917}
+.check input{width:auto;margin:0}
+.check label{margin:0;color:inherit;font-size:inherit;font-weight:500}
+.actions{display:flex;gap:8px;margin-top:14px}
+.btn{flex:1;padding:12px;background:#1c1917;color:#fff;border:0;border-radius:10px;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer;transition:background .15s}
+.btn:active{background:#292524}
+.btn.secondary{background:#fff;color:#1c1917;border:1px solid #e7e5e4}
+.btn.secondary:active{background:#f5f5f4}
+.btn.danger{background:#dc2626}
+.btn.danger:active{background:#b91c1c}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.msg{margin-top:10px;font-size:13px;text-align:center;color:#78716c;min-height:18px}
+.msg.ok{color:#65a30d}
+.msg.bad{color:#dc2626}
+.helptext{font-size:12px;color:#a8a29e;margin-top:6px}
+.divider{border:0;border-top:1px solid #f0eeed;margin:14px 0}
+.version{font-size:28px;font-weight:600;letter-spacing:-0.02em;text-align:center;margin:4px 0 6px;font-variant-numeric:tabular-nums}
+.subline{font-size:13px;color:#78716c;text-align:center;margin:0 0 12px}
+.status{margin:0 0 12px;padding:10px 12px;border-radius:10px;font-size:14px;text-align:center;background:#f5f5f4;border:1px solid #e7e5e4;color:#44403c}
+.status.ok{background:#f0fdf4;border-color:#bbf7d0;color:#166534}
+.status.warn{background:#fffbeb;border-color:#fde68a;color:#92400e}
+.status.bad{background:#fef2f2;border-color:#fecaca;color:#991b1b}
+.warn-note{font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-top:10px}
 </style>
+</head>
+<body>
+<div class="app">
+<header>
+<a href="/settings" class="back" aria-label="Back">&#8249;</a>
+<h1>Firmware</h1>
+</header>
+
+<!-- Current version + update status -->
+<div class="card">
+<div class="head"><h2>Current version</h2><span class="pill" id="state_pill"><span class="dot" id="state_dot"></span><span id="state_label">...</span></span></div>
+<div class="version" id="cur_ver">--</div>
+<div class="subline" id="last_check">Last checked --</div>
+<div class="status" id="update_status">Loading...</div>
+<div class="actions">
+<button class="btn secondary" id="check_btn" onclick="checkUpdates()">Check for updates</button>
+<button class="btn" id="install_btn" onclick="installUpdate()" disabled>Install update</button>
+</div>
+<label>Update password <span class="hint" id="pwd_hint">if set</span></label>
+<div class="input"><input type="password" id="update_pwd" placeholder="Leave blank if no password" autocomplete="off"></div>
+</div>
+
+<!-- OTA settings -->
+<div class="card">
+<div class="head"><h2>Repository</h2></div>
+<label>GitHub repository <span class="hint">owner/repo</span></label>
+<div class="input"><input type="text" id="gh_repo" placeholder="owner/repository"></div>
+<div class="helptext">Where firmware releases are published</div>
+<label>GitHub token <span class="hint">optional · write-only</span></label>
+<div class="input"><input type="password" id="gh_token" placeholder="Leave blank for public repos" autocomplete="off"></div>
+<div class="helptext">Personal access token for private repositories</div>
+<label>Update password <span class="hint">optional · write-only</span></label>
+<div class="input"><input type="password" id="ota_pwd" placeholder="Leave blank for no password" autocomplete="off"></div>
+<div class="helptext">Require password to install updates manually</div>
+</div>
+
+<!-- Automatic updates -->
+<div class="card">
+<div class="head"><h2>Automatic updates</h2></div>
+<div class="check"><input type="checkbox" id="auto_check"><label for="auto_check">Check for updates automatically</label></div>
+<label>Check interval <span class="hint">hours</span></label>
+<div class="input"><input type="number" id="check_interval" min="1" max="168" value="24"><span class="sfx">h</span></div>
+<div class="helptext">How often to poll GitHub for new releases (1–168 hours)</div>
+<div class="check"><input type="checkbox" id="auto_install"><label for="auto_install">Install updates automatically</label></div>
+<div class="warn-note">&#9888;&#65039; When enabled, updates install without confirmation. The device will reboot.</div>
+<div class="check"><input type="checkbox" id="notify"><label for="notify">Send OTA notifications</label></div>
+<div class="helptext">SMS / Discord notifications about update status</div>
+<div class="actions">
+<button class="btn" onclick="saveSettings()">Save settings</button>
+</div>
+<div class="msg" id="settings_msg"></div>
+</div>
+
+</div>
+
 <script>
-let checking=false;
-let updating=false;
-async function loadStatus(){
-try{
-const r=await fetch('/ota/status');
-const d=await r.json();
-document.getElementById('cur_ver').textContent=d.currentVersion;
-document.getElementById('gh_repo').value=d.githubRepo;
-document.getElementById('auto_check').checked=d.autoCheckEnabled;
-document.getElementById('auto_install').checked=d.autoInstallEnabled;
-document.getElementById('check_interval').value=d.checkIntervalHours;
-document.getElementById('notify').checked=d.notificationsEnabled;
-document.getElementById('last_check').textContent=d.timeSinceLastCheckHours.toFixed(1)+' hours ago';
-const updateDiv=document.getElementById('update_status');
+function el(id){return document.getElementById(id)}
+function flash(id,t,cls){var m=el(id);m.textContent=t;m.className='msg '+(cls||'');if(cls==='ok')setTimeout(function(){m.textContent='';m.className='msg'},2500)}
+function setPill(dot,lbl,state,text){el(dot).className='dot '+state;el(lbl).textContent=text}
+
+let checking=false,updating=false;
+
+function applyStatus(d){
+el('cur_ver').textContent=d.currentVersion||'--';
+el('gh_repo').value=d.githubRepo||'';
+el('auto_check').checked=!!d.autoCheckEnabled;
+el('auto_install').checked=!!d.autoInstallEnabled;
+el('check_interval').value=d.checkIntervalHours||24;
+el('notify').checked=!!d.notificationsEnabled;
+el('last_check').textContent='Last checked '+(d.timeSinceLastCheckHours!=null?d.timeSinceLastCheckHours.toFixed(1)+' hours ago':'--');
+
+var s=el('update_status'),installBtn=el('install_btn');
+var state=d.state||'idle';
+if(state==='checking'){s.className='status warn';s.textContent='Checking for updates...';setPill('state_dot','state_label','warn','checking');installBtn.disabled=true;return}
+if(state==='downloading'||state==='installing'){s.className='status warn';s.textContent='Installing update — device will reboot...';setPill('state_dot','state_label','warn','installing');installBtn.disabled=true;return}
+if(state==='failed'){s.className='status bad';s.textContent='Update failed: '+(d.lastError||'unknown error');setPill('state_dot','state_label','bad','failed');installBtn.disabled=true;return}
 if(d.updateAvailable){
-updateDiv.className='status success';
-updateDiv.innerHTML='<strong>Update Available!</strong><br>Version '+d.availableVersion+' is ready to install';
-document.getElementById('install_btn').disabled=false;
-}else if(d.state==='checking'){
-updateDiv.className='status warning';
-updateDiv.textContent='Checking for updates...';
-}else if(d.state==='failed'){
-updateDiv.className='status error';
-updateDiv.textContent='Error: '+d.lastError;
+s.className='status ok';
+s.innerHTML='Update available — v'+(d.availableVersion||'?')+' is ready to install';
+setPill('state_dot','state_label','warn','update available');
+installBtn.disabled=false;
 }else{
-updateDiv.className='status';
-updateDiv.textContent='No updates available. Current version: '+d.currentVersion;
-document.getElementById('install_btn').disabled=true;
+s.className='status';
+s.textContent='Up to date';
+setPill('state_dot','state_label','ok','up to date');
+installBtn.disabled=true;
 }
-}catch(e){console.error(e);}
 }
-async function checkUpdates(){
+
+function loadStatus(){
+return fetch('/ota/status').then(r=>r.json()).then(applyStatus).catch(function(e){console.error(e)})
+}
+
+function checkUpdates(){
 if(checking)return;
 checking=true;
-const btn=document.getElementById('check_btn');
-btn.disabled=true;
-btn.textContent='Checking...';
-const statusDiv=document.getElementById('update_status');
-statusDiv.className='status warning';
-statusDiv.textContent='Checking GitHub for updates...';
-try{
-const r=await fetch('/ota/check');
-const d=await r.json();
-await new Promise(res=>setTimeout(res,1000));
-await loadStatus();
-}catch(e){
-statusDiv.className='status error';
-statusDiv.textContent='Error checking for updates: '+e.message;
-}finally{
-checking=false;
-btn.disabled=false;
-btn.textContent='Check for Updates';
+var btn=el('check_btn');btn.disabled=true;btn.textContent='Checking...';
+var s=el('update_status');s.className='status warn';s.textContent='Checking GitHub for updates...';
+setPill('state_dot','state_label','warn','checking');
+fetch('/ota/check').then(r=>r.json()).then(function(){
+setTimeout(loadStatus,1000);
+}).catch(function(e){
+s.className='status bad';s.textContent='Error: '+e.message;
+setPill('state_dot','state_label','bad','error');
+}).then(function(){
+checking=false;btn.disabled=false;btn.textContent='Check for updates';
+});
 }
-}
-async function installUpdate(){
+
+function installUpdate(){
 if(updating)return;
-const pwd=document.getElementById('update_pwd').value;
-if(!confirm('Install firmware update? Device will reboot.'))return;
+var pwd=el('update_pwd').value;
+if(!confirm('Install firmware update? The device will reboot.'))return;
 updating=true;
-const btn=document.getElementById('install_btn');
-btn.disabled=true;
-btn.textContent='Installing...';
-const statusDiv=document.getElementById('update_status');
-statusDiv.className='status warning';
-statusDiv.textContent='Downloading and installing update... Device will reboot shortly.';
-try{
-const formData=new URLSearchParams();
+var btn=el('install_btn');btn.disabled=true;btn.textContent='Installing...';
+var s=el('update_status');s.className='status warn';s.textContent='Downloading and installing update... Device will reboot shortly.';
+var formData=new URLSearchParams();
 if(pwd)formData.append('password',pwd);
-const r=await fetch('/ota/update',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:formData});
-const d=await r.json();
+fetch('/ota/update',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:formData}).then(r=>r.json()).then(function(d){
 if(d.success){
-statusDiv.className='status success';
-statusDiv.textContent='Update started! Device is rebooting...';
+s.className='status ok';s.textContent='Update started — device is rebooting...';
 }else{
-statusDiv.className='status error';
-statusDiv.textContent='Update failed: '+(d.error||'Unknown error');
-updating=false;
-btn.disabled=false;
-btn.textContent='Install Update';
+s.className='status bad';s.textContent='Update failed: '+(d.error||'Unknown error');
+updating=false;btn.disabled=false;btn.textContent='Install update';
 }
-}catch(e){
-statusDiv.className='status warning';
-statusDiv.textContent='Update may be in progress (device rebooting)...';
+}).catch(function(){
+s.className='status warn';s.textContent='Update may be in progress (device rebooting)...';
+});
 }
+
+function saveSettings(){
+var parts=el('gh_repo').value.split('/');
+var owner=parts[0]||'',repo=parts[1]||'';
+if(!owner||!repo){flash('settings_msg','Enter repository as owner/repo','bad');return}
+var token=el('gh_token').value;
+var pwd=el('ota_pwd').value;
+var body='github_owner='+encodeURIComponent(owner)+'&github_repo='+encodeURIComponent(repo);
+if(token)body+='&github_token='+encodeURIComponent(token);
+if(pwd)body+='&update_password='+encodeURIComponent(pwd);
+body+='&auto_check='+(el('auto_check').checked?'1':'0');
+body+='&auto_install='+(el('auto_install').checked?'1':'0');
+body+='&check_interval_hours='+encodeURIComponent(el('check_interval').value||'24');
+body+='&notifications_enabled='+(el('notify').checked?'1':'0');
+fetch('/ota/settings',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body}).then(r=>r.json()).then(function(d){
+if(d.success){flash('settings_msg','Saved','ok');el('gh_token').value='';el('ota_pwd').value='';loadStatus()}
+else flash('settings_msg',d.error||'Failed','bad');
+}).catch(function(e){flash('settings_msg','Error: '+e.message,'bad')});
 }
-async function saveSettings(){
-const owner=document.getElementById('gh_repo').value.split('/')[0]||'';
-const repo=document.getElementById('gh_repo').value.split('/')[1]||'';
-const token=document.getElementById('gh_token').value;
-const pwd=document.getElementById('ota_pwd').value;
-const autoCheck=document.getElementById('auto_check').checked;
-const autoInstall=document.getElementById('auto_install').checked;
-const interval=document.getElementById('check_interval').value;
-const notify=document.getElementById('notify').checked;
-if(!owner||!repo){alert('Enter GitHub repository (owner/repo)');return;}
-try{
-const formData=new URLSearchParams();
-formData.append('github_owner',owner);
-formData.append('github_repo',repo);
-if(token)formData.append('github_token',token);
-if(pwd)formData.append('update_password',pwd);
-formData.append('auto_check',autoCheck);
-formData.append('auto_install',autoInstall);
-formData.append('check_interval_hours',interval);
-formData.append('notifications_enabled',notify);
-const r=await fetch('/ota/settings',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:formData});
-const d=await r.json();
-alert(d.success?'Settings saved!':d.error);
-if(d.success)loadStatus();
-}catch(e){alert('Error: '+e.message);}
-}
-window.onload=loadStatus;
+
+loadStatus();
+setInterval(loadStatus,5000);
 </script>
-</head><body>
-<a href="/" style="text-decoration:none;color:#000;">&#60; Back</a>
-<h1>Firmware Updates (OTA)</h1>
-<div class="card"><h2>Current Version</h2>
-<div class="version"><span id="cur_ver">--</span></div>
-<div class="help">Last checked: <span id="last_check">--</span></div>
-</div>
-<div class="card"><h2>Update Status</h2>
-<div id="update_status" class="status">Loading...</div>
-<button id="check_btn" onclick="checkUpdates()">Check for Updates</button>
-<div style="margin-top:15px;">
-<label>Update Password (if set)</label>
-<input type="password" id="update_pwd" placeholder="Leave blank if no password">
-<button id="install_btn" class="primary" onclick="installUpdate()" disabled>Install Update</button>
-</div>
-</div>
-<div class="card"><h2>OTA Settings</h2>
-<label>GitHub Repository</label>
-<input type="text" id="gh_repo" placeholder="owner/repository">
-<div class="help">Enter the GitHub repository where firmware releases are published</div>
-<label>GitHub Token (optional, for private repos)</label>
-<input type="password" id="gh_token" placeholder="Leave blank for public repos">
-<div class="help">Personal access token for private repositories</div>
-<label>Update Password (optional)</label>
-<input type="password" id="ota_pwd" placeholder="Leave blank for no password">
-<div class="help">Require password to install updates</div>
-<h3 style="margin-top:20px;">Automatic Updates</h3>
-<div style="display:flex;align-items:center;margin:10px 0;">
-<input type="checkbox" id="auto_check" style="width:auto;margin-right:10px;">
-<label for="auto_check" style="margin:0;">Enable automatic update checks</label>
-</div>
-<label>Check interval (hours)</label>
-<input type="number" id="check_interval" min="1" max="168" value="24">
-<div class="help">How often to check for updates (1-168 hours)</div>
-<div style="display:flex;align-items:center;margin:10px 0;">
-<input type="checkbox" id="auto_install" style="width:auto;margin-right:10px;">
-<label for="auto_install" style="margin:0;">Enable automatic update installation</label>
-</div>
-<div class="help" style="color:#d84315;">&#9888;&#65039; When enabled, updates will install automatically without user confirmation. Device will reboot.</div>
-<div style="display:flex;align-items:center;margin:10px 0;">
-<input type="checkbox" id="notify" style="width:auto;margin-right:10px;">
-<label for="notify" style="margin:0;">Enable OTA notifications</label>
-</div>
-<div class="help">Send SMS/Discord notifications about update status</div>
-<button onclick="saveSettings()">Save Settings</button>
-</div>
-</body></html>
+</body>
+</html>
