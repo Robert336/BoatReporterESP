@@ -65,6 +65,11 @@ public:
     void removeNetwork(const char* ssid);
     void connectToBestNetwork();
     void maintainConnection(); // Call from main loop — non-blocking reconnect with backoff
+    // Force maintainConnection() to attempt a reconnect on its next call,
+    // bypassing the RECONNECT_INTERVAL_MS throttle. Used after the config
+    // portal closes so the device reconnects promptly without blocking
+    // stopSetupMode() (and risking a watchdog reboot).
+    void requestImmediateReconnect() { _lastReconnectAttempt = 0; }
     std::vector<String> getStoredSSIDs();
     bool isConnected();
     int  getRSSI(); // Returns current RSSI in dBm, 0 if not connected

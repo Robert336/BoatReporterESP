@@ -268,9 +268,19 @@ void ConfigServer::stopSetupMode() {
 
     LOG_INFO("\n=== Setup mode stopped, resuming normal WiFi ===");
 
-    // Reconnect using the full scan-and-pick path so any newly added network
-    // is tried immediately rather than waiting for maintainConnection() to fire.
-    WiFiManager::getInstance().connectToBestNetwork();
+    // Ask WiFiManager to reconnect on the next maintainConnection() call
+    // (which runs at the top of the next loop() iteration). We intentionally
+    // do NOT call connectToBestNetwork() synchronously here because:
+    //   - WiFi.mode(WIFI_STA) just tore down the AP and switched radio mode,
+    //     which takes 1-2s of the 10s task-watchdog budget.
+    //   - connectToBestNetwork() then calls WiFi.scanNetworks(), a blocking
+    //     call that can take 5-10s+ on a crowded 2.4GHz band.
+    //   - The combined blocking exceeds WDT_TIMEOUT_S (10s) and triggers a
+    //     panic reboot mid-scan.
+    // requestImmediateReconnect() resets the throttle so maintainConnection()
+    // attempts a reconnect immediately on the next loop tick, with the radio
+    // already settled in STA mode.
+    WiFiManager::getInstance().requestImmediateReconnect();
 }
 
 bool ConfigServer::isSetupModeActive() {
