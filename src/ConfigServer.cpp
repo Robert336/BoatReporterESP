@@ -1292,7 +1292,10 @@ void ConfigServer::handleOTAStatus() {
     json += "\"hasGithubToken\":" + String(otaManager->hasGitHubToken() ? "true" : "false") + ",";
     json += "\"hasUpdatePassword\":" + String(otaManager->hasUpdatePassword() ? "true" : "false") + ",";
     json += "\"checkIntervalHours\":" + String(otaManager->getCheckIntervalMs() / 3600000) + ",";
-    json += "\"timeSinceLastCheckHours\":" + String(otaManager->getTimeSinceLastCheck() / 3600000, 1);
+    // Use float division so String(val, 1) selects the decimal-places overload
+    // (String(unsigned long, 1) interprets 1 as a number base and returns "").
+    float hoursSinceCheck = (float)otaManager->getTimeSinceLastCheck() / 3600000.0f;
+    json += "\"timeSinceLastCheckHours\":" + String(hoursSinceCheck, 1);
     json += "}";
     
     server->send(200, "application/json", json);
