@@ -6,7 +6,6 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <esp_ota_ops.h>
-#include <esp_task_wdt.h>
 #include "mbedtls/sha256.h"
 
 // Full Mozilla root CA bundle, embedded in the firmware by the ESP-IDF mbedTLS
@@ -68,9 +67,10 @@ void OTAManager::begin() {
     LOG_INFO("[OTA] Auto-install: %s", config.autoInstallEnabled ? "enabled" : "disabled");
 
     // Spawn the background check task on Core 0 (alongside NotificationWorker).
-    // The task blocks most of the time, waking only when checkRequested is set
-    // or the auto-check interval elapses. The download/install still runs on the
-    // loop task (Core 1), intentionally — the device is out of service anyway.
+    // The task blocks most of the time, waking only when checkRequested or
+    // installRequested is set, or the auto-check interval elapses. Downloads
+    // also run on this task — its 10KB stack can absorb the mbedTLS handshake,
+    // which overflows the loop task's 8KB stack.
     BaseType_t ok = xTaskCreatePinnedToCore(
         checkTaskEntry, "ota_check", OTA_TASK_STACK,
         this, OTA_TASK_PRIORITY, &checkTaskHandle, OTA_TASK_CORE);
@@ -118,7 +118,17 @@ void OTAManager::runCheckTask() {
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(1000)); // Wake every second to check timer
 
-        // Don't interfere while downloading/installing on the loop task
+        // An install request owns the task until it completes (or fails).
+        // Runs here, not on the loop task: the mbedTLS TLS handshake during the
+        // firmware download needs ~10KB of stack and overflows the loop task's
+        // 8KB (observed as a stack-canary panic in ssl_cli/ECP crypto).
+        if (installRequested) {
+            installRequested = false;
+            executeUpdate(installPassword[0] ? installPassword : nullptr);
+            continue;
+        }
+
+        // Don't start a version check while a download/install is in flight.
         OTAState s = currentState.load();
         if (s == OTAState::DOWNLOADING || s == OTAState::INSTALLING) {
             continue;
@@ -514,8 +524,41 @@ bool OTAManager::startUpdate(const char* password) {
         return false;
     }
 
-    // Snapshot the version info under the mutex so the check task can't mutate
-    // these Strings out from under us mid-update.
+    // Check password if configured (validated here so the caller gets an
+    // immediate failure response instead of an async one).
+    if (!config.updatePassword.isEmpty()) {
+        if (!password || config.updatePassword != String(password)) {
+            setError("Invalid password");
+            LOG_INFO("[OTA] Update blocked: Invalid password");
+            return false;
+        }
+    }
+
+    // Hand the install to the check task — see runCheckTask() for why the
+    // download can't run on the loop task. Snapshot the password since the
+    // caller's pointer (e.g. a web-server arg) goes out of scope on return.
+    if (password) {
+        strncpy(installPassword, password, sizeof(installPassword) - 1);
+        installPassword[sizeof(installPassword) - 1] = '\0';
+    } else {
+        installPassword[0] = '\0';
+    }
+    installRequested = true;
+    LOG_INFO("[OTA] Install queued on background task");
+    return true;
+}
+
+bool OTAManager::executeUpdate(const char* password) {
+    (void)password; // Already validated in startUpdate()
+
+    if (currentState.load() != OTAState::UPDATE_AVAILABLE) {
+        setError("No update available");
+        LOG_INFO("[OTA] No update available");
+        return false;
+    }
+
+    // Snapshot the version info under the mutex so a subsequent check can't
+    // mutate these Strings out from under us mid-update.
     String url, expectedHash, availVer, curVer;
     size_t fwSize = 0;
     if (xSemaphoreTake(stateMux, pdMS_TO_TICKS(100)) == pdTRUE) {
@@ -525,15 +568,6 @@ bool OTAManager::startUpdate(const char* password) {
         curVer       = versionInfo.currentVersion;
         fwSize       = versionInfo.firmwareSize;
         xSemaphoreGive(stateMux);
-    }
-
-    // Check password if configured
-    if (!config.updatePassword.isEmpty()) {
-        if (!password || config.updatePassword != String(password)) {
-            setError("Invalid password");
-            LOG_INFO("[OTA] Update blocked: Invalid password");
-            return false;
-        }
     }
 
     // Fail closed: never flash firmware we can't verify against a known digest.
@@ -696,14 +730,17 @@ bool OTAManager::downloadAndInstall(const String& url, size_t expectedSize, cons
     unsigned long downloadStart = millis();
     unsigned long lastDataTime = millis();
 
+    // NOTE: no esp_task_wdt_reset() here. The download runs on the Core 0
+    // check task, which is intentionally NOT registered with the task watchdog
+    // (a 5-minute download would exceed the 10s WDT). The loop task on Core 1
+    // keeps running and feeding the WDT throughout, so a genuine hang is still
+    // caught by the download's own STALL_TIMEOUT_MS / DOWNLOAD_TIMEOUT_MS.
     while (http.connected() && written < contentLength) {
-        esp_task_wdt_reset(); // Download runs on the loop task; keep feeding the dog
-
         // C2: don't let a firmware download blind the flood sensor. The
-        // download owns the loop task for up to 5 minutes, during which
-        // waterSensor.readLevel() and the state machine never run. Abort
-        // (and leave the current firmware intact) if a Tier-1+ flood
-        // condition appears mid-download — flood monitoring takes priority.
+        // download blocks this task for up to 5 minutes; waterSensor.readLevel()
+        // and the state machine keep running on the loop task, so a real flood
+        // is still detected — abort (leaving current firmware intact) if a
+        // Tier-1+ flood condition appears mid-download.
         if (floodCheckCb && floodCheckCb(floodCheckCtx)) {
             setError("OTA aborted - flood condition detected mid-download");
             LOG_CRITICAL("[OTA] Flood condition detected mid-download - aborting to preserve flood monitoring");

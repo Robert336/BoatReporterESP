@@ -108,6 +108,8 @@ private:
     SemaphoreHandle_t stateMux;      // Mutex protecting lastError / versionInfo / lastCheckTime
     TaskHandle_t      checkTaskHandle;
     volatile bool     checkRequested; // Set by loop task, consumed by check task
+    volatile bool     installRequested; // Set by startUpdate(), consumed by check task
+    char              installPassword[64]; // Snapshot of the install password for the check task
 
     // Helper methods
     void loadConfig();
@@ -133,10 +135,11 @@ private:
     void runCheckTask();
 
     // Flood-watch: optional callback invoked inside the OTA download loop so a
-    // firmware download (which owns the loop task for up to DOWNLOAD_TIMEOUT_MS
-    // = 5 min) can be aborted mid-stream if a Tier-1+ flood condition appears.
-    // Without this, waterSensor.readLevel() / updateStateMachine() never run
-    // during a download — a silent monitoring gap (C2). Returns true = abort.
+    // firmware download (which blocks the Core 0 check task for up to
+    // DOWNLOAD_TIMEOUT_MS = 5 min) can be aborted mid-stream if a Tier-1+
+    // flood condition appears. Returns true = abort. The loop task (and thus
+    // waterSensor / state machine) keeps running during a download, but this
+    // callback doubles as a belt-and-braces abort if a flood is detected.
     // Set to nullptr (default) to disable the check.
     typedef bool (*FloodCheckCallback)(void* ctx);
     FloodCheckCallback floodCheckCb = nullptr;
@@ -155,7 +158,12 @@ public:
 
     // Manual control
     bool manualCheckForUpdates();
+    // Validates the request, then hands the install off to the Core 0 check task
+    // (10KB stack) because the mbedTLS handshake overflows the loop task's 8KB.
+    // Returns true if the install was queued — the device reboots on success.
     bool startUpdate(const char* password = nullptr);
+    // Runs the actual download/flash. Must only be called from the check task.
+    bool executeUpdate(const char* password);
 
     // Configuration
     void setGitHubRepo(const char* owner, const char* repo);
@@ -167,8 +175,8 @@ public:
 
     // Register a flood-watch callback consulted during the OTA download loop
     // so an in-flight firmware download aborts if a flood condition appears
-    // (C2). The callback is invoked on the loop task and must be non-blocking
-    // and reentrant-safe; ctx is passed back verbatim.
+    // (C2). The callback is invoked on the Core 0 check task and must be
+    // non-blocking and reentrant-safe; ctx is passed back verbatim.
     void setFloodWatch(FloodCheckCallback cb, void* ctx) { floodCheckCb = cb; floodCheckCtx = ctx; }
 
     // Stack high-water mark for the background check task (for H5 diagnostics).
