@@ -171,8 +171,8 @@ void setup() {
     otaManager->setFloodWatch(otaFloodCheckCallback, &waterSensor);
     LOG_SETUP("[SETUP] OTAManager initialized - version %s", FIRMWARE_VERSION);
     // OTA test marker: serial-only (LOG_SETUP is stripped in PRODUCTION_BUILD).
-    // Visible on the serial monitor right after a successful OTA install of v1.1.2.
-    Serial.println("[OTA-TEST] Running v1.1.2 — OTA install succeeded");
+    // Visible on the serial monitor right after a successful OTA install of v1.1.3.
+    Serial.println("[OTA-TEST] Running v1.1.3 — OTA install succeeded");
 
     // Initialize ConfigServer early to load calibration from NVS
     // This ensures saved calibration is applied before first sensor reading
