@@ -274,6 +274,37 @@ void test_config_stays_config_while_active() {
     TEST_ASSERT_EQUAL(CONFIG, nextState);
 }
 
+void test_config_to_emergency_on_flood_while_active() {
+    // Safety: a browser tab left open on the config page polls /ota/status
+    // every 5s, keeping configServerActive=true. Without this transition the
+    // device would be pinned in CONFIG and blind to flooding indefinitely.
+    StateMachineContext ctx = createDefaultContext();
+    ctx.currentState = CONFIG;
+    ctx.emergencyConditions = true;
+    ctx.emergencyConditionsTrueTime = 1000;
+
+    StateMachineSensorReading reading = createEmergencyReading();
+
+    // Before EMERGENCY_TIMEOUT_MS — still CONFIG (debounced)
+    State nextState = computeNextState(ctx, reading, 1500, true);
+    TEST_ASSERT_EQUAL(CONFIG, nextState);
+
+    // After timeout — must transition to EMERGENCY even with config active
+    nextState = computeNextState(ctx, reading, 6001, true);
+    TEST_ASSERT_EQUAL(EMERGENCY, nextState);
+}
+
+void test_config_to_error_on_sensor_failure_while_active() {
+    StateMachineContext ctx = createDefaultContext();
+    ctx.currentState = CONFIG;
+    ctx.sensorError = true;
+
+    StateMachineSensorReading reading = createInvalidReading();
+
+    State nextState = computeNextState(ctx, reading, 1000, true);
+    TEST_ASSERT_EQUAL(ERROR, nextState);
+}
+
 // ============================================================================
 // TEST: Emergency Notifications
 // ============================================================================
@@ -298,6 +329,21 @@ void test_emergency_notification_sent_after_interval() {
     
     // After interval - should send
     shouldSend = shouldSendEmergencyNotification(ctx, 11001);
+    TEST_ASSERT_TRUE(shouldSend);
+}
+
+void test_emergency_notification_sent_immediately_after_boot() {
+    // Regression: lastEmergencyMessageTime is initialized to 0 in setup().
+    // The elapsed-time check alone would suppress the first alert until
+    // emergencyNotifFreq_ms elapses since boot — but the owner needs to know
+    // the moment a flood is detected, not 15 minutes later.
+    StateMachineContext ctx = createDefaultContext();
+    ctx.currentState = EMERGENCY;
+    ctx.lastEmergencyMessageTime = 0; // Never sent — boot condition
+    ctx.emergencyNotifFreq_ms = 900000; // 15 minutes
+
+    // 1 second after boot — must send immediately, not wait 15 minutes
+    bool shouldSend = shouldSendEmergencyNotification(ctx, 1000);
     TEST_ASSERT_TRUE(shouldSend);
 }
 
@@ -580,10 +626,13 @@ void runAllTests() {
     // CONFIG state transition tests
     RUN_TEST(test_config_to_normal_when_config_ends);
     RUN_TEST(test_config_stays_config_while_active);
+    RUN_TEST(test_config_to_emergency_on_flood_while_active);
+    RUN_TEST(test_config_to_error_on_sensor_failure_while_active);
     
     // Emergency notification tests
     RUN_TEST(test_emergency_notification_not_sent_outside_emergency);
     RUN_TEST(test_emergency_notification_sent_after_interval);
+    RUN_TEST(test_emergency_notification_sent_immediately_after_boot);
     RUN_TEST(test_emergency_notification_not_sent_when_silenced);
     
     // Horn control tests

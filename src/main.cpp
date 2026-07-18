@@ -170,9 +170,11 @@ void setup() {
     // condition appears mid-download, so the bilge sensor is never blinded.
     otaManager->setFloodWatch(otaFloodCheckCallback, &waterSensor);
     LOG_SETUP("[SETUP] OTAManager initialized - version %s", FIRMWARE_VERSION);
-    // OTA test marker: serial-only (LOG_SETUP is stripped in PRODUCTION_BUILD).
-    // Visible on the serial monitor right after a successful OTA install of v1.1.3.
-    Serial.println("[OTA-TEST] Running v1.1.3 — OTA install succeeded");
+    // OTA test marker: serial-only. Visible on the serial monitor right after
+    // a successful OTA install — confirms the new firmware actually booted.
+    Serial.print("[OTA-TEST] Running v");
+    Serial.print(FIRMWARE_VERSION);
+    Serial.println(" — OTA install succeeded");
 
     // Initialize ConfigServer early to load calibration from NVS
     // This ensures saved calibration is applied before first sensor reading

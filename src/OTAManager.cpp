@@ -161,48 +161,49 @@ void OTAManager::checkFirstBoot() {
 
     preferences.end();
 
-    // The OTA partition state is the authoritative "new image first boot" signal.
-    // ESP_OTA_IMG_PENDING_VERIFY means the bootloader just ran this image for the
-    // first time and is waiting for us to confirm it's healthy.
+    // The authoritative "did the OTA succeed?" signal is whether the running
+    // firmware version matches the target we recorded before rebooting. This
+    // works regardless of whether CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE is set
+    // in the IDF build config — the previous logic relied on
+    // ESP_OTA_IMG_PENDING_VERIFY, which is only populated when rollback support
+    // is enabled. On builds without it, every first boot after an OTA was
+    // wrongly reported as a rollback ("Rolled back to v1.1.3" while actually
+    // running v1.1.3).
     //
-    // Note: bootloader auto-rollback (reverting to the previous image when a new
-    // image fails to call esp_ota_mark_app_valid_cancel_rollback()) requires
-    // CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE in the IDF build config. If that option
-    // is disabled, a crashing new image crash-loops rather than rolling back —
-    // handling that scenario is out of scope here.
+    // We still call esp_ota_mark_app_valid_cancel_rollback() defensively — it's
+    // a no-op when rollback support is disabled, and confirms the image when
+    // it is enabled.
     const esp_partition_t* running = esp_ota_get_running_partition();
     esp_ota_img_states_t ota_state;
     bool isPendingVerify = (esp_ota_get_state_partition(running, &ota_state) == ESP_OK
                             && ota_state == ESP_OTA_IMG_PENDING_VERIFY);
-
     if (isPendingVerify) {
-        // New image's first boot — confirm it so the bootloader won't revert.
         esp_ota_mark_app_valid_cancel_rollback();
         LOG_INFO("[OTA] New firmware validated successfully");
+    }
 
-        if (updatePending && !prevVersion.isEmpty()) {
-            // currentVersion here is the new (target) version now running.
-            char msg[NOTIFICATION_MESSAGE_BUFFER_SIZE];
-            snprintf(msg, sizeof(msg),
-                     "BilgeRise: Firmware updated successfully! v%s -> v%s. System online.",
-                     prevVersion.c_str(), versionInfo.currentVersion.c_str());
-            sendNotification(msg);
-            LOG_INFO("[OTA] %s", msg);
-        }
-        clearFirstBootFlag();
-    } else if (updatePending) {
-        // We set upd_pending before restarting into a freshly-flashed image, but
-        // the running partition is already confirmed/valid — the bootloader rolled
-        // the new image back because it never called mark_app_valid.
+    if (!updatePending) {
+        return; // Normal boot with no pending update.
+    }
+
+    // Compare the running version against the target we recorded before
+    // rebooting. Match = successful update; mismatch = real rollback.
+    if (versionInfo.currentVersion == targetVersion) {
+        char msg[NOTIFICATION_MESSAGE_BUFFER_SIZE];
+        snprintf(msg, sizeof(msg),
+                 "BilgeRise: Firmware updated successfully! v%s -> v%s. System online.",
+                 prevVersion.c_str(), versionInfo.currentVersion.c_str());
+        sendNotification(msg);
+        LOG_INFO("[OTA] %s", msg);
+    } else {
         char msg[NOTIFICATION_MESSAGE_BUFFER_SIZE];
         snprintf(msg, sizeof(msg),
                  "BilgeRise: New firmware v%s failed to boot. Rolled back to v%s. System stable.",
                  targetVersion.c_str(), versionInfo.currentVersion.c_str());
         sendNotification(msg);
         LOG_CRITICAL("[OTA] %s", msg);
-        clearFirstBootFlag();
     }
-    // else: normal boot with no pending update — nothing to do.
+    clearFirstBootFlag();
 }
 
 void OTAManager::setFirstBootFlag() {
