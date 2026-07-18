@@ -259,10 +259,19 @@ void WiFiManager::maintainConnection() {
     if (WiFi.status() == WL_CONNECTED) {
         if (_disconnectedSinceUs != 0) {
             // Just came back up. Duration is computed from the 64-bit monotonic
-                       // microsecond timer so it stays correct across a millis() rollover (H6).
-            LOG_NETWORK("[WIFI] Reconnected after %u attempt(s), was down %llus",
-                        _reconnectAttemptCount,
-                        (unsigned long long)((esp_timer_get_time() - _disconnectedSinceUs) / 1000000));
+            // microsecond timer so it stays correct across a millis() rollover (H6).
+            unsigned long long downSecs =
+                (unsigned long long)((esp_timer_get_time() - _disconnectedSinceUs) / 1000000);
+            if (_reconnectAttemptCount > 0) {
+                LOG_NETWORK("[WIFI] Reconnected after %u attempt(s), was down %llus",
+                            _reconnectAttemptCount, downSecs);
+            } else {
+                // The link recovered without any app-level attempt (driver
+                // auto-reconnect, or it came back during/after a failed rescan) —
+                // "Reconnected after 0 attempt(s)" would read like a bug.
+                LOG_NETWORK("[WIFI] Connection restored without app-level reconnect, was down %llus",
+                            downSecs);
+            }
             _connectedSinceUs = esp_timer_get_time();
             _disconnectedSinceUs = 0;
             _reconnectAttemptCount = 0;
@@ -328,23 +337,26 @@ void WiFiManager::onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
 }
 
 const char* WiFiManager::reasonToString(uint8_t reason) {
+    // Case labels use the named wifi_err_reason_t constants from
+    // esp_wifi_types.h (pulled in via <WiFi.h> -> WiFiType.h) so they
+    // self-document; values are identical to the raw numbers they replace.
     switch (reason) {
-        case 1:   return "unspecified";
-        case 2:   return "auth-expire";
-        case 3:   return "auth-leave";
-        case 4:   return "assoc-expire";
-        case 5:   return "assoc-too-many";
-        case 6:   return "not-authed";
-        case 7:   return "not-assoced";
-        case 8:   return "assoc-leave";
-        case 15:  return "4way-handshake-timeout";
-        case 200: return "beacon-timeout";
-        case 201: return "no-ap-found";
-        case 202: return "auth-fail";
-        case 203: return "assoc-fail";
-        case 204: return "handshake-timeout";
-        case 205: return "connection-fail";
-        default:  return "unknown";
+        case WIFI_REASON_UNSPECIFIED:            return "unspecified";
+        case WIFI_REASON_AUTH_EXPIRE:            return "auth-expire";
+        case WIFI_REASON_AUTH_LEAVE:             return "auth-leave";
+        case WIFI_REASON_ASSOC_EXPIRE:           return "assoc-expire";
+        case WIFI_REASON_ASSOC_TOOMANY:          return "assoc-too-many";
+        case WIFI_REASON_NOT_AUTHED:             return "not-authed";
+        case WIFI_REASON_NOT_ASSOCED:            return "not-assoced";
+        case WIFI_REASON_ASSOC_LEAVE:            return "assoc-leave";
+        case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT: return "4way-handshake-timeout";
+        case WIFI_REASON_BEACON_TIMEOUT:         return "beacon-timeout";
+        case WIFI_REASON_NO_AP_FOUND:            return "no-ap-found";
+        case WIFI_REASON_AUTH_FAIL:              return "auth-fail";
+        case WIFI_REASON_ASSOC_FAIL:             return "assoc-fail";
+        case WIFI_REASON_HANDSHAKE_TIMEOUT:      return "handshake-timeout";
+        case WIFI_REASON_CONNECTION_FAIL:        return "connection-fail";
+        default:                                 return "unknown";
     }
 }
 
@@ -353,10 +365,10 @@ bool WiFiManager::isStickyDisconnectReason(uint8_t reason) {
     // radio in a state a plain WiFi.reconnect() cannot recover from — a full
     // WiFi.disconnect(true) teardown followed by a fresh begin()/scan is needed.
     switch (reason) {
-        case 15:  // 4WAY_HANDSHAKE_TIMEOUT
-        case 200: // BEACON_TIMEOUT
-        case 202: // AUTH_FAIL
-        case 204: // HANDSHAKE_TIMEOUT
+        case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
+        case WIFI_REASON_BEACON_TIMEOUT:
+        case WIFI_REASON_AUTH_FAIL:
+        case WIFI_REASON_HANDSHAKE_TIMEOUT:
             return true;
         default:
             return false;
