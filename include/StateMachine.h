@@ -209,7 +209,19 @@ inline State computeNextState(const StateMachineContext& ctx,
             break;
 
         case CONFIG:
-            // Config state exits when config server becomes inactive
+            // Safety first: never let config mode suppress emergency/error
+            // transitions. A browser tab left open on the config page polls
+            // /ota/status every 5s, which keeps configServerActive=true and
+            // would otherwise pin the device in CONFIG indefinitely — blind
+            // to flooding. CONFIG is an overlay, not a substitute for safety.
+            if (ctx.sensorError) {
+                return ERROR;
+            }
+            if (ctx.emergencyConditions &&
+                (currentTime - ctx.emergencyConditionsTrueTime) >= EMERGENCY_TIMEOUT_MS) {
+                return EMERGENCY;
+            }
+            // No safety condition: exit when the config server goes idle.
             if (!configServerActive && !ctx.configCommandReceived) {
                 return NORMAL;
             }
@@ -235,6 +247,14 @@ inline bool shouldSendEmergencyNotification(const StateMachineContext& ctx,
 
     if (ctx.notificationsSilenced) {
         return false;
+    }
+
+    // First emergency after boot: lastEmergencyMessageTime is 0 (set in setup()),
+    // so the elapsed-time check below would suppress the very first alert until
+    // emergencyNotifFreq_ms elapses since boot. Send immediately instead — the
+    // owner needs to know the moment a flood is detected, not 15 minutes later.
+    if (ctx.lastEmergencyMessageTime == 0) {
+        return true;
     }
 
     if (currentTime - ctx.lastEmergencyMessageTime >= (uint32_t)ctx.emergencyNotifFreq_ms) {
