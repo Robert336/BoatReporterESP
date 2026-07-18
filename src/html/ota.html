@@ -126,6 +126,7 @@ function setPill(dot,lbl,state,text){el(dot).className='dot '+state;el(lbl).text
 let checking=false,updating=false;
 
 function applyStatus(d){
+try{
 // --- Always populate these, regardless of state ---
 el('cur_ver').textContent=d.currentVersion||'--';
 el('gh_repo').value=d.githubRepo||'';
@@ -184,13 +185,21 @@ s.className='status';s.textContent='Up to date';
 setPill('state_dot','state_label','ok','up to date');
 installBtn.disabled=true;
 }
+}catch(err){
+console.error('applyStatus failed:',err,d);
+var s=el('update_status');
+s.className='status bad';s.textContent='Render error: '+err.message;
+}
 }
 
 function loadStatus(){
-return fetch('/ota/status').then(r=>r.json()).then(applyStatus).catch(function(e){
-console.error(e);
+return fetch('/ota/status').then(function(r){
+if(!r.ok){throw new Error('HTTP '+r.status)}
+return r.json();
+}).then(applyStatus).catch(function(e){
+console.error('loadStatus failed:',e);
 var s=el('update_status');
-s.className='status bad';s.textContent='Failed to load status';
+s.className='status bad';s.textContent='Failed to load status: '+e.message;
 setPill('state_dot','state_label','bad','offline');
 })
 }
@@ -241,10 +250,10 @@ var pwd=el('ota_pwd').value;
 var body='github_owner='+encodeURIComponent(owner)+'&github_repo='+encodeURIComponent(repo);
 if(token)body+='&github_token='+encodeURIComponent(token);
 if(pwd)body+='&update_password='+encodeURIComponent(pwd);
-body+='&auto_check='+(el('auto_check').checked?'1':'0');
-body+='&auto_install='+(el('auto_install').checked?'1':'0');
+body+='&auto_check='+(el('auto_check').checked?'true':'false');
+body+='&auto_install='+(el('auto_install').checked?'true':'false');
 body+='&check_interval_hours='+encodeURIComponent(el('check_interval').value||'24');
-body+='&notifications_enabled='+(el('notify').checked?'1':'0');
+body+='&notifications_enabled='+(el('notify').checked?'true':'false');
 fetch('/ota/settings',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body}).then(r=>r.json()).then(function(d){
 if(d.success){
 flash('settings_msg','Saved','ok');

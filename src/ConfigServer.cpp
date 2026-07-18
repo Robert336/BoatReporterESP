@@ -314,12 +314,16 @@ void ConfigServer::handleClient() {
 
 void ConfigServer::sendCachedPage(const char* data, size_t len, const char* contentType) {
     serverStartTime = millis();
-    if (server->hasHeader("If-None-Match") && server->header("If-None-Match") == FIRMWARE_VERSION) {
+    // ETag includes the build timestamp so that flashing new firmware (even at
+    // the same FIRMWARE_VERSION) busts the browser cache. Without this, a reflash
+    // at the same version would get a 304 and the browser would serve stale HTML.
+    String etag = String(FIRMWARE_VERSION) + "-" + BUILD_TIMESTAMP;
+    if (server->hasHeader("If-None-Match") && server->header("If-None-Match") == etag) {
         server->send(304);
         return;
     }
     server->sendHeader("Cache-Control", "max-age=86400, must-revalidate");
-    server->sendHeader("ETag", FIRMWARE_VERSION);
+    server->sendHeader("ETag", etag);
     server->sendHeader("Content-Encoding", "gzip");
     server->send_P(200, contentType, data, len);
 }
