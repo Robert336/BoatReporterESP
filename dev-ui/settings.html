@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="prefetch" href="/notifications-page">
 <link rel="prefetch" href="/wifi-config">
+<link rel="prefetch" href="/ota-settings">
 <link rel="prefetch" href="/debug">
 <style>
 *{box-sizing:border-box}
@@ -88,6 +89,14 @@ label{display:block;font-size:13px;color:#78716c;margin:0 0 6px}
 </a>
 </div>
 
+<h2>Firmware</h2>
+<div class="group">
+<a class="row" href="/ota-settings">
+<span class="lbl">OTA updates</span>
+<span class="val"><span class="dot" id="v_ota_dot"></span><span id="v_ota">…</span><span class="chev">›</span></span>
+</a>
+</div>
+
 <h2>Advanced</h2>
 <div class="group">
 <a class="row" href="/debug">
@@ -119,6 +128,15 @@ if(w.connected){setText('v_wifi',w.ssid||'Connected');setClass('v_wifi_dot','dot
 else{setText('v_wifi','Not connected');setClass('v_wifi_dot','dot bad')}
 setText('v_cal',d.hasTwoPointCalibration?'2-point':'Single-point');
 }).catch(e=>{setText('v_wifi','offline')});
+fetch('/ota/status').then(r=>r.json()).then(d=>{
+var lbl=document.getElementById('v_ota'),dot=document.getElementById('v_ota_dot');
+if(!lbl)return;
+if(d.state==='checking'){lbl.textContent='Checking…';dot.className='dot warn';return}
+if(d.state==='downloading'||d.state==='installing'){lbl.textContent='Installing…';dot.className='dot warn';return}
+if(d.state==='failed'){lbl.textContent='Update failed';dot.className='dot bad';return}
+if(d.updateAvailable){lbl.textContent='v'+d.availableVersion+' available';dot.className='dot warn';return}
+lbl.textContent='v'+d.currentVersion;dot.className='dot ok';
+}).catch(e=>{var lbl=document.getElementById('v_ota');if(lbl)lbl.textContent='offline'});
 function validateFreq(){
 var v=parseFloat(document.getElementById('freq_v').value);
 var s=document.getElementById('freq_v').value.trim();
