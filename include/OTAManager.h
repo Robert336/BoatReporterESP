@@ -10,9 +10,11 @@
 #include <freertos/semphr.h>
 #include <atomic>
 #include "NotificationWorker.h"
+#include "TimeManagement.h"
 
 constexpr const char OTA_PREFERENCES_NAMESPACE[] = "ota_config";
 constexpr unsigned long DEFAULT_CHECK_INTERVAL_MS = 86400000; // 24 hours
+constexpr unsigned long MIN_CHECK_INTERVAL_MS = 43200000; // 12 hours (NVS wear floor)
 constexpr int OTA_BUFFER_SIZE = 1024; // Download buffer size
 constexpr int OTA_MIN_RSSI_DBM = -70; // Minimum signal strength required before starting a download
 
@@ -197,5 +199,9 @@ public:
     bool hasGitHubToken() const { return !config.githubToken.isEmpty(); }
     bool hasUpdatePassword() const { return !config.updatePassword.isEmpty(); }
     unsigned long getCheckIntervalMs() const { return config.checkIntervalMs; }
-    unsigned long getTimeSinceLastCheck() const { return millis() - lastCheckTime; }
+    // Seconds since the last version check completed, based on a wall-clock
+    // epoch persisted to NVS. Returns 0 if no check has completed yet or the
+    // RTC hasn't synced. Accurate across reboots and multi-month uptime.
+    // This is the last-check time for the MQTT telemetry field.
+    unsigned long getTimeSinceLastCheckS();
 };

@@ -304,6 +304,180 @@
           "query": "from(bucket: \"boat\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"boat_telemetry\" and r._field == \"chip_temp_c\")\n  |> filter(fn: (r) => r[\"device\"] =~ /${device:regex}/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"device\"])"
         }
       ]
+    },
+    {
+      "title": "Uptime",
+      "type": "stat",
+      "datasource": { "type": "influxdb", "uid": "influxdb_boat" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 32 },
+      "id": 8,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 3600 },
+              { "color": "green", "value": 86400 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "influxdb_boat" },
+          "refId": "A",
+          "query": "from(bucket: \"boat\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"boat_telemetry\" and r._field == \"uptime_s\")\n  |> filter(fn: (r) => r[\"device\"] =~ /${device:regex}/)\n  |> last()"
+        }
+      ]
+    },
+    {
+      "title": "Firmware",
+      "type": "stat",
+      "datasource": { "type": "influxdb", "uid": "influxdb_boat" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 32 },
+      "id": 9,
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "blue", "value": null } ] },
+          "color": { "mode": "fixed", "fixedColor": "text" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "influxdb_boat" },
+          "refId": "A",
+          "query": "from(bucket: \"boat\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"boat_telemetry\" and r._field == \"fw_version\")\n  |> filter(fn: (r) => r[\"device\"] =~ /${device:regex}/)\n  |> last()"
+        }
+      ]
+    },
+    {
+      "title": "Last OTA Check",
+      "type": "stat",
+      "datasource": { "type": "influxdb", "uid": "influxdb_boat" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 32 },
+      "id": 10,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 90000 },
+              { "color": "red", "value": 180000 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "influxdb_boat" },
+          "refId": "A",
+          "query": "from(bucket: \"boat\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"boat_telemetry\" and r._field == \"last_fw_check_s\")\n  |> filter(fn: (r) => r[\"device\"] =~ /${device:regex}/)\n  |> last()"
+        }
+      ]
+    },
+    {
+      "title": "Emergency Thresholds",
+      "type": "stat",
+      "datasource": { "type": "influxdb", "uid": "influxdb_boat" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 32 },
+      "id": 11,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "lengthcm",
+          "decimals": 1,
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "text", "value": null } ] }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "influxdb_boat" },
+          "refId": "A",
+          "query": "from(bucket: \"boat\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"boat_telemetry\" and (r._field == \"emergency_level_cm\" or r._field == \"urgent_emergency_level_cm\"))\n  |> filter(fn: (r) => r[\"device\"] =~ /${device:regex}/)\n  |> last()"
+        }
+      ]
+    },
+    {
+      "title": "Heap Used (%)",
+      "type": "timeseries",
+      "datasource": { "type": "influxdb", "uid": "influxdb_boat" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 37 },
+      "id": 12,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 10,
+            "spanNulls": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 75 },
+              { "color": "red", "value": 90 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "influxdb_boat" },
+          "refId": "A",
+          "query": "from(bucket: \"boat\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"boat_telemetry\" and r._field == \"heap_free\")\n  |> filter(fn: (r) => r[\"device\"] =~ /${device:regex}/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> map(fn: (r) => ({ r with _value: (1.0 - r._value / 327680.0) * 100.0 }))\n  |> keep(columns: [\"_time\", \"_value\", \"device\"])"
+        }
+      ]
     }
   ]
 }

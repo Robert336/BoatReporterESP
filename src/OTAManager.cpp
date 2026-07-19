@@ -138,8 +138,16 @@ void OTAManager::runCheckTask() {
         checkRequested = false;
 
         if (!doCheck && config.autoCheckEnabled) {
-            doCheck = (millis() - lastCheckTime) >= config.checkIntervalMs;
-        }
+                // Compare wall-clock epochs (seconds) so scheduling is correct across
+                // reboots and multi-month uptime. Skip if RTC hasn't synced yet —
+                // unixTime will be ~0 and the diff would be enormous.
+                Timestamp ts = TimeManagement::getInstance().getCurrentTimestamp();
+                if (ts.isNTPSynced && lastCheckTime > 0) {
+                    doCheck = (ts.unixTime - (time_t)lastCheckTime) >= (time_t)(config.checkIntervalMs / 1000UL);
+                } else if (ts.isNTPSynced && lastCheckTime == 0) {
+                    doCheck = true; // Never checked — fire immediately once RTC is up
+                }
+            }
 
         if (doCheck && WiFi.isConnected()) {
             LOG_INFO("[OTA] Background check task: starting version check");
@@ -248,11 +256,21 @@ void OTAManager::loadConfig() {
     config.autoInstallEnabled = preferences.getBool("auto_install", true);
     config.checkIntervalMs = preferences.getULong("check_interval", DEFAULT_CHECK_INTERVAL_MS);
     config.notificationsEnabled = preferences.getBool("notify", true);
-    // Note: We intentionally don't restore lastCheckTime from NVS here because
-    // millis() resets to 0 on reboot. Using stored value would cause underflow.
-    lastCheckTime = millis();
+    // Restore the wall-clock epoch of the last completed check from NVS. 0 = never
+    // checked (or RTC not yet synced when the check ran). Storing epoch (not
+    // millis()) makes the timestamp survive reboots and 49-day millis() wraps.
+    lastCheckTime = preferences.getULong("last_check_epoch", 0);
 
     preferences.end();
+
+    // Migration: clamp any pre-existing interval below the NVS-wear floor (12h)
+    // and persist the corrected value so this only fires once per device.
+    if (config.checkIntervalMs < MIN_CHECK_INTERVAL_MS) {
+        LOG_INFO("[OTA] Migrating check interval %lu ms → %lu ms (NVS wear floor)",
+                 config.checkIntervalMs, MIN_CHECK_INTERVAL_MS);
+        config.checkIntervalMs = MIN_CHECK_INTERVAL_MS;
+        saveConfig();
+    }
 }
 
 void OTAManager::saveConfig() {
@@ -269,7 +287,12 @@ void OTAManager::saveConfig() {
     preferences.putBool("auto_install", config.autoInstallEnabled);
     preferences.putULong("check_interval", config.checkIntervalMs);
     preferences.putBool("notify", config.notificationsEnabled);
-    preferences.putULong("last_check", lastCheckTime);
+    // Only write the epoch when a check has actually completed (non-zero).
+    // saveConfig() is called from setters that don't run a check; writing 0
+    // here would erase a valid timestamp from a prior session.
+    if (lastCheckTime > 0) {
+        preferences.putULong("last_check_epoch", lastCheckTime);
+    }
 
     preferences.end();
 
@@ -313,6 +336,14 @@ String OTAManager::getAvailableVersion() const {
     return copy;
 }
 
+unsigned long OTAManager::getTimeSinceLastCheckS() {
+    if (lastCheckTime == 0) return 0;
+    Timestamp ts = TimeManagement::getInstance().getCurrentTimestamp();
+    if (!ts.isNTPSynced) return 0;
+    time_t diff = ts.unixTime - (time_t)lastCheckTime;
+    return (diff > 0) ? (unsigned long)diff : 0;
+}
+
 bool OTAManager::manualCheckForUpdates() {
     // Signal the background task rather than calling checkForUpdates() directly
     // from the loop task (which would block loop() for up to API_TIMEOUT_MS).
@@ -335,9 +366,20 @@ bool OTAManager::checkForUpdates() {
     }
 
     currentState.store(OTAState::CHECKING);
-    if (xSemaphoreTake(stateMux, pdMS_TO_TICKS(100)) == pdTRUE) {
-        lastCheckTime = millis();
-        xSemaphoreGive(stateMux);
+    // Stamp the check with wall-clock epoch so it survives reboots.
+    // Falls back to 0 if RTC hasn't synced yet (first boot without NTP).
+    {
+        Timestamp ts = TimeManagement::getInstance().getCurrentTimestamp();
+        unsigned long epoch = ts.isNTPSynced ? (unsigned long)ts.unixTime : 0;
+        if (xSemaphoreTake(stateMux, pdMS_TO_TICKS(100)) == pdTRUE) {
+            lastCheckTime = epoch;
+            xSemaphoreGive(stateMux);
+        }
+        // Persist immediately so a reboot doesn't lose the timestamp.
+        // NVS write cost is bounded by MIN_CHECK_INTERVAL_MS (12h floor).
+        if (epoch > 0) {
+            saveConfig();
+        }
     }
 
     LOG_INFO("[OTA] Checking for updates from GitHub...");
@@ -926,10 +968,11 @@ void OTAManager::setUpdatePassword(const char* password) {
 
 void OTAManager::setAutoCheck(bool enabled, unsigned long intervalMs) {
     config.autoCheckEnabled = enabled;
-    config.checkIntervalMs = intervalMs;
+    // Enforce the NVS-wear floor: 12h minimum → max 730 writes/year.
+    config.checkIntervalMs = max(intervalMs, MIN_CHECK_INTERVAL_MS);
     saveConfig();
     LOG_INFO("[OTA] Auto-check %s, interval: %lu hours",
-             enabled ? "enabled" : "disabled", intervalMs / MS_PER_HOUR);
+             enabled ? "enabled" : "disabled", config.checkIntervalMs / MS_PER_HOUR);
 }
 
 void OTAManager::setAutoInstall(bool enabled) {
