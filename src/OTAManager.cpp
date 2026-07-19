@@ -917,17 +917,30 @@ bool OTAManager::checkFlashSpace(size_t requiredSize) {
     return true;
 }
 
-bool OTAManager::checkHeapAvailable(size_t requiredSize) {
+// Minimum LARGEST-CONTIGUOUS-block heap required to attempt a firmware
+// download. The mbedTLS handshake against GitHub (full Mozilla root bundle)
+// needs ~40-50 KB of contiguous heap; the old guard of OTA_BUFFER_SIZE*2
+// (2 KB) against TOTAL free heap passed even on a fragmented heap where the
+// handshake was guaranteed to fail mid-flash. 56 KB gives margin over the
+// observed handshake peak plus the HTTPClient/Update overhead.
+static constexpr size_t OTA_MIN_CONTIGUOUS_HEAP = 56 * 1024;
+
+bool OTAManager::checkHeapAvailable(size_t /*unused*/) {
+    // TLS needs one large CONTIGUOUS allocation, so total free heap is the
+    // wrong metric — a heap fragmented into many small blocks passes a total-
+    // size check yet cannot satisfy the handshake. Check the largest free
+    // block instead.
+    uint32_t maxBlock = ESP.getMaxAllocHeap();
     uint32_t freeHeap = ESP.getFreeHeap();
 
-    if (freeHeap < requiredSize) {
-        LOG_CRITICAL("[OTA] Insufficient heap: need %u bytes, have %u bytes",
-                  requiredSize, freeHeap);
+    if (maxBlock < OTA_MIN_CONTIGUOUS_HEAP) {
+        LOG_CRITICAL("[OTA] Insufficient contiguous heap: largest block %u bytes (need %u), total free %u",
+                  maxBlock, (unsigned)OTA_MIN_CONTIGUOUS_HEAP, freeHeap);
         return false;
     }
 
-    LOG_INFO("[OTA] Heap check passed: %u bytes available (need %u)",
-              freeHeap, requiredSize);
+    LOG_INFO("[OTA] Heap check passed: largest block %u bytes, total free %u (need %u contiguous)",
+              maxBlock, freeHeap, (unsigned)OTA_MIN_CONTIGUOUS_HEAP);
     return true;
 }
 
