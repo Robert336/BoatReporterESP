@@ -21,6 +21,28 @@ struct StateMachineSensorReading {
     float level_cm;
 };
 
+// Alarm/notification settings the state machine operates on. This is a pure
+// value type (no Arduino/NVS dependency) so it works in native unit-test
+// builds; SettingsStore.h mirrors it 1:1 and provides the NVS-backed copy.
+// Keeping the canonical field set here means a new threshold only needs to
+// be added in ONE place, not copied field-by-field into the context.
+struct AlarmSettings {
+    float emergencyWaterLevel_cm;        // Tier 1 threshold (notification)
+    int   emergencyNotifFreq_ms;         // Tier 1 notification interval
+    float urgentEmergencyWaterLevel_cm;  // Tier 2 threshold
+    int   hornOnDuration_ms;
+    int   hornOffDuration_ms;
+};
+
+// Defaults match the legacy ConfigServer / SettingsStore constants.
+constexpr AlarmSettings ALARM_SETTINGS_DEFAULTS = {
+    /* emergencyWaterLevel_cm       */ 30.0f,
+    /* emergencyNotifFreq_ms        */ 900000,
+    /* urgentEmergencyWaterLevel_cm */ 50.0f,
+    /* hornOnDuration_ms            */ 1000,
+    /* hornOffDuration_ms           */ 1000
+};
+
 // State machine context - holds all state information
 struct StateMachineContext {
     // Current state
@@ -50,12 +72,16 @@ struct StateMachineContext {
     float lastValidLevel_cm;
     bool  hasValidLevel;
 
-    // Configuration values (normally from ConfigServer / SettingsStore)
-    float emergencyWaterLevel_cm;
-    float urgentEmergencyWaterLevel_cm;
-    int emergencyNotifFreq_ms;
-    int hornOnDuration_ms;
-    int hornOffDuration_ms;
+    // Configuration values (normally from SettingsStore). Stored as a block
+    // so main.cpp can refresh all of them with one assignment. The reference
+    // members below alias the same fields so existing readers — including the
+    // unit tests and the state-machine internals — keep compiling unchanged.
+    AlarmSettings settings;
+    float& emergencyWaterLevel_cm;
+    float& urgentEmergencyWaterLevel_cm;
+    int&   emergencyNotifFreq_ms;
+    int&   hornOnDuration_ms;
+    int&   hornOffDuration_ms;
 
     // Constructor with defaults
     StateMachineContext() :
@@ -76,13 +102,56 @@ struct StateMachineContext {
         notificationsSilenced(false),
         lastValidLevel_cm(0.0f),
         hasValidLevel(false),
-        emergencyWaterLevel_cm(30.0f),
-        urgentEmergencyWaterLevel_cm(50.0f),
-        emergencyNotifFreq_ms(900000),
-        hornOnDuration_ms(1000),
-        hornOffDuration_ms(1000)
+        settings(ALARM_SETTINGS_DEFAULTS),
+        emergencyWaterLevel_cm(settings.emergencyWaterLevel_cm),
+        urgentEmergencyWaterLevel_cm(settings.urgentEmergencyWaterLevel_cm),
+        emergencyNotifFreq_ms(settings.emergencyNotifFreq_ms),
+        hornOnDuration_ms(settings.hornOnDuration_ms),
+        hornOffDuration_ms(settings.hornOffDuration_ms)
     {}
+
+    // Refresh settings from SettingsStore in one shot:
+    //   smCtx.setSettings(settingsStore.get());
+    void setSettings(const AlarmSettings& s) { settings = s; }
+
+    // The reference members below make the implicitly-generated copy
+    // assignment operator deleted, so define both copy ops explicitly. The
+    // references stay bound to this object's own `settings` block (they are
+    // set in the default constructor and never re-seated); copying only
+    // transfers the value members. Defined out-of-line below for readability.
+    StateMachineContext(const StateMachineContext& other);
+    StateMachineContext& operator=(const StateMachineContext& other);
 };
+
+// Copy ctor: default-construct first (which binds the reference members to
+// this object's own `settings`), then copy the value members across.
+inline StateMachineContext::StateMachineContext(const StateMachineContext& other)
+    : StateMachineContext() {
+    *this = other;
+}
+
+inline StateMachineContext& StateMachineContext::operator=(const StateMachineContext& other) {
+    if (this == &other) return *this;
+    currentState                 = other.currentState;
+    lastStateChangeTime          = other.lastStateChangeTime;
+    emergencyConditionsTrueTime  = other.emergencyConditionsTrueTime;
+    emergencyConditionsFalseTime = other.emergencyConditionsFalseTime;
+    lastEmergencyMessageTime     = other.lastEmergencyMessageTime;
+    lastHornToggleTime           = other.lastHornToggleTime;
+    sensorErrorTrueTime          = other.sensorErrorTrueTime;
+    lastSensorErrorNotifyTime    = other.lastSensorErrorNotifyTime;
+    emergencyConditions          = other.emergencyConditions;
+    urgentEmergencyConditions    = other.urgentEmergencyConditions;
+    hornCurrentlyOn              = other.hornCurrentlyOn;
+    sensorError                  = other.sensorError;
+    sensorErrorNotified          = other.sensorErrorNotified;
+    configCommandReceived        = other.configCommandReceived;
+    notificationsSilenced        = other.notificationsSilenced;
+    lastValidLevel_cm            = other.lastValidLevel_cm;
+    hasValidLevel                = other.hasValidLevel;
+    settings                     = other.settings;
+    return *this;
+}
 
 // State machine output - actions to take
 struct StateMachineOutput {

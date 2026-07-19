@@ -19,26 +19,20 @@
 
 #include <Arduino.h>
 #include <Preferences.h>
+#include "StateMachine.h"   // AlarmSettings + ALARM_SETTINGS_DEFAULTS (shared value types)
 
 // NVS namespace (same key names as the old ConfigServer emergency settings)
 constexpr const char SETTINGS_STORE_NAMESPACE[] = "emergency";
 
-struct SettingsValues {
-    float emergencyWaterLevel_cm;        // Tier 1 threshold (notification)
-    int   emergencyNotifFreq_ms;         // Tier 1 notification interval
-    float urgentEmergencyWaterLevel_cm;  // Tier 2 threshold
-    int   hornOnDuration_ms;
-    int   hornOffDuration_ms;
-};
+// SettingsValues is the NVS-backed name for the shared AlarmSettings value
+// type — one definition, one defaults constant, used by the state machine,
+// SettingsStore, and ConfigServer alike.
+using SettingsValues = AlarmSettings;
 
-// Defaults match the old ConfigServer constants
-constexpr SettingsValues SETTINGS_DEFAULTS = {
-    /* emergencyWaterLevel_cm       */ 30.0f,
-    /* emergencyNotifFreq_ms        */ 900000,
-    /* urgentEmergencyWaterLevel_cm */ 50.0f,
-    /* hornOnDuration_ms            */ 1000,
-    /* hornOffDuration_ms           */ 1000
-};
+// Expressed as a constexpr function (not a constexpr variable/reference) so
+// no symbol is emitted — a header-level constexpr reference would produce a
+// "multiple definition" link error under the pre-C++17 toolchain.
+constexpr SettingsValues SETTINGS_DEFAULTS() { return ALARM_SETTINGS_DEFAULTS; }
 
 class SettingsStore {
 public:
