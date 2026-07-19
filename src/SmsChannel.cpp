@@ -6,10 +6,6 @@
 #include "HttpPoster.h"
 #include "Logger.h"
 
-// Consolidated NVS namespace for all notification channel config (Step 3).
-// Keys must be ≤15 chars (NVS constraint).
-static constexpr const char* NOTIFY_NS = "notify";
-
 SmsChannel::SmsChannel() {
     phoneCache[0]  = '\0';
     sidCache[0]    = '\0';
@@ -22,24 +18,12 @@ void SmsChannel::loadCache() {
     sidCache[0]    = '\0';
     tokenCache[0]  = '\0';
     svcSidCache[0] = '\0';
-    cacheLoaded = true; // Set now so repeated failures don't keep retrying
-
-    if (!prefs.begin(NOTIFY_NS, true)) return;
-
-    auto copyStr = [](Preferences& p, const char* key, char* dst, size_t dstSize) {
-        String v = p.getString(key, "");
-        if (v.length() > 0 && v.length() < dstSize) {
-            strncpy(dst, v.c_str(), dstSize - 1);
-            dst[dstSize - 1] = '\0';
-        }
-    };
-
-    copyStr(prefs, "sms.phone",  phoneCache,  sizeof(phoneCache));
-    copyStr(prefs, "sms.sid",    sidCache,    sizeof(sidCache));
-    copyStr(prefs, "sms.token",  tokenCache,  sizeof(tokenCache));
-    copyStr(prefs, "sms.svcsid", svcSidCache, sizeof(svcSidCache));
-
-    prefs.end();
+    if (!beginLoad()) return;
+    loadStr("sms.phone",  phoneCache,  sizeof(phoneCache));
+    loadStr("sms.sid",    sidCache,    sizeof(sidCache));
+    loadStr("sms.token",  tokenCache,  sizeof(tokenCache));
+    loadStr("sms.svcsid", svcSidCache, sizeof(svcSidCache));
+    finishLoad();
 }
 
 bool SmsChannel::isConfigured() const {
@@ -95,12 +79,9 @@ bool SmsChannel::send(const char* message) {
 void SmsChannel::updatePhoneNumber(const char* phone) {
     if (!phone) return;
 
-    if (!prefs.begin(NOTIFY_NS, false)) {
-        LOG_CRITICAL("[SMS] Failed to open NVS for writing");
-        return;
-    }
-    size_t n = prefs.putString("sms.phone", phone);
-    prefs.end();
+    if (!openForWrite("SMS")) return;
+    size_t n = putStr("sms.phone", phone);
+    endWrite();
 
     if (n == 0) {
         LOG_CRITICAL("[SMS] Failed to store phone number");
@@ -111,14 +92,11 @@ void SmsChannel::updatePhoneNumber(const char* phone) {
 }
 
 void SmsChannel::updateTwilioCreds(const char* sid, const char* token, const char* svcSid) {
-    if (!prefs.begin(NOTIFY_NS, false)) {
-        LOG_CRITICAL("[SMS] Failed to open NVS for writing Twilio creds");
-        return;
-    }
-    if (sid    && sid[0])    prefs.putString("sms.sid",    sid);
-    if (token  && token[0])  prefs.putString("sms.token",  token);
-    if (svcSid && svcSid[0]) prefs.putString("sms.svcsid", svcSid);
-    prefs.end();
+    if (!openForWrite("SMS")) return;
+    if (sid    && sid[0])    putStr("sms.sid",    sid);
+    if (token  && token[0])  putStr("sms.token",  token);
+    if (svcSid && svcSid[0]) putStr("sms.svcsid", svcSid);
+    endWrite();
 
     LOG_INFO("[SMS] Twilio credentials updated");
     loadCache();

@@ -6,25 +6,15 @@
 #include "HttpPoster.h"
 #include "Logger.h"
 
-static constexpr const char* NOTIFY_NS = "notify";
-
 DiscordChannel::DiscordChannel() {
     webhookCache[0] = '\0';
 }
 
 void DiscordChannel::loadCache() {
     webhookCache[0] = '\0';
-    cacheLoaded = true;
-
-    if (!prefs.begin(NOTIFY_NS, true)) return;
-
-    String url = prefs.getString("discord.url", "");
-    prefs.end();
-
-    if (url.length() > 0 && url.length() < sizeof(webhookCache)) {
-        strncpy(webhookCache, url.c_str(), sizeof(webhookCache) - 1);
-        webhookCache[sizeof(webhookCache) - 1] = '\0';
-    }
+    if (!beginLoad()) return;
+    loadStr("discord.url", webhookCache, sizeof(webhookCache));
+    finishLoad();
 }
 
 bool DiscordChannel::isConfigured() const {
@@ -63,12 +53,9 @@ bool DiscordChannel::send(const char* message) {
 void DiscordChannel::updateWebhookUrl(const char* url) {
     if (!url) return;
 
-    if (!prefs.begin(NOTIFY_NS, false)) {
-        LOG_CRITICAL("[Discord] Failed to open NVS for writing");
-        return;
-    }
-    size_t n = prefs.putString("discord.url", url);
-    prefs.end();
+    if (!openForWrite("Discord")) return;
+    size_t n = putStr("discord.url", url);
+    endWrite();
 
     if (n == 0) {
         LOG_CRITICAL("[Discord] Failed to store webhook URL");

@@ -7,7 +7,6 @@
 #include "Logger.h"
 #include <string.h>
 
-static constexpr const char* NOTIFY_NS      = "notify";
 static constexpr const char* PLACEHOLDER    = "{{message}}";
 static constexpr size_t      PLACEHOLDER_LEN = 11; // strlen("{{message}}")
 
@@ -27,26 +26,14 @@ void CustomChannel::loadCache() {
     userCache[0]     = '\0';
     secretCache[0]   = '\0';
     tmplCache[0]     = '\0';
-    cacheLoaded = true;
-
-    if (!prefs.begin(NOTIFY_NS, true)) return;
-
-    auto copyStr = [](Preferences& p, const char* key, char* dst, size_t dstSize) {
-        String v = p.getString(key, "");
-        if (v.length() > 0 && v.length() < dstSize) {
-            strncpy(dst, v.c_str(), dstSize - 1);
-            dst[dstSize - 1] = '\0';
-        }
-    };
-
-    copyStr(prefs, "custom.endpoint", endpointCache, sizeof(endpointCache));
-    copyStr(prefs, "custom.ctype",    ctypeCache,    sizeof(ctypeCache));
-    copyStr(prefs, "custom.auth",     authCache,     sizeof(authCache));
-    copyStr(prefs, "custom.user",     userCache,     sizeof(userCache));
-    copyStr(prefs, "custom.secret",   secretCache,   sizeof(secretCache));
-    copyStr(prefs, "custom.tmpl",     tmplCache,     sizeof(tmplCache));
-
-    prefs.end();
+    if (!beginLoad()) return;
+    loadStr("custom.endpoint", endpointCache, sizeof(endpointCache));
+    loadStr("custom.ctype",    ctypeCache,    sizeof(ctypeCache));
+    loadStr("custom.auth",     authCache,     sizeof(authCache));
+    loadStr("custom.user",     userCache,     sizeof(userCache));
+    loadStr("custom.secret",   secretCache,   sizeof(secretCache));
+    loadStr("custom.tmpl",     tmplCache,     sizeof(tmplCache));
+    finishLoad();
 }
 
 bool CustomChannel::isConfigured() const {
@@ -152,29 +139,26 @@ void CustomChannel::updateConfig(const char* endpoint,
                                  const char* authUser,
                                  const char* authSecret,
                                  const char* bodyTemplate) {
-    if (!prefs.begin(NOTIFY_NS, false)) {
-        LOG_CRITICAL("[Custom] Failed to open NVS for writing");
-        return;
-    }
+    if (!openForWrite("Custom")) return;
 
-    auto putIfPresent = [](Preferences& p, const char* key, const char* val, size_t maxLen) {
+    auto putIfPresent = [this](const char* key, const char* val, size_t maxLen) {
         if (!val) return;
         // Truncate silently if the value exceeds our in-RAM max
         // (NVS itself supports up to ~4000 bytes per key, but we keep RAM bounded)
         char tmp[512];
         strncpy(tmp, val, maxLen - 1);
         tmp[maxLen - 1] = '\0';
-        p.putString(key, tmp);
+        putStr(key, tmp);
     };
 
-    putIfPresent(prefs, "custom.endpoint", endpoint,    CUSTOM_ENDPOINT_MAX);
-    putIfPresent(prefs, "custom.ctype",    contentType, CUSTOM_CTYPE_MAX);
-    putIfPresent(prefs, "custom.auth",     authType,    CUSTOM_AUTH_MAX);
-    putIfPresent(prefs, "custom.user",     authUser,    CUSTOM_USER_MAX);
-    putIfPresent(prefs, "custom.secret",   authSecret,  CUSTOM_SECRET_MAX);
-    putIfPresent(prefs, "custom.tmpl",     bodyTemplate, CUSTOM_TMPL_MAX);
+    putIfPresent("custom.endpoint", endpoint,    CUSTOM_ENDPOINT_MAX);
+    putIfPresent("custom.ctype",    contentType, CUSTOM_CTYPE_MAX);
+    putIfPresent("custom.auth",     authType,    CUSTOM_AUTH_MAX);
+    putIfPresent("custom.user",     authUser,    CUSTOM_USER_MAX);
+    putIfPresent("custom.secret",   authSecret,  CUSTOM_SECRET_MAX);
+    putIfPresent("custom.tmpl",     bodyTemplate, CUSTOM_TMPL_MAX);
 
-    prefs.end();
+    endWrite();
     LOG_INFO("[Custom] Channel config updated");
     loadCache();
 }
