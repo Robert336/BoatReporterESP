@@ -269,14 +269,7 @@ void loop() {
     // Refresh threshold config from SettingsStore on every loop iteration so
     // settings changed via the web UI take effect without a reboot.
     // SettingsStore::get() returns the in-RAM copy — no NVS I/O on this path.
-    {
-        const SettingsValues& sv = settingsStore.get();
-        smCtx.emergencyWaterLevel_cm       = sv.emergencyWaterLevel_cm;
-        smCtx.urgentEmergencyWaterLevel_cm = sv.urgentEmergencyWaterLevel_cm;
-        smCtx.emergencyNotifFreq_ms        = sv.emergencyNotifFreq_ms;
-        smCtx.hornOnDuration_ms            = sv.hornOnDuration_ms;
-        smCtx.hornOffDuration_ms           = sv.hornOffDuration_ms;
-    }
+    smCtx.setSettings(settingsStore.get());
 
     SensorReading currentReading = waterSensor.readLevel();
 
@@ -406,8 +399,9 @@ void loop() {
     if (out.stateChanged) {
         LOG_STATE("[STATE] Transitioning to %s", stateToString(smCtx.currentState));
 
-        if (smCtx.currentState == EMERGENCY && !previousState) {
-            // Log transition details
+        if (smCtx.currentState == EMERGENCY && previousState != EMERGENCY) {
+            // Log transition details on entry into EMERGENCY (out.stateChanged
+            // already guarantees previousState != currentState here).
             LOG_EVENT("[STATE] Transitioning to EMERGENCY state - WiFi connected: %d, IP: %s, water level: %.2f cm",
                       wifiMgr.isConnected(), WiFi.localIP().toString().c_str(), currentReading.level_cm);
         }
