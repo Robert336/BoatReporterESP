@@ -486,7 +486,7 @@ void loop() {
         // ArduinoJson builder — NaN-proof by construction (item A3).
         // ArduinoJson v6 serializes float NaN as "null" when assigned nullptr;
         // assigning a float directly serializes the numeric value.
-        StaticJsonDocument<384> doc;
+        StaticJsonDocument<512> doc;
         if (isnan(currentReading.level_cm)) {
             doc["level_cm"] = nullptr;
         } else {
@@ -509,7 +509,16 @@ void loop() {
         // Arduino-ESP32 core (via Arduino.h).
         doc["chip_temp_c"]  = (float)((int)(temperatureRead() * 100 + 0.5f)) / 100.0f;
 
-        char payload[256];
+        // Operational metadata for remote diagnostics
+        const SettingsValues& telemSv = settingsStore.get();
+        doc["emergency_level_cm"]        = telemSv.emergencyWaterLevel_cm;
+        doc["urgent_emergency_level_cm"] = telemSv.urgentEmergencyWaterLevel_cm;
+        doc["fw_version"]               = FIRMWARE_VERSION;
+        doc["last_fw_check_s"]          = otaManager ? otaManager->getTimeSinceLastCheckS() : 0;
+        doc["heap_free"]                = ESP.getFreeHeap();
+        doc["uptime_s"]                 = millis() / 1000UL;
+
+        char payload[384];
         serializeJson(doc, payload, sizeof(payload));
         mqtt.publishTelemetry(payload);
         lastTelemetryTime = millis();

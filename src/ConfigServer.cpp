@@ -1305,7 +1305,7 @@ void ConfigServer::handleOTAStatus() {
     json += "\"checkIntervalHours\":" + String(otaManager->getCheckIntervalMs() / 3600000) + ",";
     // Use float division so String(val, 1) selects the decimal-places overload
     // (String(unsigned long, 1) interprets 1 as a number base and returns "").
-    float hoursSinceCheck = (float)otaManager->getTimeSinceLastCheck() / 3600000.0f;
+    float hoursSinceCheck = (float)otaManager->getTimeSinceLastCheckS() / 3600.0f;
     json += "\"timeSinceLastCheckHours\":" + String(hoursSinceCheck, 1);
     json += "}";
     
@@ -1397,7 +1397,8 @@ void ConfigServer::handleOTASettings() {
         
         if (server->hasArg("check_interval_hours")) {
             int hours = server->arg("check_interval_hours").toInt();
-            if (hours > 0 && hours <= 168) { // Max 1 week
+            // 12h minimum (NVS wear floor), 1 week maximum
+            if (hours >= 12 && hours <= 168) {
                 intervalMs = hours * 3600000UL;
             }
         }
