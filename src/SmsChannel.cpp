@@ -39,27 +39,24 @@ bool SmsChannel::send(const char* message) {
     if (!cacheLoaded) loadCache();
     if (!isConfigured()) return false;
 
-    // Build URL-encoded POST body for Twilio Messages API
-    size_t msgLen      = strlen(message);
-    size_t svcSidLen   = strlen(svcSidCache);
-    size_t phoneLen    = strlen(phoneCache);
-    char* encodedTo    = (char*)malloc(phoneLen  * 3 + 1);
-    char* encodedSvc   = (char*)malloc(svcSidLen * 3 + 1);
-    char* encodedBody  = (char*)malloc(msgLen    * 3 + 1);
-    size_t postBufSize = (phoneLen + svcSidLen + msgLen) * 3 + 50;
-    char* postData     = (char*)malloc(postBufSize);
+    // Build URL-encoded POST body for Twilio Messages API. All inputs are
+    // bounded (message <= 160 chars from NotifMsg.body; phone/svcSid are the
+    // fixed cache arrays below), so worst-case sizes are compile-time known
+    // and stack buffers avoid per-send heap churn + alloc-failure paths.
+    static constexpr size_t ENCODED_TO_MAX  = sizeof(phoneCache)  * 3;
+    static constexpr size_t ENCODED_SVC_MAX = sizeof(svcSidCache) * 3;
+    static constexpr size_t ENCODED_MSG_MAX = 160 * 3 + 1;
+    char encodedTo[ENCODED_TO_MAX];
+    char encodedSvc[ENCODED_SVC_MAX];
+    char encodedBody[ENCODED_MSG_MAX];
 
-    if (!encodedTo || !encodedSvc || !encodedBody || !postData) {
-        free(encodedTo); free(encodedSvc); free(encodedBody); free(postData);
-        LOG_CRITICAL("[SMS] malloc failed building POST body");
-        return false;
-    }
+    TextEscape::urlEncode(phoneCache,  encodedTo,   sizeof(encodedTo));
+    TextEscape::urlEncode(svcSidCache, encodedSvc,  sizeof(encodedSvc));
+    TextEscape::urlEncode(message,     encodedBody, sizeof(encodedBody));
 
-    TextEscape::urlEncode(phoneCache,  encodedTo,   phoneLen  * 3 + 1);
-    TextEscape::urlEncode(svcSidCache, encodedSvc,  svcSidLen * 3 + 1);
-    TextEscape::urlEncode(message,     encodedBody, msgLen    * 3 + 1);
-
-    snprintf(postData, postBufSize,
+    // "To=%s&MessagingServiceSid=%s&Body=%s" with the three encoded parts.
+    char postData[ENCODED_TO_MAX + ENCODED_SVC_MAX + ENCODED_MSG_MAX + 32];
+    snprintf(postData, sizeof(postData),
              "To=%s&MessagingServiceSid=%s&Body=%s",
              encodedTo, encodedSvc, encodedBody);
 
@@ -68,12 +65,9 @@ bool SmsChannel::send(const char* message) {
              "https://api.twilio.com/2010-04-01/Accounts/%s/Messages.json",
              sidCache);
 
-    bool ok = HttpPoster::post("[SMS]", endpoint,
-                               "application/x-www-form-urlencoded", postData,
-                               HttpAuthMode::BASIC, sidCache, tokenCache);
-
-    free(encodedTo); free(encodedSvc); free(encodedBody); free(postData);
-    return ok;
+    return HttpPoster::post("[SMS]", endpoint,
+                            "application/x-www-form-urlencoded", postData,
+                            HttpAuthMode::BASIC, sidCache, tokenCache);
 }
 
 void SmsChannel::updatePhoneNumber(const char* phone) {
