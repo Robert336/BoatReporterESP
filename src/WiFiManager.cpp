@@ -16,14 +16,8 @@ WiFiManager::WiFiManager() {
 }
 
 WiFiManager::~WiFiManager() {
-    for (auto& cred : storedNetworks) {
-        delete[] cred.ssid;
-        delete[] cred.password;
-        // After delete[], these pointers are invalid (dangling pointers)
-        // But that's okay because the object is being destroyed anyway
-    }
-    storedNetworks.clear(); // Clear the vector (redundant but explicit)
-    
+    // Credentials are now fixed char[] members — no heap to free.
+    storedNetworks.clear();
     LOG_DEBUG("WiFiManager: Memory cleaned up");
 }
 
@@ -39,7 +33,7 @@ void WiFiManager::loadCredentials() {
         LOG_CRITICAL("WiFiManager: Failed to open preferences for reading!");
         return;
     }
-    // Clear existing networks
+    // Clear existing networks (value storage — clear() is sufficient, no leak)
     storedNetworks.clear();
     
     // Load count of stored networks
@@ -55,10 +49,11 @@ void WiFiManager::loadCredentials() {
         
         if (ssid.length() > 0) {
             WiFiCredential cred;
-            cred.ssid = new char[ssid.length() + 1];
-            cred.password = new char[password.length() + 1];
-            strcpy(cred.ssid, ssid.c_str());
-            strcpy(cred.password, password.c_str());
+            // Bounded copies — fixed arrays can never overflow or leak.
+            strncpy(cred.ssid, ssid.c_str(), sizeof(cred.ssid) - 1);
+            cred.ssid[sizeof(cred.ssid) - 1] = '\0';
+            strncpy(cred.password, password.c_str(), sizeof(cred.password) - 1);
+            cred.password[sizeof(cred.password) - 1] = '\0';
             storedNetworks.push_back(cred);
             
             LOG_NETWORK("Loaded network: %s", cred.ssid);
@@ -71,9 +66,8 @@ void WiFiManager::addNetwork(const char* ssid, const char* password) {
     // Update password if network already exists — write only that one key
     for (int i = 0; i < (int)storedNetworks.size(); i++) {
         if (strcmp(storedNetworks[i].ssid, ssid) == 0) {
-            delete[] storedNetworks[i].password;
-            storedNetworks[i].password = new char[strlen(password) + 1];
-            strcpy(storedNetworks[i].password, password);
+            strncpy(storedNetworks[i].password, password, sizeof(storedNetworks[i].password) - 1);
+            storedNetworks[i].password[sizeof(storedNetworks[i].password) - 1] = '\0';
 
             if (preferences.begin(WIFI_PREFERENCES_NAMESPACE, false)) {
                 char key_pass[16];
@@ -97,10 +91,10 @@ void WiFiManager::addNetwork(const char* ssid, const char* password) {
     // Append new entry — write only the two new keys and the updated count
     int idx = storedNetworks.size();
     WiFiCredential cred;
-    cred.ssid = new char[strlen(ssid) + 1];
-    cred.password = new char[strlen(password) + 1];
-    strcpy(cred.ssid, ssid);
-    strcpy(cred.password, password);
+    strncpy(cred.ssid, ssid, sizeof(cred.ssid) - 1);
+    cred.ssid[sizeof(cred.ssid) - 1] = '\0';
+    strncpy(cred.password, password, sizeof(cred.password) - 1);
+    cred.password[sizeof(cred.password) - 1] = '\0';
     storedNetworks.push_back(cred);
 
     if (preferences.begin(WIFI_PREFERENCES_NAMESPACE, false)) {
@@ -129,9 +123,7 @@ void WiFiManager::removeNetwork(const char* ssid) {
     for (auto it = storedNetworks.begin(); it != storedNetworks.end(); ++it) {
         if (strcmp(it->ssid, ssid) == 0) {
             String removed = it->ssid;
-            delete[] it->ssid;
-            delete[] it->password;
-            storedNetworks.erase(it);
+            storedNetworks.erase(it); // value storage — no delete[] needed
 
             if (preferences.begin(WIFI_PREFERENCES_NAMESPACE, false)) {
                 // Rewrite the compacted list in-place (no clear needed)

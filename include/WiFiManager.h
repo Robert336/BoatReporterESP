@@ -20,8 +20,16 @@ static constexpr uint32_t RECONNECT_FALLBACK_ATTEMPTS = 6; // 6 * 30s = 3 min
 static constexpr uint32_t RECONNECT_ESCALATION_ATTEMPTS_STICKY = 2; // 2 * 30s = 1 min
 
 struct WiFiCredential {
-    char* ssid;
-    char* password;
+    // Fixed-size storage — no heap, no manual delete[], no double-free risk.
+    // SSID max 32 chars + NUL (802.11), PSK max 64 chars + NUL (WPA2).
+    // Previously raw char* managed with new[]/delete[]; loadCredentials()
+    // leaked those blocks on every NVS-reload, and the copyable struct made
+    // the vector's reallocation copies a latent double-free. Value storage
+    // eliminates the entire class.
+    static constexpr size_t SSID_MAX = 33;
+    static constexpr size_t PASS_MAX = 65;
+    char ssid[SSID_MAX];
+    char password[PASS_MAX];
 };
 
 class WiFiManager {
