@@ -314,6 +314,7 @@ void ConfigServer::handleClient() {
 
     // Handle server timeout
     if ((millis() - serverStartTime) >= SERVER_TIMEOUT_MS) {
+        LOG_INFO("Setup mode timed out after %lu ms with no client activity", (unsigned long)SERVER_TIMEOUT_MS);
         stopSetupMode();
     }   
 }

@@ -305,6 +305,33 @@ void test_config_to_error_on_sensor_failure_while_active() {
     TEST_ASSERT_EQUAL(ERROR, nextState);
 }
 
+void test_config_exits_after_server_timeout_via_full_update() {
+    // Regression test for the infinite-config bug: user presses the button,
+    // configCommandReceived triggers NORMAL→CONFIG, but no client ever
+    // connects. The web server times out and stops. The state machine must
+    // then exit CONFIG → NORMAL instead of restarting the server forever.
+    StateMachineContext ctx = createDefaultContext();
+    ctx.currentState = NORMAL;
+    ctx.configCommandReceived = true; // User pressed the button
+
+    StateMachineSensorReading reading = createNormalReading();
+
+    // Step 1: Full update transitions NORMAL → CONFIG and consumes the flag
+    StateMachineOutput out = updateStateMachine(ctx, reading, 1000, 0.0f, false);
+    TEST_ASSERT_TRUE(out.stateChanged);
+    TEST_ASSERT_EQUAL(CONFIG, ctx.currentState);
+    TEST_ASSERT_FALSE(ctx.configCommandReceived); // Flag consumed on entry
+
+    // Step 2: Server starts, stays active for a while
+    out = updateStateMachine(ctx, reading, 2000, 0.0f, true);
+    TEST_ASSERT_EQUAL(CONFIG, ctx.currentState);
+
+    // Step 3: Server times out (no client connected) — configServerActive=false
+    out = updateStateMachine(ctx, reading, 245000, 0.0f, false);
+    TEST_ASSERT_TRUE(out.stateChanged);
+    TEST_ASSERT_EQUAL(NORMAL, ctx.currentState);
+}
+
 // ============================================================================
 // TEST: Emergency Notifications
 // ============================================================================
@@ -628,6 +655,7 @@ void runAllTests() {
     RUN_TEST(test_config_stays_config_while_active);
     RUN_TEST(test_config_to_emergency_on_flood_while_active);
     RUN_TEST(test_config_to_error_on_sensor_failure_while_active);
+    RUN_TEST(test_config_exits_after_server_timeout_via_full_update);
     
     // Emergency notification tests
     RUN_TEST(test_emergency_notification_not_sent_outside_emergency);
