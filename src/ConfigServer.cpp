@@ -1,6 +1,7 @@
 #ifndef UNIT_TESTING
 
 #include "ConfigServer.h"
+#include "BoardPins.h"   // ALERT_PIN (handleTestEmergencyPin)
 #include "Logger.h"
 #include "Version.h"
 #include "compressed_pages.h"
@@ -805,8 +806,8 @@ void ConfigServer::handleTestEmergencyPin() {
     
     LOG_INFO("[TEST] Testing emergency pin output...");
     
-    // Set the pin HIGH for 2 seconds to test the connected device
-    const int ALERT_PIN = 26; // GPIO 26 as defined in main.cpp
+    // Set the pin HIGH for 2 seconds to test the connected device.
+    // ALERT_PIN comes from include/BoardPins.h (shared with main.cpp).
     digitalWrite(ALERT_PIN, HIGH);
     LOG_INFO("[TEST] Emergency pin set HIGH");
     

@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cmath>
 #include "TimeManagement.h"
+#include "BoardPins.h"   // I2C_SDA_PIN / I2C_SCL_PIN (centralized pin map)
 // Real ADS1115 driver only on hardware; native tests use test/mocks/MockADS1115.h
 // (included before this header) to provide the Adafruit_ADS1115 type.
 #ifndef UNIT_TESTING
@@ -10,8 +11,6 @@
 #endif
 
 
-static constexpr int I2C_SDA_PIN = 21;
-static constexpr int I2C_SCL_PIN = 22;
 static constexpr uint8_t ADS1115_I2C_ADDRESS = 0x48;
 static constexpr int BUS_RECOVERY_MAX_ATTEMPTS = 10;
 
