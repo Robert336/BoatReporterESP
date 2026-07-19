@@ -320,6 +320,20 @@ inline StateMachineOutput updateStateMachine(StateMachineContext& ctx,
                                              bool configServerActive = false) {
     StateMachineOutput output;
 
+    // While in CONFIG, consume any config-button presses BEFORE the state
+    // evaluation below. The flag's only job is to trigger the entry
+    // transition; a press that lands mid-session (after entry already
+    // consumed the original) would otherwise stay set and block the
+    // idle-timeout exit — the same infinite-config bug as before, just
+    // with a different trigger. Clearing it here (rather than after the
+    // transition logic) also prevents a one-iteration lag that would let
+    // loop() restart the server for a full extra timeout cycle before the
+    // exit could happen. Mid-CONFIG presses have no wired-up meaning
+    // (they don't reset the server's activity timer), so discard them.
+    if (ctx.currentState == CONFIG) {
+        ctx.configCommandReceived = false;
+    }
+
     // ------------------------------------------------------------------
     // Sensor error tracking
     // ------------------------------------------------------------------
@@ -384,14 +398,6 @@ inline StateMachineOutput updateStateMachine(StateMachineContext& ctx,
                 output.hornOn = false;
                 ctx.hornCurrentlyOn = false;
             }
-        }
-
-        if (nextState == CONFIG) {
-            // Consume the button press — it has served its purpose by
-            // triggering this transition. From here on, CONFIG stays alive
-            // only as long as configServerActive is true (i.e. the web
-            // server is running and hasn't timed out).
-            ctx.configCommandReceived = false;
         }
 
         if (nextState == EMERGENCY) {
