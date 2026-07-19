@@ -30,24 +30,18 @@ bool DiscordChannel::send(const char* message) {
     if (!cacheLoaded) loadCache();
     if (!isConfigured()) return false;
 
-    size_t maxEscaped = strlen(message) * 2 + 1;
-    char* escaped = (char*)malloc(maxEscaped);
-    if (!escaped) return false;
+    // jsonEscape can at most double the input size, and the input is bounded
+    // to 160 chars (NotifMsg.body) — so a fixed stack buffer covers the worst
+    // case without per-send heap churn or alloc-failure paths.
+    char escaped[160 * 2 + 1];
+    TextEscape::jsonEscape(message, escaped, sizeof(escaped));
 
-    TextEscape::jsonEscape(message, escaped, maxEscaped);
+    // {"content":"%s"} wrapper around the escaped message.
+    char payload[sizeof(escaped) + 16];
+    snprintf(payload, sizeof(payload), "{\"content\":\"%s\"}", escaped);
 
-    size_t jsonSize = strlen(escaped) + 16;
-    char* payload = (char*)malloc(jsonSize);
-    if (!payload) { free(escaped); return false; }
-
-    snprintf(payload, jsonSize, "{\"content\":\"%s\"}", escaped);
-
-    bool ok = HttpPoster::post("[Discord]", webhookCache,
-                               "application/json", payload);
-
-    free(escaped);
-    free(payload);
-    return ok;
+    return HttpPoster::post("[Discord]", webhookCache,
+                            "application/json", payload);
 }
 
 void DiscordChannel::updateWebhookUrl(const char* url) {
