@@ -262,7 +262,15 @@ inline State computeNextState(const StateMachineContext& ctx,
             if (!ctx.sensorError) {
                 return NORMAL;
             } else if (ctx.configCommandReceived) {
-                return CONFIG;
+                // S2: only honor a config request once the sensor is healthy.
+                // Allowing ERROR→CONFIG while sensorError is still true makes
+                // the CONFIG case immediately bounce back to ERROR (its own
+                // sensorError guard), flapping the state and needlessly
+                // spinning the web server up and down on every button press
+                // during a sensor outage. The !ctx.sensorError branch above
+                // already returned, so reaching here means sensorError is
+                // true — suppress the transition.
+                break;
             }
             break;
 
@@ -297,6 +305,18 @@ inline State computeNextState(const StateMachineContext& ctx,
             break;
 
         case EMERGENCY:
+            // S1: a dead sensor in EMERGENCY must degrade to ERROR, not latch.
+            // updateEmergencyConditions() freezes emergencyConditions on an
+            // invalid reading, so without this exit a sensor fault mid-flood
+            // would pin the device in EMERGENCY forever — unable to leave (the
+            // water-level guard below can never re-evaluate) and masking the
+            // sensor failure behind a stale flood alarm. Require the failure to
+            // be SUSTAINED (same window as the owner notification) so a single
+            // transient glitch doesn't bounce an active flood into ERROR.
+            if (ctx.sensorError &&
+                (currentTime - ctx.sensorErrorTrueTime) >= SENSOR_ERROR_NOTIFY_DELAY_MS) {
+                return ERROR;
+            }
             if (!ctx.emergencyConditions &&
                 (currentTime - ctx.emergencyConditionsFalseTime) >= EMERGENCY_TIMEOUT_MS) {
                 return NORMAL;
@@ -348,6 +368,17 @@ inline bool shouldHornBeOn(const StateMachineContext& ctx,
         return false;
     }
 
+    // S3: don't sound the Tier-2 flood horn off a STALE reading. On a sensor
+    // fault, updateEmergencyConditions() freezes urgentEmergencyConditions at
+    // its last value; if that happened to be true, the horn would pulse
+    // indefinitely mimicking an active flood while nothing is being measured.
+    // A sensor fault is signaled separately (sustained-failure notification +
+    // ERROR transition), so the horn fails safe to OFF while the reading is
+    // untrustworthy.
+    if (ctx.sensorError) {
+        return false;
+    }
+
     // Check if it's time to toggle horn based on current state
     uint32_t currentDuration = ctx.hornCurrentlyOn ? ctx.hornOnDuration_ms : ctx.hornOffDuration_ms;
     if (currentTime - ctx.lastHornToggleTime >= currentDuration) {
@@ -358,13 +389,21 @@ inline bool shouldHornBeOn(const StateMachineContext& ctx,
 }
 
 // Pure function: alert output (GPIO 26) state — solid for Tier 1, pulsing
-// (mirrors the horn timer) for Tier 2.
+// (mirrors the horn timer) for Tier 2. Fails safe to OFF on a sensor fault
+// (S3): a frozen reading must not drive a flood indication.
 inline bool computeAlertPinState(const StateMachineContext& ctx) {
     if (ctx.currentState != EMERGENCY) {
         return false;
     }
 
     if (ctx.notificationsSilenced) {
+        return false;
+    }
+
+    // S3: sensor fault — the level driving Tier selection is stale, so don't
+    // assert a flood indication. The fault is surfaced via the ERROR state and
+    // the sustained-failure notification instead.
+    if (ctx.sensorError) {
         return false;
     }
 
