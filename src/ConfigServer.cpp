@@ -2,6 +2,7 @@
 
 #include "ConfigServer.h"
 #include "BoardPins.h"   // ALERT_PIN (handleTestEmergencyPin)
+#include "JsonResponder.h"
 #include "Logger.h"
 #include "Version.h"
 #include "compressed_pages.h"
@@ -165,15 +166,13 @@ void ConfigServer::startSetupMode() {
     
     // Route: GET /emergency-settings → return current emergency settings
     server->on("/emergency-settings", HTTP_GET, [this]() {
-        float el  = settingsStore ? settingsStore->getEmergencyWaterLevel()       : 30.0f;
-        int   ef  = settingsStore ? settingsStore->getEmergencyNotifFreq()        : 900000;
-        float ul  = settingsStore ? settingsStore->getUrgentEmergencyWaterLevel() : 50.0f;
-        String json = "{";
-        json += "\"emergencyWaterLevel_cm\":" + String(el, 2) + ",";
-        json += "\"emergencyNotifFreq_ms\":" + String(ef) + ",";
-        json += "\"urgentEmergencyWaterLevel_cm\":" + String(ul, 2);
-        json += "}";
-        server->send(200, "application/json", json);
+        float el  = settingsStore ? settingsStore->getEmergencyWaterLevel()       : SETTINGS_DEFAULTS().emergencyWaterLevel_cm;
+        int   ef  = settingsStore ? settingsStore->getEmergencyNotifFreq()        : SETTINGS_DEFAULTS().emergencyNotifFreq_ms;
+        float ul  = settingsStore ? settingsStore->getUrgentEmergencyWaterLevel() : SETTINGS_DEFAULTS().urgentEmergencyWaterLevel_cm;
+        JsonResponder().num("emergencyWaterLevel_cm", el, 2)
+                       .num("emergencyNotifFreq_ms", ef)
+                       .num("urgentEmergencyWaterLevel_cm", ul, 2)
+                       .send(server);
         serverStartTime = millis();
     });
     
@@ -362,108 +361,113 @@ void ConfigServer::handleSettings() {
 
 void ConfigServer::handleInit() {
     PROFILE_REQUEST("GET /init");
-    String json = "{";
+    JsonResponder r(512);
 
+    // Nested objects are assembled as strings and attached raw (JsonResponder is flat-only).
     bool connected = WiFiManager::getInstance().isConnected();
-    json += "\"wifi\":{";
-    json += "\"connected\":" + String(connected ? "true" : "false") + ",";
-    json += "\"ssid\":\"" + WiFi.SSID() + "\",";
-    json += "\"ip\":\"" + WiFi.localIP().toString() + "\",";
-    json += "\"rssi\":" + String(WiFi.RSSI());
-    json += "},";
+    JsonResponder wifiR;
+    wifiR.boolean("connected", connected)
+        .str("ssid", WiFi.SSID())
+        .str("ip", WiFi.localIP().toString())
+        .num("rssi", (int)WiFi.RSSI());
+    r.raw("wifi", wifiR.body().c_str());
 
-    json += "\"sensor\":{";
+    String sensorObj = "{";
     if (!waterSensor) {
-        json += "\"sensorAvailable\":false";
+        sensorObj += "\"sensorAvailable\":false";
     } else {
         SensorReading reading = waterSensor->readLevel();
-        json += "\"sensorAvailable\":true,";
-        json += "\"valid\":" + String(reading.valid ? "true" : "false");
+        sensorObj += "\"sensorAvailable\":true,";
+        sensorObj += "\"valid\":" + String(reading.valid ? "true" : "false");
         if (reading.valid) {
-            json += ",\"level_cm\":" + String(reading.level_cm, 2);
+            sensorObj += ",\"level_cm\":" + String(reading.level_cm, 2);
         }
         float rate = waterSensor->getRateOfChange_cm30min();
         if (!isnan(rate)) {
-            json += ",\"rate_cm_30min\":" + String(rate, 2);
+            sensorObj += ",\"rate_cm_30min\":" + String(rate, 2);
         }
     }
-    json += "},";
+    sensorObj += "}";
+    r.raw("sensor", sensorObj.c_str());
 
-    json += "\"thresholds\":{";
-    json += "\"emergencyWaterLevel_cm\":" + String(getEmergencyWaterLevel(), 2) + ",";
-    json += "\"urgentEmergencyWaterLevel_cm\":" + String(getUrgentEmergencyWaterLevel(), 2);
-    json += "}";
+    String thresholdsObj = "{";
+    thresholdsObj += "\"emergencyWaterLevel_cm\":" + String(getEmergencyWaterLevel(), 2) + ",";
+    thresholdsObj += "\"urgentEmergencyWaterLevel_cm\":" + String(getUrgentEmergencyWaterLevel(), 2);
+    thresholdsObj += "}";
+    r.raw("thresholds", thresholdsObj.c_str());
 
-    json += "}";
-    server->send(200, "application/json", json);
+    r.send(server);
     serverStartTime = millis();
 }
 
 void ConfigServer::handleSettingsInit() {
     PROFILE_REQUEST("GET /settings/init");
-    String json = "{";
+    JsonResponder r(384);
 
     // notifications block (mirrors fields settings.html reads from /notifications)
     bool mqttCfg = mqttService && mqttService->hasBrokerConfig();
-    json += "\"notifications\":{";
-    json += "\"hasPhoneNumber\":";
-    json += (smsService && smsService->hasPhoneNumber()) ? "true" : "false";
-    json += ",\"hasDiscordWebhook\":";
-    json += (discordService && discordService->hasWebhookUrl()) ? "true" : "false";
-    json += ",\"mqttConfigured\":";
-    json += mqttCfg ? "true" : "false";
-    json += ",\"mqttConnected\":";
-    json += (mqttCfg && mqttService->isConnected()) ? "true" : "false";
-    json += "},";
+    String notifObj = "{";
+    notifObj += "\"hasPhoneNumber\":";
+    notifObj += (smsService && smsService->hasPhoneNumber()) ? "true" : "false";
+    notifObj += ",\"hasDiscordWebhook\":";
+    notifObj += (discordService && discordService->hasWebhookUrl()) ? "true" : "false";
+    notifObj += ",\"mqttConfigured\":";
+    notifObj += mqttCfg ? "true" : "false";
+    notifObj += ",\"mqttConnected\":";
+    notifObj += (mqttCfg && mqttService->isConnected()) ? "true" : "false";
+    notifObj += "}";
+    r.raw("notifications", notifObj.c_str());
 
     // emergency freq (the only /emergency-settings field settings.html uses)
-    json += "\"emergencyNotifFreq_ms\":" + String(getEmergencyNotifFreq()) + ",";
+    r.num("emergencyNotifFreq_ms", getEmergencyNotifFreq());
 
     // wifi (mirrors fields settings.html reads from /status)
     bool connected = WiFiManager::getInstance().isConnected();
-    json += "\"wifi\":{";
-    json += "\"connected\":" + String(connected ? "true" : "false") + ",";
-    json += "\"ssid\":\"" + WiFi.SSID() + "\"";
-    json += "},";
+    JsonResponder wifiR;
+    wifiR.boolean("connected", connected).str("ssid", WiFi.SSID());
+    r.raw("wifi", wifiR.body().c_str());
 
     // calibration (only the hasTwoPointCalibration flag is used)
-    json += "\"hasTwoPointCalibration\":";
-    json += (waterSensor && waterSensor->hasTwoPointCalibration()) ? "true" : "false";
+    r.boolean("hasTwoPointCalibration", waterSensor && waterSensor->hasTwoPointCalibration());
 
-    json += "}";
-    server->send(200, "application/json", json);
+    r.send(server);
     serverStartTime = millis();
 }
 
 void ConfigServer::handleDebugInit() {
     PROFILE_REQUEST("GET /debug/init");
-    String json = "{\"reading\":";
 
     if (!waterSensor) {
-        json += "{\"sensorAvailable\":false},\"calibration\":null}";
-        server->send(200, "application/json", json);
+        JsonResponder().raw("reading", "{\"sensorAvailable\":false}")
+                       .raw("calibration", "null")
+                       .send(server);
         serverStartTime = millis();
         return;
     }
 
     SensorReading reading = waterSensor->readLevel();
-    json += "{\"sensorAvailable\":true,";
-    json += "\"valid\":" + String(reading.valid ? "true" : "false") + ",";
-    json += "\"millivolts\":" + String(reading.millivolts, 2);
+    String readingObj = "{";
+    readingObj += "\"sensorAvailable\":true,";
+    readingObj += "\"valid\":" + String(reading.valid ? "true" : "false") + ",";
+    readingObj += "\"millivolts\":" + String(reading.millivolts, 2);
     if (reading.valid) {
-        json += ",\"level_cm\":" + String(reading.level_cm, 2);
+        readingObj += ",\"level_cm\":" + String(reading.level_cm, 2);
     }
-    json += "},\"calibration\":{";
-    json += "\"zeroPoint_mv\":" + String(waterSensor->getZeroPointMilliVolts()) + ",";
-    json += "\"hasTwoPointCalibration\":";
-    json += waterSensor->hasTwoPointCalibration() ? "true" : "false";
-    if (waterSensor->hasTwoPointCalibration()) {
-        json += ",\"secondPoint_mv\":" + String(waterSensor->getSecondPointMilliVolts());
-        json += ",\"secondPoint_cm\":" + String(waterSensor->getSecondPointLevelCm(), 2);
-    }
-    json += "}}";
+    readingObj += "}";
 
-    server->send(200, "application/json", json);
+    String calObj = "{";
+    calObj += "\"zeroPoint_mv\":" + String(waterSensor->getZeroPointMilliVolts()) + ",";
+    calObj += "\"hasTwoPointCalibration\":";
+    calObj += waterSensor->hasTwoPointCalibration() ? "true" : "false";
+    if (waterSensor->hasTwoPointCalibration()) {
+        calObj += ",\"secondPoint_mv\":" + String(waterSensor->getSecondPointMilliVolts());
+        calObj += ",\"secondPoint_cm\":" + String(waterSensor->getSecondPointLevelCm(), 2);
+    }
+    calObj += "}";
+
+    JsonResponder().raw("reading", readingObj.c_str())
+                   .raw("calibration", calObj.c_str())
+                   .send(server);
     serverStartTime = millis();
 }
 
@@ -507,36 +511,36 @@ void ConfigServer::handleSubmit() {
 void ConfigServer::handleStatus() {
     PROFILE_REQUEST("GET /status");
     // Return connection status as JSON
-    String json = "{";
-    json += "\"connected\":" + String(WiFiManager::getInstance().isConnected() ? "true" : "false") + ",";
-    json += "\"ssid\":\"" + WiFi.SSID() + "\",";
-    json += "\"ip\":\"" + WiFi.localIP().toString() + "\",";
-    json += "\"rssi\":" + String(WiFi.RSSI());
-    json += "}";
-    
-    server->send(200, "application/json", json);
+    JsonResponder().boolean("connected", WiFiManager::getInstance().isConnected())
+                   .str("ssid", WiFi.SSID())
+                   .str("ip", WiFi.localIP().toString())
+                   .num("rssi", (int)WiFi.RSSI())
+                   .send(server);
 }
 
 void ConfigServer::handleWiFiNetworks() {
     std::vector<String> ssids = WiFiManager::getInstance().getStoredSSIDs();
-    String json = "[";
+    // Response is a bare JSON array (["ssid1",...]) — the dev-ui mock server
+    // (res.json(storedNetworks)) and any client expecting a list depend on
+    // that shape, so it is intentionally NOT wrapped in an object.
+    String networksArr = "[";
     for (int i = 0; i < (int)ssids.size(); i++) {
-        if (i > 0) json += ",";
-        json += "\"" + ssids[i] + "\"";
+        if (i > 0) networksArr += ",";
+        networksArr += "\"" + ssids[i] + "\"";
     }
-    json += "]";
-    server->send(200, "application/json", json);
+    networksArr += "]";
+    server->send(200, "application/json", networksArr);
     serverStartTime = millis();
 }
 
 void ConfigServer::handleWiFiRemove() {
     if (!server->hasArg("ssid") || server->arg("ssid").isEmpty()) {
-        server->send(400, "application/json", "{\"success\":false,\"message\":\"Missing ssid\"}");
+        JsonResponder().boolean("success", false).str("message", "Missing ssid").send(server, 400);
         return;
     }
     String ssid = server->arg("ssid");
     WiFiManager::getInstance().removeNetwork(ssid.c_str());
-    server->send(200, "application/json", "{\"success\":true}");
+    JsonResponder().boolean("success", true).send(server);
     serverStartTime = millis();
 }
 
@@ -549,7 +553,7 @@ void ConfigServer::handleCalibrateZero() {
     serverStartTime = millis();
     
     if (!waterSensor) {
-        server->send(503, "application/json", "{\"error\":\"Sensor not available\"}");
+        JsonResponder::sendError(server, 503, "Sensor not available");
         return;
     }
     
@@ -560,16 +564,12 @@ void ConfigServer::handleCalibrateZero() {
         waterSensor->setCalibrationPoint(0, millivolts, level_cm);
         saveCalibration();
         
-        String json = "{";
-        json += "\"success\":true,";
-        json += "\"message\":\"Zero point calibrated\",";
-        json += "\"millivolts\":" + String(millivolts) + ",";
-        json += "\"level_cm\":" + String(level_cm, 2);
-        json += "}";
-        
-        server->send(200, "application/json", json);
+        JsonResponder::success("Zero point calibrated")
+            .num("millivolts", millivolts)
+            .num("level_cm", level_cm, 2)
+            .send(server);
     } else {
-        server->send(400, "application/json", "{\"error\":\"Missing millivolts parameter\"}");
+        JsonResponder::sendError(server, 400, "Missing millivolts parameter");
     }
 }
 
@@ -577,7 +577,7 @@ void ConfigServer::handleCalibratePoint2() {
     serverStartTime = millis();
     
     if (!waterSensor) {
-        server->send(503, "application/json", "{\"error\":\"Sensor not available\"}");
+        JsonResponder::sendError(server, 503, "Sensor not available");
         return;
     }
     
@@ -588,16 +588,12 @@ void ConfigServer::handleCalibratePoint2() {
         waterSensor->setCalibrationPoint(1, millivolts, level_cm);
         saveCalibration();
         
-        String json = "{";
-        json += "\"success\":true,";
-        json += "\"message\":\"Second calibration point set\",";
-        json += "\"millivolts\":" + String(millivolts) + ",";
-        json += "\"level_cm\":" + String(level_cm, 2);
-        json += "}";
-        
-        server->send(200, "application/json", json);
+        JsonResponder::success("Second calibration point set")
+            .num("millivolts", millivolts)
+            .num("level_cm", level_cm, 2)
+            .send(server);
     } else {
-        server->send(400, "application/json", "{\"error\":\"Missing millivolts or level_cm parameter\"}");
+        JsonResponder::sendError(server, 400, "Missing millivolts or level_cm parameter");
     }
 }
 
@@ -605,21 +601,20 @@ void ConfigServer::handleGetCalibration() {
     serverStartTime = millis();
     
     if (!waterSensor) {
-        server->send(503, "application/json", "{\"error\":\"Sensor not available\"}");
+        JsonResponder::sendError(server, 503, "Sensor not available");
         return;
     }
     
-    String json = "{";
-    json += "\"zeroPoint_mv\":" + String(waterSensor->getZeroPointMilliVolts()) + ",";
-    json += "\"hasTwoPointCalibration\":" + String(waterSensor->hasTwoPointCalibration() ? "true" : "false");
+    JsonResponder r;
+    r.num("zeroPoint_mv", waterSensor->getZeroPointMilliVolts());
+    r.boolean("hasTwoPointCalibration", waterSensor->hasTwoPointCalibration());
     
     if (waterSensor->hasTwoPointCalibration()) {
-        json += ",\"secondPoint_mv\":" + String(waterSensor->getSecondPointMilliVolts()) + ",";
-        json += "\"secondPoint_cm\":" + String(waterSensor->getSecondPointLevelCm(), 2);
+        r.num("secondPoint_mv", waterSensor->getSecondPointMilliVolts());
+        r.num("secondPoint_cm", waterSensor->getSecondPointLevelCm(), 2);
     }
-    json += "}";
     
-    server->send(200, "application/json", json);
+    r.send(server);
 }
 
 void ConfigServer::loadCalibration() {
@@ -682,28 +677,46 @@ void ConfigServer::saveCalibration() {
 // EMERGENCY SETTINGS HANDLERS
 // ============================================================================
 
+// Shared validation for the two water-level threshold handlers. On failure it
+// sends the 400 response itself (message text identical to the pre-consolidation
+// handlers) and returns false.
+bool ConfigServer::parseAndValidateLevel(float level_cm, bool isTier1) {
+    // Validate the input against sensor usable range
+    if (level_cm < MIN_EMERGENCY_WATER_LEVEL_CM || level_cm > MAX_EMERGENCY_WATER_LEVEL_CM) {
+        String errorMsg = "Invalid level. Must be between ";
+        errorMsg += String(MIN_EMERGENCY_WATER_LEVEL_CM, 1) + " and ";
+        errorMsg += String(MAX_EMERGENCY_WATER_LEVEL_CM, 1) + " cm";
+        JsonResponder::sendError(server, 400, errorMsg);
+        return false;
+    }
+    
+    // Validate the threshold against the other tier
+    if (isTier1) {
+        // Validate that Tier 1 threshold is less than Tier 2 threshold
+        if (level_cm >= getUrgentEmergencyWaterLevel()) {
+            String errorMsg = "Tier 1 threshold must be less than Tier 2 threshold (";
+            errorMsg += String(getUrgentEmergencyWaterLevel(), 2) + " cm)";
+            JsonResponder::sendError(server, 400, errorMsg);
+            return false;
+        }
+    } else {
+        // Validate that Tier 2 threshold is greater than Tier 1 threshold
+        if (level_cm <= getEmergencyWaterLevel()) {
+            String errorMsg = "Tier 2 threshold must be greater than Tier 1 threshold (";
+            errorMsg += String(getEmergencyWaterLevel(), 2) + " cm)";
+            JsonResponder::sendError(server, 400, errorMsg);
+            return false;
+        }
+    }
+    return true;
+}
+
 void ConfigServer::handleSetEmergencyLevel() {
     serverStartTime = millis();
     
     if (server->hasArg("level_cm")) {
         float level_cm = server->arg("level_cm").toFloat();
-        
-        // Validate the input against sensor usable range
-        if (level_cm < MIN_EMERGENCY_WATER_LEVEL_CM || level_cm > MAX_EMERGENCY_WATER_LEVEL_CM) {
-            String errorMsg = "{\"error\":\"Invalid level. Must be between ";
-            errorMsg += String(MIN_EMERGENCY_WATER_LEVEL_CM, 1) + " and ";
-            errorMsg += String(MAX_EMERGENCY_WATER_LEVEL_CM, 1) + " cm\"}";
-            server->send(400, "application/json", errorMsg);
-            return;
-        }
-        
-        // Validate that Tier 1 threshold is less than Tier 2 threshold
-        if (level_cm >= getUrgentEmergencyWaterLevel()) {
-            String errorMsg = "{\"error\":\"Tier 1 threshold must be less than Tier 2 threshold (";
-            errorMsg += String(getUrgentEmergencyWaterLevel(), 2) + " cm)\"}";
-            server->send(400, "application/json", errorMsg);
-            return;
-        }
+        if (!parseAndValidateLevel(level_cm, true)) return;
 
         if (settingsStore) {
             SettingsValues v = settingsStore->get();
@@ -711,16 +724,12 @@ void ConfigServer::handleSetEmergencyLevel() {
             settingsStore->save(v);
         }
         
-        String json = "{";
-        json += "\"success\":true,";
-        json += "\"message\":\"Emergency water level (Tier 1) updated\",";
-        json += "\"level_cm\":" + String(level_cm, 2);
-        json += "}";
-        
-        server->send(200, "application/json", json);
+        JsonResponder::success("Emergency water level (Tier 1) updated")
+            .num("level_cm", level_cm, 2)
+            .send(server);
         LOG_INFO("[CONFIG] Emergency water level (Tier 1) updated: %.2f cm", level_cm);
     } else {
-        server->send(400, "application/json", "{\"error\":\"Missing level_cm parameter\"}");
+        JsonResponder::sendError(server, 400, "Missing level_cm parameter");
     }
 }
 
@@ -732,10 +741,10 @@ void ConfigServer::handleSetEmergencyNotifFreq() {
         
         // Validate the input
         if (freq_ms < MIN_EMERGENCY_NOTIF_FREQ_MS || freq_ms > MAX_EMERGENCY_NOTIF_FREQ_MS) {
-            String errorMsg = "{\"error\":\"Invalid frequency. Must be between ";
+            String errorMsg = "Invalid frequency. Must be between ";
             errorMsg += String(MIN_EMERGENCY_NOTIF_FREQ_MS) + "ms (" + String(MIN_EMERGENCY_NOTIF_FREQ_MS / 1000) + "s) and ";
-            errorMsg += String(MAX_EMERGENCY_NOTIF_FREQ_MS) + "ms (" + String(MAX_EMERGENCY_NOTIF_FREQ_MS / 1000) + "s)\"}";
-            server->send(400, "application/json", errorMsg);
+            errorMsg += String(MAX_EMERGENCY_NOTIF_FREQ_MS) + "ms (" + String(MAX_EMERGENCY_NOTIF_FREQ_MS / 1000) + "s)";
+            JsonResponder::sendError(server, 400, errorMsg);
             return;
         }
         
@@ -745,17 +754,13 @@ void ConfigServer::handleSetEmergencyNotifFreq() {
             settingsStore->save(v);
         }
         
-        String json = "{";
-        json += "\"success\":true,";
-        json += "\"message\":\"Emergency notification frequency updated\",";
-        json += "\"freq_ms\":" + String(freq_ms) + ",";
-        json += "\"freq_seconds\":" + String(freq_ms / 1000);
-        json += "}";
-        
-        server->send(200, "application/json", json);
+        JsonResponder::success("Emergency notification frequency updated")
+            .num("freq_ms", freq_ms)
+            .num("freq_seconds", freq_ms / 1000)
+            .send(server);
         LOG_INFO("[CONFIG] Emergency notification frequency updated: %d ms (%d seconds)", freq_ms, freq_ms / 1000);
     } else {
-        server->send(400, "application/json", "{\"error\":\"Missing freq_ms parameter\"}");
+        JsonResponder::sendError(server, 400, "Missing freq_ms parameter");
     }
 }
 
@@ -764,23 +769,7 @@ void ConfigServer::handleSetUrgentEmergencyLevel() {
     
     if (server->hasArg("level_cm")) {
         float level_cm = server->arg("level_cm").toFloat();
-        
-        // Validate the input against sensor usable range
-        if (level_cm < MIN_EMERGENCY_WATER_LEVEL_CM || level_cm > MAX_EMERGENCY_WATER_LEVEL_CM) {
-            String errorMsg = "{\"error\":\"Invalid level. Must be between ";
-            errorMsg += String(MIN_EMERGENCY_WATER_LEVEL_CM, 1) + " and ";
-            errorMsg += String(MAX_EMERGENCY_WATER_LEVEL_CM, 1) + " cm\"}";
-            server->send(400, "application/json", errorMsg);
-            return;
-        }
-        
-        // Validate that Tier 2 threshold is greater than Tier 1 threshold
-        if (level_cm <= getEmergencyWaterLevel()) {
-            String errorMsg = "{\"error\":\"Tier 2 threshold must be greater than Tier 1 threshold (";
-            errorMsg += String(getEmergencyWaterLevel(), 2) + " cm)\"}";
-            server->send(400, "application/json", errorMsg);
-            return;
-        }
+        if (!parseAndValidateLevel(level_cm, false)) return;
 
         if (settingsStore) {
             SettingsValues v = settingsStore->get();
@@ -788,16 +777,12 @@ void ConfigServer::handleSetUrgentEmergencyLevel() {
             settingsStore->save(v);
         }
         
-        String json = "{";
-        json += "\"success\":true,";
-        json += "\"message\":\"Urgent emergency water level (Tier 2) updated\",";
-        json += "\"level_cm\":" + String(level_cm, 2);
-        json += "}";
-        
-        server->send(200, "application/json", json);
+        JsonResponder::success("Urgent emergency water level (Tier 2) updated")
+            .num("level_cm", level_cm, 2)
+            .send(server);
         LOG_INFO("[CONFIG] Urgent emergency water level (Tier 2) updated: %.2f cm", level_cm);
     } else {
-        server->send(400, "application/json", "{\"error\":\"Missing level_cm parameter\"}");
+        JsonResponder::sendError(server, 400, "Missing level_cm parameter");
     }
 }
 
@@ -816,12 +801,7 @@ void ConfigServer::handleTestEmergencyPin() {
     digitalWrite(ALERT_PIN, LOW);
     LOG_INFO("[TEST] Emergency pin set LOW - test complete");
     
-    String json = "{";
-    json += "\"success\":true,";
-    json += "\"message\":\"Emergency pin test completed (2 second pulse)\"";
-    json += "}";
-    
-    server->send(200, "application/json", json);
+    JsonResponder::success("Emergency pin test completed (2 second pulse)").send(server);
 }
 
 // loadEmergencySettings() and saveEmergencySettings() removed — emergency
@@ -835,40 +815,38 @@ void ConfigServer::handleTestEmergencyPin() {
 void ConfigServer::handleGetNotifications() {
     serverStartTime = millis();
 
-    String json = "{";
+    JsonResponder r(1024);
 
     // SMS phone number
-    json += "\"hasPhoneNumber\":";
     if (smsService && smsService->hasPhoneNumber()) {
         char phoneBuf[32];
         if (smsService->getPhoneNumber(phoneBuf, sizeof(phoneBuf)) == 0) {
-            json += "true,\"phoneNumber\":\"" + String(phoneBuf) + "\"";
+            r.boolean("hasPhoneNumber", true);
+            r.str("phoneNumber", phoneBuf);
         } else {
-            json += "false";
+            r.boolean("hasPhoneNumber", false);
         }
     } else {
-        json += "false";
+        r.boolean("hasPhoneNumber", false);
     }
 
     // SMS: whether Twilio API credentials are configured (no secret values returned)
-    json += ",\"hasTwilioCreds\":";
-    json += (smsService && smsService->isConfigured()) ? "true" : "false";
+    r.boolean("hasTwilioCreds", smsService && smsService->isConfigured());
 
     // Discord webhook
-    json += ",\"hasDiscordWebhook\":";
     if (discordService && discordService->hasWebhookUrl()) {
         char webhookBuf[256];
         if (discordService->getWebhookUrl(webhookBuf, sizeof(webhookBuf)) == 0) {
-            json += "true,\"discordWebhook\":\"" + String(webhookBuf) + "\"";
+            r.boolean("hasDiscordWebhook", true);
+            r.str("discordWebhook", webhookBuf);
         } else {
-            json += "false";
+            r.boolean("hasDiscordWebhook", false);
         }
     } else {
-        json += "false";
+        r.boolean("hasDiscordWebhook", false);
     }
 
     // Custom HTTP channel
-    json += ",\"hasCustomChannel\":";
     if (customService && customService->isConfigured()) {
         char epBuf[CUSTOM_ENDPOINT_MAX];
         char ctBuf[CUSTOM_CTYPE_MAX];
@@ -876,17 +854,16 @@ void ConfigServer::handleGetNotifications() {
         char tmplBuf[CUSTOM_TMPL_MAX];
         customService->getConfig(epBuf, sizeof(epBuf), ctBuf, sizeof(ctBuf),
                                  authBuf, sizeof(authBuf), tmplBuf, sizeof(tmplBuf));
-        json += "true";
-        json += ",\"customEndpoint\":\"" + String(epBuf) + "\"";
-        json += ",\"customCtype\":\"" + String(ctBuf) + "\"";
-        json += ",\"customAuth\":\"" + String(authBuf) + "\"";
-        json += ",\"customTmpl\":\"" + String(tmplBuf) + "\"";
+        r.boolean("hasCustomChannel", true);
+        r.str("customEndpoint", epBuf);
+        r.str("customCtype", ctBuf);
+        r.str("customAuth", authBuf);
+        r.str("customTmpl", tmplBuf);
     } else {
-        json += "false";
+        r.boolean("hasCustomChannel", false);
     }
 
     // MQTT broker
-    json += ",\"mqttConfigured\":";
     if (mqttService && mqttService->hasBrokerConfig()) {
         char hostBuf[64];
         uint16_t port = 1883;
@@ -895,20 +872,19 @@ void ConfigServer::handleGetNotifications() {
         mqttService->getBroker(hostBuf, sizeof(hostBuf), &port);
         mqttService->getUsername(userBuf, sizeof(userBuf));
         mqttService->getBaseTopic(topicBuf, sizeof(topicBuf));
-        json += "true";
-        json += ",\"mqttConnected\":" + String(mqttService->isConnected() ? "true" : "false");
-        json += ",\"mqttHost\":\"" + String(hostBuf) + "\"";
-        json += ",\"mqttPort\":" + String(port);
-        json += ",\"mqttUser\":\"" + String(userBuf) + "\"";
-        json += ",\"mqttBaseTopic\":\"" + String(topicBuf) + "\"";
-        json += ",\"mqttTls\":" + String(mqttService->getTls() ? "true" : "false");
+        r.boolean("mqttConfigured", true);
+        r.boolean("mqttConnected", mqttService->isConnected());
+        r.str("mqttHost", hostBuf);
+        r.num("mqttPort", (int)port);
+        r.str("mqttUser", userBuf);
+        r.str("mqttBaseTopic", topicBuf);
+        r.boolean("mqttTls", mqttService->getTls());
     } else {
-        json += "false";
-        json += ",\"mqttConnected\":false";
+        r.boolean("mqttConfigured", false);
+        r.boolean("mqttConnected", false);
     }
 
-    json += "}";
-    server->send(200, "application/json", json);
+    r.send(server);
 }
 
 void ConfigServer::handleNotificationsStatus() {
@@ -922,21 +898,19 @@ void ConfigServer::handleNotificationsStatus() {
     bool mqttCfg    = mqttService && mqttService->hasBrokerConfig();
     bool mqttConn   = mqttCfg && mqttService->isConnected();
 
-    String json = "{";
-    json += "\"hasPhoneNumber\":";     json += hasPhone   ? "true" : "false";
-    json += ",\"hasDiscordWebhook\":"; json += hasWebhook ? "true" : "false";
-    json += ",\"hasCustomChannel\":";  json += hasCustom  ? "true" : "false";
-    json += ",\"mqttConfigured\":";    json += mqttCfg    ? "true" : "false";
-    json += ",\"mqttConnected\":";     json += mqttConn   ? "true" : "false";
-    json += "}";
-    server->send(200, "application/json", json);
+    JsonResponder().boolean("hasPhoneNumber", hasPhone)
+                   .boolean("hasDiscordWebhook", hasWebhook)
+                   .boolean("hasCustomChannel", hasCustom)
+                   .boolean("mqttConfigured", mqttCfg)
+                   .boolean("mqttConnected", mqttConn)
+                   .send(server);
 }
 
 void ConfigServer::handleSetPhoneNumber() {
     serverStartTime = millis();
     
     if (!smsService) {
-        server->send(503, "application/json", "{\"error\":\"SMS service not available\"}");
+        JsonResponder::sendError(server, 503, "SMS service not available");
         return;
     }
     
@@ -944,11 +918,10 @@ void ConfigServer::handleSetPhoneNumber() {
         String phone = server->arg("phone");
         smsService->updatePhoneNumber(phone.c_str());
         
-        String json = "{\"success\":true,\"message\":\"Phone number updated\",\"phoneNumber\":\"" + phone + "\"}";
-        server->send(200, "application/json", json);
+        JsonResponder::success("Phone number updated").str("phoneNumber", phone).send(server);
         LOG_INFO("[CONFIG] Phone number updated: %s", phone.c_str());
     } else {
-        server->send(400, "application/json", "{\"error\":\"Missing phone parameter\"}");
+        JsonResponder::sendError(server, 400, "Missing phone parameter");
     }
 }
 
@@ -956,7 +929,7 @@ void ConfigServer::handleSetDiscordWebhook() {
     serverStartTime = millis();
     
     if (!discordService) {
-        server->send(503, "application/json", "{\"error\":\"Discord service not available\"}");
+        JsonResponder::sendError(server, 503, "Discord service not available");
         return;
     }
     
@@ -964,11 +937,10 @@ void ConfigServer::handleSetDiscordWebhook() {
         String webhook = server->arg("webhook");
         discordService->updateWebhookUrl(webhook.c_str());
 
-        String json = "{\"success\":true,\"message\":\"Discord webhook updated\"}";
-        server->send(200, "application/json", json);
+        JsonResponder::success("Discord webhook updated").send(server);
         LOG_INFO("[CONFIG] Discord webhook updated");
     } else {
-        server->send(400, "application/json", "{\"error\":\"Missing webhook parameter\"}");
+        JsonResponder::sendError(server, 400, "Missing webhook parameter");
     }
 }
 
@@ -976,7 +948,7 @@ void ConfigServer::handleSetTwilioCreds() {
     serverStartTime = millis();
 
     if (!smsService) {
-        server->send(503, "application/json", "{\"error\":\"SMS service not available\"}");
+        JsonResponder::sendError(server, 503, "SMS service not available");
         return;
     }
 
@@ -985,7 +957,7 @@ void ConfigServer::handleSetTwilioCreds() {
     String svcSid = server->arg("svc_sid");
 
     if (sid.isEmpty() && token.isEmpty() && svcSid.isEmpty()) {
-        server->send(400, "application/json", "{\"error\":\"No Twilio credentials provided\"}");
+        JsonResponder::sendError(server, 400, "No Twilio credentials provided");
         return;
     }
 
@@ -995,7 +967,7 @@ void ConfigServer::handleSetTwilioCreds() {
         svcSid.isEmpty() ? nullptr : svcSid.c_str()
     );
 
-    server->send(200, "application/json", "{\"success\":true,\"message\":\"Twilio credentials updated\"}");
+    JsonResponder::success("Twilio credentials updated").send(server);
     LOG_INFO("[CONFIG] Twilio credentials updated");
 }
 
@@ -1003,17 +975,17 @@ void ConfigServer::handleSetCustomChannel() {
     serverStartTime = millis();
 
     if (!customService) {
-        server->send(503, "application/json", "{\"error\":\"Custom channel not available\"}");
+        JsonResponder::sendError(server, 503, "Custom channel not available");
         return;
     }
 
     // Require at minimum an endpoint and a body template
     if (!server->hasArg("endpoint") || server->arg("endpoint").isEmpty()) {
-        server->send(400, "application/json", "{\"error\":\"Missing endpoint parameter\"}");
+        JsonResponder::sendError(server, 400, "Missing endpoint parameter");
         return;
     }
     if (!server->hasArg("tmpl") || server->arg("tmpl").isEmpty()) {
-        server->send(400, "application/json", "{\"error\":\"Missing tmpl (body template) parameter\"}");
+        JsonResponder::sendError(server, 400, "Missing tmpl (body template) parameter");
         return;
     }
 
@@ -1036,7 +1008,7 @@ void ConfigServer::handleSetCustomChannel() {
         tmpl.c_str()
     );
 
-    server->send(200, "application/json", "{\"success\":true,\"message\":\"Custom channel updated\"}");
+    JsonResponder::success("Custom channel updated").send(server);
     LOG_INFO("[CONFIG] Custom HTTP channel updated: %s", endpoint.c_str());
 }
 
@@ -1044,17 +1016,17 @@ void ConfigServer::handleTestCustom() {
     serverStartTime = millis();
 
     if (!customService) {
-        server->send(503, "application/json", "{\"error\":\"Custom channel not available\"}");
+        JsonResponder::sendError(server, 503, "Custom channel not available");
         return;
     }
 
     if (!customService->isConfigured()) {
-        server->send(400, "application/json", "{\"error\":\"Custom channel not configured. Set endpoint and body template first.\"}");
+        JsonResponder::sendError(server, 400, "Custom channel not configured. Set endpoint and body template first.");
         return;
     }
 
     if (!WiFi.isConnected()) {
-        server->send(503, "application/json", "{\"error\":\"WiFi not connected. Cannot send custom notification.\"}");
+        JsonResponder::sendError(server, 503, "WiFi not connected. Cannot send custom notification.");
         return;
     }
 
@@ -1063,10 +1035,12 @@ void ConfigServer::handleTestCustom() {
 
     if (success) {
         LOG_INFO("[TEST] Test custom notification sent successfully!");
-        server->send(200, "application/json", "{\"success\":true,\"message\":\"Test custom notification sent!\"}");
+        JsonResponder::success("Test custom notification sent!").send(server);
     } else {
         LOG_INFO("[TEST] Test custom notification failed");
-        server->send(500, "application/json", "{\"success\":false,\"error\":\"Failed to send test notification. Check serial log for details.\"}");
+        JsonResponder().boolean("success", false)
+                       .str("error", "Failed to send test notification. Check serial log for details.")
+                       .send(server, 500);
     }
 }
 
@@ -1074,17 +1048,17 @@ void ConfigServer::handleTestSMS() {
     serverStartTime = millis();
     
     if (!smsService) {
-        server->send(503, "application/json", "{\"error\":\"SMS service not available\"}");
+        JsonResponder::sendError(server, 503, "SMS service not available");
         return;
     }
     
     if (!smsService->hasPhoneNumber()) {
-        server->send(400, "application/json", "{\"error\":\"No phone number configured. Please save a phone number first.\"}");
+        JsonResponder::sendError(server, 400, "No phone number configured. Please save a phone number first.");
         return;
     }
     
     if (!WiFi.isConnected()) {
-        server->send(503, "application/json", "{\"error\":\"WiFi not connected. Cannot send SMS.\"}");
+        JsonResponder::sendError(server, 503, "WiFi not connected. Cannot send SMS.");
         return;
     }
     
@@ -1093,10 +1067,12 @@ void ConfigServer::handleTestSMS() {
     
     if (success) {
         LOG_INFO("[TEST] Test SMS sent successfully!");
-        server->send(200, "application/json", "{\"success\":true,\"message\":\"Test SMS sent successfully!\"}");
+        JsonResponder::success("Test SMS sent successfully!").send(server);
     } else {
         LOG_INFO("[TEST] Test SMS failed to send");
-        server->send(500, "application/json", "{\"success\":false,\"error\":\"Failed to send test SMS. Check serial log for details.\"}");
+        JsonResponder().boolean("success", false)
+                       .str("error", "Failed to send test SMS. Check serial log for details.")
+                       .send(server, 500);
     }
 }
 
@@ -1104,17 +1080,17 @@ void ConfigServer::handleTestDiscord() {
     serverStartTime = millis();
     
     if (!discordService) {
-        server->send(503, "application/json", "{\"error\":\"Discord service not available\"}");
+        JsonResponder::sendError(server, 503, "Discord service not available");
         return;
     }
     
     if (!discordService->hasWebhookUrl()) {
-        server->send(400, "application/json", "{\"error\":\"No Discord webhook configured. Please save a webhook URL first.\"}");
+        JsonResponder::sendError(server, 400, "No Discord webhook configured. Please save a webhook URL first.");
         return;
     }
     
     if (!WiFi.isConnected()) {
-        server->send(503, "application/json", "{\"error\":\"WiFi not connected. Cannot send Discord message.\"}");
+        JsonResponder::sendError(server, 503, "WiFi not connected. Cannot send Discord message.");
         return;
     }
     
@@ -1123,10 +1099,12 @@ void ConfigServer::handleTestDiscord() {
     
     if (success) {
         LOG_INFO("[TEST] Test Discord message sent successfully!");
-        server->send(200, "application/json", "{\"success\":true,\"message\":\"Test Discord message sent successfully!\"}");
+        JsonResponder::success("Test Discord message sent successfully!").send(server);
     } else {
         LOG_INFO("[TEST] Test Discord message failed to send");
-        server->send(500, "application/json", "{\"success\":false,\"error\":\"Failed to send test Discord message. Check serial log for details.\"}");
+        JsonResponder().boolean("success", false)
+                       .str("error", "Failed to send test Discord message. Check serial log for details.")
+                       .send(server, 500);
     }
 }
 
@@ -1134,7 +1112,7 @@ void ConfigServer::handleSetMqttConfig() {
     serverStartTime = millis();
 
     if (!mqttService) {
-        server->send(503, "application/json", "{\"error\":\"MQTT service not available\"}");
+        JsonResponder::sendError(server, 503, "MQTT service not available");
         return;
     }
 
@@ -1176,9 +1154,9 @@ void ConfigServer::handleSetMqttConfig() {
 
     if (changed) {
         mqttService->reloadConfig();
-        server->send(200, "application/json", "{\"success\":true,\"message\":\"MQTT configuration updated\"}");
+        JsonResponder::success("MQTT configuration updated").send(server);
     } else {
-        server->send(400, "application/json", "{\"error\":\"No valid parameters provided\"}");
+        JsonResponder::sendError(server, 400, "No valid parameters provided");
     }
 }
 
@@ -1186,22 +1164,22 @@ void ConfigServer::handleTestMqtt() {
     serverStartTime = millis();
 
     if (!mqttService) {
-        server->send(503, "application/json", "{\"error\":\"MQTT service not available\"}");
+        JsonResponder::sendError(server, 503, "MQTT service not available");
         return;
     }
 
     if (!mqttService->hasBrokerConfig()) {
-        server->send(400, "application/json", "{\"error\":\"No MQTT broker configured. Please save broker settings first.\"}");
+        JsonResponder::sendError(server, 400, "No MQTT broker configured. Please save broker settings first.");
         return;
     }
 
     if (!WiFi.isConnected()) {
-        server->send(503, "application/json", "{\"error\":\"WiFi not connected. Cannot reach MQTT broker.\"}");
+        JsonResponder::sendError(server, 503, "WiFi not connected. Cannot reach MQTT broker.");
         return;
     }
 
     if (!mqttService->isConnected()) {
-        server->send(503, "application/json", "{\"error\":\"MQTT broker not connected. Check host/port and broker status.\"}");
+        JsonResponder::sendError(server, 503, "MQTT broker not connected. Check host/port and broker status.");
         return;
     }
 
@@ -1215,10 +1193,12 @@ void ConfigServer::handleTestMqtt() {
 
     if (success) {
         LOG_INFO("[TEST] Test MQTT message published successfully!");
-        server->send(200, "application/json", "{\"success\":true,\"message\":\"Test MQTT message published successfully!\"}");
+        JsonResponder::success("Test MQTT message published successfully!").send(server);
     } else {
         LOG_INFO("[TEST] Test MQTT message failed to publish");
-        server->send(500, "application/json", "{\"success\":false,\"error\":\"Failed to publish test MQTT message.\"}");
+        JsonResponder().boolean("success", false)
+                       .str("error", "Failed to publish test MQTT message.")
+                       .send(server, 500);
     }
 }
 
@@ -1233,29 +1213,26 @@ void ConfigServer::handleGetReading() {
     serverStartTime = millis();
 
     if (!waterSensor) {
-        String json = "{";
-        json += "\"sensorAvailable\":false,";
-        json += "\"error\":\"Water sensor not connected\"";
-        json += "}";
-        server->send(503, "application/json", json);
+        JsonResponder().boolean("sensorAvailable", false)
+                       .str("error", "Water sensor not connected")
+                       .send(server, 503);
         return;
     }
 
     SensorReading reading = waterSensor->readLevel();
-    String json = "{";
-    json += "\"sensorAvailable\":true,";
-    json += "\"valid\":" + String(reading.valid ? "true" : "false") + ",";
-    json += "\"millivolts\":" + String(reading.millivolts, 2);
+    JsonResponder r;
+    r.boolean("sensorAvailable", true);
+    r.boolean("valid", reading.valid);
+    r.num("millivolts", reading.millivolts, 2);
     if (reading.valid) {
-        json += ",\"level_cm\":" + String(reading.level_cm, 2);
+        r.num("level_cm", reading.level_cm, 2);
     }
     float rate = waterSensor->getRateOfChange_cm30min();
     if (!isnan(rate)) {
-        json += ",\"rate_cm_30min\":" + String(rate, 2);
+        r.num("rate_cm_30min", rate, 2);
     }
-    json += "}";
 
-    server->send(200, "application/json", json);
+    r.send(server);
 }
 
 void ConfigServer::handleDebug() {
@@ -1275,70 +1252,67 @@ void ConfigServer::handleOTAStatus() {
     serverStartTime = millis();
     
     if (!otaManager) {
-        server->send(503, "application/json", "{\"error\":\"OTA manager not available\"}");
+        JsonResponder::sendError(server, 503, "OTA manager not available");
         return;
     }
     
-    String json = "{";
-    json += "\"currentVersion\":\"" + otaManager->getCurrentVersion() + "\",";
-    json += "\"availableVersion\":\"" + otaManager->getAvailableVersion() + "\",";
-    json += "\"updateAvailable\":" + String(otaManager->isUpdateAvailable() ? "true" : "false") + ",";
-    json += "\"state\":\"";
-    
+    const char* state;
     switch(otaManager->getState()) {
-        case OTAState::IDLE: json += "idle"; break;
-        case OTAState::CHECKING: json += "checking"; break;
-        case OTAState::UPDATE_AVAILABLE: json += "update_available"; break;
-        case OTAState::DOWNLOADING: json += "downloading"; break;
-        case OTAState::INSTALLING: json += "installing"; break;
-        case OTAState::SUCCESS: json += "success"; break;
-        case OTAState::FAILED: json += "failed"; break;
+        case OTAState::IDLE: state = "idle"; break;
+        case OTAState::CHECKING: state = "checking"; break;
+        case OTAState::UPDATE_AVAILABLE: state = "update_available"; break;
+        case OTAState::DOWNLOADING: state = "downloading"; break;
+        case OTAState::INSTALLING: state = "installing"; break;
+        case OTAState::SUCCESS: state = "success"; break;
+        case OTAState::FAILED: state = "failed"; break;
+        default: state = "idle"; break;
     }
     
-    json += "\",";
-    json += "\"lastError\":\"" + otaManager->getLastError() + "\",";
-    json += "\"autoCheckEnabled\":" + String(otaManager->isAutoCheckEnabled() ? "true" : "false") + ",";
-    json += "\"autoInstallEnabled\":" + String(otaManager->isAutoInstallEnabled() ? "true" : "false") + ",";
-    json += "\"notificationsEnabled\":" + String(otaManager->areNotificationsEnabled() ? "true" : "false") + ",";
-    json += "\"githubRepo\":\"" + otaManager->getGitHubRepo() + "\",";
-    json += "\"hasGithubToken\":" + String(otaManager->hasGitHubToken() ? "true" : "false") + ",";
-    json += "\"hasUpdatePassword\":" + String(otaManager->hasUpdatePassword() ? "true" : "false") + ",";
-    json += "\"checkIntervalHours\":" + String(otaManager->getCheckIntervalMs() / 3600000) + ",";
     // Use float division so String(val, 1) selects the decimal-places overload
     // (String(unsigned long, 1) interprets 1 as a number base and returns "").
     float hoursSinceCheck = (float)otaManager->getTimeSinceLastCheckS() / 3600.0f;
-    json += "\"timeSinceLastCheckHours\":" + String(hoursSinceCheck, 1);
-    json += "}";
     
-    server->send(200, "application/json", json);
+    JsonResponder().str("currentVersion", otaManager->getCurrentVersion())
+                   .str("availableVersion", otaManager->getAvailableVersion())
+                   .boolean("updateAvailable", otaManager->isUpdateAvailable())
+                   .str("state", state)
+                   .str("lastError", otaManager->getLastError())
+                   .boolean("autoCheckEnabled", otaManager->isAutoCheckEnabled())
+                   .boolean("autoInstallEnabled", otaManager->isAutoInstallEnabled())
+                   .boolean("notificationsEnabled", otaManager->areNotificationsEnabled())
+                   .str("githubRepo", otaManager->getGitHubRepo())
+                   .boolean("hasGithubToken", otaManager->hasGitHubToken())
+                   .boolean("hasUpdatePassword", otaManager->hasUpdatePassword())
+                   .num("checkIntervalHours", (uint32_t)(otaManager->getCheckIntervalMs() / 3600000))
+                   .num("timeSinceLastCheckHours", hoursSinceCheck, 1)
+                   .send(server);
 }
 
 void ConfigServer::handleOTACheck() {
     serverStartTime = millis();
     
     if (!otaManager) {
-        server->send(503, "application/json", "{\"error\":\"OTA manager not available\"}");
+        JsonResponder::sendError(server, 503, "OTA manager not available");
         return;
     }
     
     bool updateFound = otaManager->manualCheckForUpdates();
     
-    String json = "{";
-    json += "\"success\":true,";
-    json += "\"updateAvailable\":" + String(updateFound ? "true" : "false");
+    JsonResponder r;
+    r.boolean("success", true);
+    r.boolean("updateAvailable", updateFound);
     if (updateFound) {
-        json += ",\"version\":\"" + otaManager->getAvailableVersion() + "\"";
+        r.str("version", otaManager->getAvailableVersion());
     }
-    json += "}";
     
-    server->send(200, "application/json", json);
+    r.send(server);
 }
 
 void ConfigServer::handleOTAUpdate() {
     serverStartTime = millis();
     
     if (!otaManager) {
-        server->send(503, "application/json", "{\"error\":\"OTA manager not available\"}");
+        JsonResponder::sendError(server, 503, "OTA manager not available");
         return;
     }
     
@@ -1351,11 +1325,12 @@ void ConfigServer::handleOTAUpdate() {
     bool success = otaManager->startUpdate(password);
     
     if (!success) {
-        String json = "{\"success\":false,\"error\":\"" + otaManager->getLastError() + "\"}";
-        server->send(400, "application/json", json);
+        JsonResponder().boolean("success", false)
+                       .str("error", otaManager->getLastError())
+                       .send(server, 400);
     } else {
         // This will likely not be received as ESP32 will reboot
-        server->send(200, "application/json", "{\"success\":true,\"message\":\"Update started, device will reboot\"}");
+        JsonResponder::success("Update started, device will reboot").send(server);
     }
 }
 
@@ -1363,7 +1338,7 @@ void ConfigServer::handleOTASettings() {
     serverStartTime = millis();
     
     if (!otaManager) {
-        server->send(503, "application/json", "{\"error\":\"OTA manager not available\"}");
+        JsonResponder::sendError(server, 503, "OTA manager not available");
         return;
     }
     
@@ -1423,9 +1398,9 @@ void ConfigServer::handleOTASettings() {
     }
     
     if (updated) {
-        server->send(200, "application/json", "{\"success\":true,\"message\":\"OTA settings updated\"}");
+        JsonResponder::success("OTA settings updated").send(server);
     } else {
-        server->send(400, "application/json", "{\"error\":\"No valid settings provided\"}");
+        JsonResponder::sendError(server, 400, "No valid settings provided");
     }
 }
 

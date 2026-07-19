@@ -27,19 +27,9 @@
  * a user-friendly web interface for all system configuration needs.
  */
 constexpr const char SENSOR_CALIBRATION_NAMESPACE[] = "sensor_cal";
-constexpr const char EMERGENCY_SETTINGS_NAMESPACE[] = "emergency";
 constexpr const char AP_SSID[] = "ESP32-BilgeRise-Setup";
 constexpr unsigned long SERVER_TIMEOUT_MS = 240000;
 constexpr int DNS_PORT = 53; // Standard DNS port for captive portal
-
-// Default emergency settings (Tier 1 - Message Notifications)
-constexpr float DEFAULT_EMERGENCY_WATER_LEVEL_CM = 30.0f;
-constexpr int DEFAULT_EMERGENCY_NOTIF_FREQ_MS = 900000; // 15 minutes
-
-// Default urgent emergency settings (Tier 2)
-constexpr float DEFAULT_URGENT_EMERGENCY_WATER_LEVEL_CM = 50.0f;
-constexpr int DEFAULT_HORN_ON_DURATION_MS = 1000;  // 1 second on
-constexpr int DEFAULT_HORN_OFF_DURATION_MS = 1000; // 1 second off
 
 // Emergency settings validation limits
 constexpr float MIN_EMERGENCY_WATER_LEVEL_CM = WATER_LEVEL_RANGE_MIN_CM; // 5.0 cm
@@ -92,6 +82,7 @@ private:
     void handleSetEmergencyNotifFreq();     // POST: Set emergency notification frequency
     void handleSetUrgentEmergencyLevel();   // POST: Set urgent emergency water level threshold (Tier 2)
     void handleTestEmergencyPin();          // POST: Test the emergency pin output device
+    bool parseAndValidateLevel(float level_cm, bool isTier1); // Shared range + cross-tier validation (sends 400 on failure)
     
     // === Notification Settings Handlers ===
     void handleGetNotifications();          // GET: Return current notification settings
@@ -143,11 +134,11 @@ public:
     void handleClient();
     
     // === Emergency Settings Getters — delegate to SettingsStore ===
-    float getEmergencyWaterLevel()       const { return settingsStore ? settingsStore->getEmergencyWaterLevel()       : 30.0f; }
-    int   getEmergencyNotifFreq()        const { return settingsStore ? settingsStore->getEmergencyNotifFreq()        : 900000; }
-    float getUrgentEmergencyWaterLevel() const { return settingsStore ? settingsStore->getUrgentEmergencyWaterLevel() : 50.0f; }
-    int   getHornOnDuration()            const { return settingsStore ? settingsStore->getHornOnDuration()            : 1000; }
-    int   getHornOffDuration()           const { return settingsStore ? settingsStore->getHornOffDuration()           : 1000; }
+    float getEmergencyWaterLevel()       const { return settingsStore ? settingsStore->getEmergencyWaterLevel()       : SETTINGS_DEFAULTS().emergencyWaterLevel_cm; }
+    int   getEmergencyNotifFreq()        const { return settingsStore ? settingsStore->getEmergencyNotifFreq()        : SETTINGS_DEFAULTS().emergencyNotifFreq_ms; }
+    float getUrgentEmergencyWaterLevel() const { return settingsStore ? settingsStore->getUrgentEmergencyWaterLevel() : SETTINGS_DEFAULTS().urgentEmergencyWaterLevel_cm; }
+    int   getHornOnDuration()            const { return settingsStore ? settingsStore->getHornOnDuration()            : SETTINGS_DEFAULTS().hornOnDuration_ms; }
+    int   getHornOffDuration()           const { return settingsStore ? settingsStore->getHornOffDuration()           : SETTINGS_DEFAULTS().hornOffDuration_ms; }
     
     // === AP Password Getter ===
     String getAPPassword() const { return apPassword; }
