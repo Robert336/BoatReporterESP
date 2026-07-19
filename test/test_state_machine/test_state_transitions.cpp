@@ -209,6 +209,38 @@ void test_emergency_stays_emergency_while_conditions_true() {
     TEST_ASSERT_EQUAL(EMERGENCY, nextState);
 }
 
+// S1: a sustained sensor fault in EMERGENCY degrades to ERROR instead of
+// latching forever on a frozen (stale) reading.
+void test_emergency_to_error_on_sustained_sensor_failure() {
+    StateMachineContext ctx = createDefaultContext();
+    ctx.currentState = EMERGENCY;
+    ctx.emergencyConditions = true;   // frozen true from before the fault
+    ctx.sensorError = true;
+    ctx.sensorErrorTrueTime = 1000;
+    
+    StateMachineSensorReading reading = createInvalidReading();
+    
+    // Beyond SENSOR_ERROR_NOTIFY_DELAY_MS (60s) after fault onset -> ERROR
+    State nextState = computeNextState(ctx, reading, 1000 + SENSOR_ERROR_NOTIFY_DELAY_MS + 1, false);
+    TEST_ASSERT_EQUAL(ERROR, nextState);
+}
+
+// S1: a transient (sub-delay) sensor glitch in EMERGENCY does NOT bounce an
+// active flood into ERROR.
+void test_emergency_stays_emergency_on_transient_sensor_failure() {
+    StateMachineContext ctx = createDefaultContext();
+    ctx.currentState = EMERGENCY;
+    ctx.emergencyConditions = true;
+    ctx.sensorError = true;
+    ctx.sensorErrorTrueTime = 1000;
+    
+    StateMachineSensorReading reading = createInvalidReading();
+    
+    // Well within the sustained-failure window -> stay EMERGENCY
+    State nextState = computeNextState(ctx, reading, 1000 + 5000, false);
+    TEST_ASSERT_EQUAL(EMERGENCY, nextState);
+}
+
 // ============================================================================
 // TEST: State Transitions - ERROR State
 // ============================================================================
@@ -224,7 +256,12 @@ void test_error_to_normal_on_sensor_recovery() {
     TEST_ASSERT_EQUAL(NORMAL, nextState);
 }
 
-void test_error_to_config_on_button_press() {
+void test_error_to_config_blocked_while_sensor_failed() {
+    // S2: ERROR→CONFIG is suppressed while sensorError is still true. The
+    // CONFIG case has its own sensorError guard that bounces straight back to
+    // ERROR, so honoring the request would flap the state and spin the web
+    // server up and down on every button press during a sensor outage. The
+    // command is dropped; the device stays in ERROR until the sensor recovers.
     StateMachineContext ctx = createDefaultContext();
     ctx.currentState = ERROR;
     ctx.sensorError = true;
@@ -233,7 +270,7 @@ void test_error_to_config_on_button_press() {
     StateMachineSensorReading reading = createInvalidReading();
     
     State nextState = computeNextState(ctx, reading, 1000, false);
-    TEST_ASSERT_EQUAL(CONFIG, nextState);
+    TEST_ASSERT_EQUAL(ERROR, nextState);
 }
 
 void test_error_stays_error_while_sensor_failed() {
@@ -471,6 +508,23 @@ void test_horn_pulses_in_urgent_emergency() {
     TEST_ASSERT_TRUE(hornOn);
 }
 
+// S3: a sensor fault freezes urgentEmergencyConditions true; the horn must
+// fail safe to OFF rather than pulse indefinitely off a stale reading.
+void test_horn_off_on_sensor_fault_despite_frozen_urgent() {
+    StateMachineContext ctx = createDefaultContext();
+    ctx.currentState = EMERGENCY;
+    ctx.urgentEmergencyConditions = true; // frozen true from before the fault
+    ctx.notificationsSilenced = false;
+    ctx.sensorError = true;               // reading is untrustworthy
+    ctx.hornCurrentlyOn = false;
+    ctx.lastHornToggleTime = 1000;
+    ctx.hornOnDuration_ms = 1000;
+    ctx.hornOffDuration_ms = 1000;
+
+    // Past toggle time, but sensor fault forces horn OFF.
+    TEST_ASSERT_FALSE(shouldHornBeOn(ctx, 2001));
+}
+
 // ============================================================================
 // TEST: Alert Pin (GPIO 26) — dedicated emergency indicator
 // ============================================================================
@@ -508,6 +562,21 @@ void test_alert_pin_off_when_silenced() {
     ctx.urgentEmergencyConditions = false;
     ctx.notificationsSilenced = true;
 
+    TEST_ASSERT_FALSE(computeAlertPinState(ctx));
+}
+
+// S3: the alert pin must not assert a flood indication off a stale reading.
+void test_alert_pin_off_on_sensor_fault() {
+    StateMachineContext ctx = createDefaultContext();
+    ctx.currentState = EMERGENCY;
+    ctx.urgentEmergencyConditions = false; // would be Tier 1 (solid) otherwise
+    ctx.sensorError = true;
+
+    TEST_ASSERT_FALSE(computeAlertPinState(ctx));
+
+    // And Tier 2 frozen-urgent also fails safe to OFF.
+    ctx.urgentEmergencyConditions = true;
+    ctx.hornCurrentlyOn = true;
     TEST_ASSERT_FALSE(computeAlertPinState(ctx));
 }
 
@@ -682,8 +751,12 @@ void runAllTests() {
     
     // ERROR state transition tests
     RUN_TEST(test_error_to_normal_on_sensor_recovery);
-    RUN_TEST(test_error_to_config_on_button_press);
+    RUN_TEST(test_error_to_config_blocked_while_sensor_failed);
     RUN_TEST(test_error_stays_error_while_sensor_failed);
+    
+    // S1: EMERGENCY sensor-fault degradation tests
+    RUN_TEST(test_emergency_to_error_on_sustained_sensor_failure);
+    RUN_TEST(test_emergency_stays_emergency_on_transient_sensor_failure);
     
     // CONFIG state transition tests
     RUN_TEST(test_config_to_normal_when_config_ends);
@@ -704,12 +777,14 @@ void runAllTests() {
     RUN_TEST(test_horn_off_without_urgent_conditions);
     RUN_TEST(test_horn_off_when_silenced);
     RUN_TEST(test_horn_pulses_in_urgent_emergency);
+    RUN_TEST(test_horn_off_on_sensor_fault_despite_frozen_urgent);
 
     // Alert pin (GPIO 26) tests
     RUN_TEST(test_alert_pin_off_outside_emergency);
     RUN_TEST(test_alert_pin_solid_in_tier1_emergency);
     RUN_TEST(test_alert_pin_follows_horn_in_tier2_emergency);
     RUN_TEST(test_alert_pin_off_when_silenced);
+    RUN_TEST(test_alert_pin_off_on_sensor_fault);
 
     // Full state machine update tests
     RUN_TEST(test_full_update_normal_to_emergency);
