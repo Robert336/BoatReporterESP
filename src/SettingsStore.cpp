@@ -2,11 +2,11 @@
 #include "SettingsStore.h"
 #include "Logger.h"
 
-SettingsStore::SettingsStore() : vals(SETTINGS_DEFAULTS) {}
+SettingsStore::SettingsStore() : vals(SETTINGS_DEFAULTS()) {}
 
 void SettingsStore::load() {
     // Seed defaults first so we always have valid values even if NVS open fails
-    vals = SETTINGS_DEFAULTS;
+    vals = SETTINGS_DEFAULTS();
 
     if (!prefs.begin(SETTINGS_STORE_NAMESPACE, /*readOnly=*/true)) {
         LOG_INFO("[SETTINGS] NVS namespace not found — using defaults");
