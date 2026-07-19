@@ -23,10 +23,11 @@
 
 #include "TextEscape.h"
 #include "HttpPoster.h"
+#include "NvsChannelBase.h"
 #include <Arduino.h>
 #include <Preferences.h>
 
-class SmsChannel : public NotificationChannel {
+class SmsChannel : public NotificationChannel, protected NvsChannelBase {
 public:
     SmsChannel();
 
@@ -45,14 +46,11 @@ public:
     bool hasPhoneNumber()                             const;
 
 private:
-    Preferences prefs;
-
     // In-RAM cache — avoids NVS I/O on every send()
     char phoneCache[32];
     char sidCache[48];
     char tokenCache[48];
     char svcSidCache[48];
-    bool cacheLoaded = false;
 };
 
 #endif // UNIT_TESTING

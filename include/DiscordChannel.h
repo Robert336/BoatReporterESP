@@ -15,10 +15,11 @@
 
 #include "TextEscape.h"
 #include "HttpPoster.h"
+#include "NvsChannelBase.h"
 #include <Arduino.h>
 #include <Preferences.h>
 
-class DiscordChannel : public NotificationChannel {
+class DiscordChannel : public NotificationChannel, protected NvsChannelBase {
 public:
     DiscordChannel();
 
@@ -35,10 +36,7 @@ public:
     bool hasWebhookUrl()                             const;
 
 private:
-    Preferences prefs;
-
     char webhookCache[256]; // In-RAM cache
-    bool cacheLoaded = false;
 };
 
 #endif // UNIT_TESTING

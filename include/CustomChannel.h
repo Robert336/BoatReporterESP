@@ -39,10 +39,11 @@ static constexpr size_t CUSTOM_TMPL_MAX     = 512;
 
 #include "TextEscape.h"
 #include "HttpPoster.h"
+#include "NvsChannelBase.h"
 #include <Arduino.h>
 #include <Preferences.h>
 
-class CustomChannel : public NotificationChannel {
+class CustomChannel : public NotificationChannel, protected NvsChannelBase {
 public:
     CustomChannel();
 
@@ -71,8 +72,6 @@ public:
     bool hasTemplate()  const { return tmplCache[0]     != '\0'; }
 
 private:
-    Preferences prefs;
-
     // In-RAM cache
     char endpointCache[CUSTOM_ENDPOINT_MAX];
     char ctypeCache[CUSTOM_CTYPE_MAX];
@@ -80,7 +79,6 @@ private:
     char userCache[CUSTOM_USER_MAX];
     char secretCache[CUSTOM_SECRET_MAX];
     char tmplCache[CUSTOM_TMPL_MAX];
-    bool cacheLoaded = false;
 
     // Substitute {{message}} in tmplCache, writing to outBuf (size outSize).
     // escapedMsg must already be escaped appropriately for the content type.
