@@ -386,6 +386,14 @@ inline StateMachineOutput updateStateMachine(StateMachineContext& ctx,
             }
         }
 
+        if (nextState == CONFIG) {
+            // Consume the button press — it has served its purpose by
+            // triggering this transition. From here on, CONFIG stays alive
+            // only as long as configServerActive is true (i.e. the web
+            // server is running and hasn't timed out).
+            ctx.configCommandReceived = false;
+        }
+
         if (nextState == EMERGENCY) {
             // Drop any pending config-button press so post-emergency NORMAL
             // doesn't immediately fall into CONFIG.
