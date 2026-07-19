@@ -439,6 +439,20 @@ void loop() {
         if (smCtx.currentState == NORMAL && previousState == CONFIG) {
             LOG_STATE("[STATE] Config mode ended - returning to NORMAL");
         }
+
+        // Tear down the AP + web server whenever we leave CONFIG for any
+        // reason (NORMAL via idle timeout, EMERGENCY via the safety override
+        // in computeNextState, or ERROR via sensor failure). Without this,
+        // a CONFIG → EMERGENCY transition leaves WiFi in WIFI_AP_STA mode:
+        // the AP keeps broadcasting, but handleClient() is no longer called
+        // (the CONFIG branch in loop() is skipped), so the web server appears
+        // "down" while the SSID is still visible to clients.
+        if (previousState == CONFIG && smCtx.currentState != CONFIG) {
+            if (configServer->isSetupModeActive()) {
+                LOG_STATE("[STATE] Tearing down config server after CONFIG exit");
+                configServer->stopSetupMode();
+            }
+        }
     }
 
     // Periodic status logging
