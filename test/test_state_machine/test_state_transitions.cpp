@@ -316,17 +316,52 @@ void test_config_exits_after_server_timeout_via_full_update() {
 
     StateMachineSensorReading reading = createNormalReading();
 
-    // Step 1: Full update transitions NORMAL → CONFIG and consumes the flag
+    // Step 1: Full update transitions NORMAL → CONFIG
     StateMachineOutput out = updateStateMachine(ctx, reading, 1000, 0.0f, false);
     TEST_ASSERT_TRUE(out.stateChanged);
     TEST_ASSERT_EQUAL(CONFIG, ctx.currentState);
-    TEST_ASSERT_FALSE(ctx.configCommandReceived); // Flag consumed on entry
 
-    // Step 2: Server starts, stays active for a while
+    // Step 2: Next update — the in-CONFIG clear consumes the entry flag,
+    // server starts and stays active for a while
     out = updateStateMachine(ctx, reading, 2000, 0.0f, true);
     TEST_ASSERT_EQUAL(CONFIG, ctx.currentState);
+    TEST_ASSERT_FALSE(ctx.configCommandReceived);
 
     // Step 3: Server times out (no client connected) — configServerActive=false
+    out = updateStateMachine(ctx, reading, 245000, 0.0f, false);
+    TEST_ASSERT_TRUE(out.stateChanged);
+    TEST_ASSERT_EQUAL(NORMAL, ctx.currentState);
+}
+
+void test_config_mid_session_button_press_does_not_block_timeout_exit() {
+    // Regression: a button press landing mid-CONFIG sets configCommandReceived
+    // again after entry already consumed it. Without the in-CONFIG clear, that
+    // flag stays true forever and blocks the idle-timeout exit — the server
+    // restarts on every loop iteration, same infinite-config bug.
+    StateMachineContext ctx = createDefaultContext();
+    ctx.currentState = NORMAL;
+    ctx.configCommandReceived = true; // Initial press to enter CONFIG
+
+    StateMachineSensorReading reading = createNormalReading();
+
+    // Enter CONFIG
+    updateStateMachine(ctx, reading, 1000, 0.0f, false);
+    TEST_ASSERT_EQUAL(CONFIG, ctx.currentState);
+
+    // Server starts and runs; the in-CONFIG clear consumes the entry flag
+    updateStateMachine(ctx, reading, 2000, 0.0f, true);
+    TEST_ASSERT_EQUAL(CONFIG, ctx.currentState);
+    TEST_ASSERT_FALSE(ctx.configCommandReceived);
+
+    // User presses the button mid-session (ISR sets the flag again)
+    ctx.configCommandReceived = true;
+
+    // Next update: flag must be consumed while in CONFIG, session continues
+    StateMachineOutput out = updateStateMachine(ctx, reading, 3000, 0.0f, true);
+    TEST_ASSERT_EQUAL(CONFIG, ctx.currentState);
+    TEST_ASSERT_FALSE(ctx.configCommandReceived);
+
+    // Server later times out with no client activity — exit must not be blocked
     out = updateStateMachine(ctx, reading, 245000, 0.0f, false);
     TEST_ASSERT_TRUE(out.stateChanged);
     TEST_ASSERT_EQUAL(NORMAL, ctx.currentState);
@@ -656,6 +691,7 @@ void runAllTests() {
     RUN_TEST(test_config_to_emergency_on_flood_while_active);
     RUN_TEST(test_config_to_error_on_sensor_failure_while_active);
     RUN_TEST(test_config_exits_after_server_timeout_via_full_update);
+    RUN_TEST(test_config_mid_session_button_press_does_not_block_timeout_exit);
     
     // Emergency notification tests
     RUN_TEST(test_emergency_notification_not_sent_outside_emergency);
