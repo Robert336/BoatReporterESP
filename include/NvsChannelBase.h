@@ -9,9 +9,9 @@
     never touches NVS. That load/save boilerplate used to be copy-pasted per
     channel; it lives here once.
 
-    Derived classes implement loadFields() (declare their keys) and call
-    beginLoad()/finishLoad() around it. Writers call putAndReload() so the
-    in-RAM cache always reflects the last successful save.
+    Derived classes call beginLoad()/loadStr()/finishLoad() to populate their
+    caches from their keys, and openForWrite()/putStr()/endWrite() followed by
+    loadCache() so the in-RAM cache always reflects the last successful save.
 
     Not unit-test-buildable (Preferences is Arduino-only) — same as the
     concrete channels, all of which are excluded from UNIT_TESTING builds.
