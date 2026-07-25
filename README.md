@@ -6,14 +6,9 @@
 [![Framework](https://img.shields.io/badge/framework-Arduino-00979D)](https://www.arduino.cc/)
 [![C++](https://img.shields.io/badge/C%2B%2B-17-00599C)](https://en.cppreference.com/)
 
-**An ESP32-based bilge monitoring system (firmware v1.1.8).** It continuously measures water level in your boat's bilge, dispatches emergency alerts the moment the level crosses a danger threshold, and streams live telemetry to a self-hosted Grafana dashboard, so you can check on your vessel from anywhere.
-
-<details>
-<summary><strong>Preview</strong>: BoatReporterESP in action</summary>
-
 <img width="500" alt="hero image" src="https://github.com/user-attachments/assets/67ef94db-ea68-4508-ad74-67d70f768ae9" />
 
-</details>
+**An ESP32-based bilge monitoring system** It continuously measures water level in your boat's bilge, dispatches emergency alerts the moment the level crosses a danger threshold, and streams live telemetry to a self-hosted Grafana dashboard, so you can check on your vessel from anywhere.
 
 **At a glance:** water-level monitoring (5–100 cm) · two-tier SMS/Discord/webhook emergency alerts · captive-portal web config (no app to install) · remote OTA firmware updates · live Grafana monitoring dashboard.
 
