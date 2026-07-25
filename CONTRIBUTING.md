@@ -1,6 +1,6 @@
 # Contributing to BoatReporterESP
 
-Thanks for your interest in contributing! BoatReporterESP is an ESP32-based bilge-water monitor. This guide covers the basics of getting a change landed.
+Thanks for your interest in contributing. BoatReporterESP is an ESP32-based bilge-water monitor. This guide covers the basics of getting a change landed.
 
 ## Project layout
 
@@ -17,8 +17,8 @@ scripts/             Build scripts — compress_html.py gzips the web UI into sr
 ## Setting up a build
 
 1. Install [PlatformIO](https://platformio.org/) (VS Code extension or CLI).
-2. Clone the repo. **No `secrets.h` is required** — all credentials (Twilio, Discord, Custom HTTP, MQTT) are entered at runtime in the web UI and stored in NVS. `include/secrets.h.example` is an empty template.
-3. Build the right environment for what you're doing:
+2. Clone the repo. **No `secrets.h` is required** — all credentials (Twilio, Discord, custom-HTTP, MQTT) are entered at runtime in the web UI and stored in NVS. `include/secrets.h.example` is an empty template.
+3. Build the environment appropriate to your task:
 
    ```bash
    pio run -e prod --target upload    # production build (on the boat)
@@ -35,7 +35,7 @@ Edit the HTML in `dev-ui/*.html` (or `src/html/ota.html`). You can iterate again
 cd dev-ui && npm install && npm start   # http://localhost:3000
 ```
 
-When any PlatformIO build runs, `scripts/compress_html.py` automatically gzips the pages into `src/compressed_pages.h` — you never embed HTML by hand. See [`dev-ui/README.md`](dev-ui/README.md) for the mock server's endpoint coverage (a few newer routes are not yet mocked).
+When any PlatformIO build runs, `scripts/compress_html.py` automatically gzips the pages into `src/compressed_pages.h` — no manual HTML embedding is required. See [`dev-ui/README.md`](dev-ui/README.md) for the mock server's endpoint coverage (a few newer routes are not yet mocked).
 
 ## Tests
 

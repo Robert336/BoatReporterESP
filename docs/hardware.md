@@ -6,7 +6,7 @@ This guide covers the components, wiring, and assembly of a BoatReporterESP unit
 
 | Component | Purpose |
 |-----------|---------|
-| [ESP32 Development Board](https://www.amazon.ca/IoTCrazy-ESP32-WROOM-32U-Dual-Core-Development-Type-C/dp/B0FP6DQJQ1/) | UPESY WROOM (or compatible ESP32 board). We used one with an attachable WiFi antenna to extend range — the boat's slip may be far from the marina's WiFi access point. |
+| [ESP32 Development Board](https://www.amazon.ca/IoTCrazy-ESP32-WROOM-32U-Dual-Core-Development-Type-C/dp/B0FP6DQJQ1/) | UPESY WROOM (or compatible ESP32 board). A model with an attachable WiFi antenna extends range — the boat's slip may be far from the marina's WiFi access point. |
 | [ADS1115 16-bit ADC Module](https://www.amazon.ca/Converter-Programmable-Amplifier-Precision-Development/dp/B0F1D3KGG2/) | Precise analog-to-digital conversion with minimal signal noise. The ESP32's onboard ADC is too noisy for this application. |
 | [4–20 mA Water Depth Sensor (0–100 cm)](https://www.amazon.ca/Submersible-Pressure-Sensors-Transmitter-Detector/dp/B0C44QLSZ1/) | Measures water depth via the pressure difference between atmosphere and the probe's position. |
 | [Current-to-Voltage Converter](https://www.amazon.ca/Current-Converter-Conversion-Transmitter-Adjustable/dp/B099FJ4GFZ/) | Converts the sensor's 4–20 mA output to an analog voltage readable by the ADS1115. |
@@ -15,7 +15,7 @@ This guide covers the components, wiring, and assembly of a BoatReporterESP unit
 | [Waterproof Project Enclosure](https://www.amazon.ca/Joinfworld-Electrical-Weatherproof-Waterproof-Electronics/dp/B0CHHJ49QN/) | Houses the ESP32, ADS1115, buck converter, and supporting components. Essential for marine environments. |
 | [7-Pin Waterproof Connector](https://www.amazon.ca/Connector-Waterproof-Electrical-Connectors-Industrial/dp/B09PNJYF2T/) | Runs external wiring (power in, sensor, button) through the enclosure wall while keeping it sealed. |
 | Push Button | Normally open, pull-up configured in software. Enters configuration mode. |
-| LED Indicator | Built-in LED works, or connect an external one. Shows NORMAL/ERROR/CONFIG — never lights for EMERGENCY. |
+| LED Indicator | The built-in LED works, or connect an external one. Shows NORMAL/ERROR/CONFIG — never lights for EMERGENCY. |
 
 ## Wiring
 
@@ -31,7 +31,7 @@ See the [main README](../README.md#hardware--wiring) for the wiring diagram and 
 
 ## Assembly
 
-> 📸 **Photo placeholder:** add a photo of the assembled unit / wiring here once available.
+> 📸 **Photo placeholder:** add a photo of the assembled unit and wiring here once available.
 
 1. Mount the ESP32, ADS1115, buck converter, and level shifter inside the waterproof enclosure.
 2. Drill a hole for the 7-pin waterproof connector and mount it through the enclosure wall.

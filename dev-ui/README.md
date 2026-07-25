@@ -1,6 +1,6 @@
-# ESP32 BilgeRise - Development UI
+# ESP32 BilgeRise — Development UI
 
-This folder contains a standalone development environment for the web interface. It allows you to develop and test the UI rapidly without needing to compile and upload to the ESP32 every time you make a change.
+This folder contains a standalone development environment for the web interface. It allows you to develop and test the UI rapidly without needing to compile and upload to the ESP32 on every change.
 
 ## What's Inside
 
@@ -16,7 +16,7 @@ This folder contains a standalone development environment for the web interface.
 
 ### 1. Install Node.js
 
-If you don't have Node.js installed, download it from [nodejs.org](https://nodejs.org/)
+If you do not have Node.js installed, download it from [nodejs.org](https://nodejs.org/)
 
 ### 2. Install Dependencies
 
@@ -26,7 +26,7 @@ Open a terminal in the `dev-ui` folder and run:
 npm install
 ```
 
-This will install Express.js and CORS packages needed for the mock server.
+This will install the Express.js and CORS packages required for the mock server.
 
 ### 3. Start the Mock Server
 
@@ -60,13 +60,13 @@ Navigate to:
 
 Note: page URLs match the routes served by the real ESP32 — no `.html` extension.
 
-### 5. Develop!
+### 5. Develop
 
-Now you can:
+You can now:
 - Edit any of the HTML files in `dev-ui/` in your code editor
 - Save the file
 - Refresh your browser to see changes immediately
-- No compilation or ESP32 upload needed!
+- No compilation or ESP32 upload is required
 
 ## How It Works
 
@@ -74,7 +74,7 @@ Now you can:
 
 The `mock-server.js` creates a local web server that:
 - Serves the HTML files
-- Responds to all the same API endpoints as your ESP32
+- Responds to all the same API endpoints as the ESP32
 - Returns realistic mock data
 - Simulates sensor readings that change over time (updates every 2 seconds)
 - Maintains state (calibration, settings) during your session
@@ -83,7 +83,7 @@ The `mock-server.js` creates a local web server that:
 
 These routes match the routes registered in `src/ConfigServer.cpp`. Page URLs have no `.html` extension — the mock serves them at the same paths as the real firmware.
 
-The mock implements most of these; routes it doesn't are flagged with ⚠️ **not mocked** and will 404 against the mock server. In particular, the Twilio-credentials endpoint and the Custom HTTP channel endpoints are newer firmware routes that haven't been added to `mock-server.js` yet — if you're working on the notifications page, expect the mock to 404 for those until someone adds them.
+The mock implements most of these; routes it does not are flagged with ⚠️ **not mocked** and will 404 against the mock server. In particular, the Twilio-credentials endpoint and the Custom HTTP channel endpoints are newer firmware routes that have not been added to `mock-server.js` yet — if you are working on the notifications page, expect the mock to 404 for those until they are added.
 
 **Pages (GET — served by mock as HTML files):**
 - `GET /` — Main dashboard (BilgeRise) (`index.html`)
@@ -147,7 +147,7 @@ The mock implements most of these; routes it doesn't are flagged with ⚠️ **n
 
 ### Testing API Interactions
 
-All buttons and forms work just like on the real ESP32:
+All buttons and forms work as they would on the real ESP32:
 - Click "Set Zero Point" → updates mock calibration
 - Test SMS/Discord → simulates sending (always succeeds)
 - Change emergency levels → validates and saves to mock state
@@ -155,15 +155,15 @@ All buttons and forms work just like on the real ESP32:
 
 ### Using Browser DevTools
 
-You can now use full browser developer tools:
-- **Console** - See JavaScript errors and debug logs
-- **Network tab** - Inspect API requests/responses
-- **Elements tab** - Experiment with CSS in real-time
-- **Application tab** - Check localStorage if you add it
+You can now use the full browser developer tools:
+- **Console** — view JavaScript errors and debug logs
+- **Network tab** — inspect API requests and responses
+- **Elements tab** — experiment with CSS in real time
+- **Application tab** — check localStorage if you add it
 
 ## Deploying Changes to ESP32
 
-When you're happy with your UI changes, just build the firmware — the pipeline handles the rest automatically.
+When you are satisfied with your UI changes, build the firmware — the pipeline handles the rest automatically.
 
 ### How the Build Pipeline Works
 
@@ -181,7 +181,7 @@ When you're happy with your UI changes, just build the firmware — the pipeline
 pio run -e prod --target upload   # compress, compile, upload in one step
 ```
 
-No manual copy-paste or conversion needed. The HTML files in `dev-ui/` are the single source of truth for all pages except `ota.html` which lives in `src/html/`.
+No manual copy-paste or conversion is required. The HTML files in `dev-ui/` are the single source of truth for all pages except `ota.html`, which lives in `src/html/`.
 
 ### Which file to edit?
 
@@ -227,34 +227,34 @@ sensorValid: false,  // Set to false to test error handling
 
 ### Live Sensor Simulation
 
-The mock server simulates a live sensor by adding random variation every 2 seconds. Watch the debug page and you'll see the millivolts value change realistically.
+The mock server simulates a live sensor by adding random variation every 2 seconds. Watch the debug page and the millivolts value changes realistically.
 
 ### Testing Edge Cases
 
 Modify the mock server to test edge cases:
-- Set sensor reading near emergency threshold
+- Set the sensor reading near the emergency threshold
 - Set `sensorValid: false` to test error handling
-- Remove phone number to test "not configured" state
+- Remove the phone number to test the "not configured" state
 - Return errors from endpoints to test error handling
 
 ### Multiple Browser Windows
 
-Open both pages side-by-side:
-- Left window: Main config page
-- Right window: Debug page with auto-updating sensor readings
+Open both pages side by side:
+- Left window: main config page
+- Right window: debug page with auto-updating sensor readings
 
 ### Mobile Testing
 
 The pages are responsive. Test on mobile by:
 1. Find your computer's IP address
-2. Make sure your phone is on the same network
+2. Ensure your phone is on the same network
 3. Change `localhost` to your IP in the browser URL
 4. Or use Chrome DevTools device emulation
 
 ## Troubleshooting
 
 **"Cannot GET /"**
-- Make sure you're in the `dev-ui` folder when running `npm start`
+- Ensure you are in the `dev-ui` folder when running `npm start`
 - Check that all files are present
 
 **"Module not found: express"**
@@ -262,13 +262,13 @@ The pages are responsive. Test on mobile by:
 
 **Changes not showing**
 - Hard refresh: Ctrl+Shift+R (or Cmd+Shift+R on Mac)
-- Check browser console for errors
-- Make sure you saved the file
+- Check the browser console for errors
+- Ensure you saved the file
 
 **API calls failing**
-- Check the terminal where mock-server is running for error messages
-- Check browser Network tab to see the actual request/response
-- Make sure the mock server is still running
+- Check the terminal where the mock server is running for error messages
+- Check the browser Network tab to see the actual request and response
+- Ensure the mock server is still running
 
 ## Future Enhancements
 
@@ -287,6 +287,6 @@ Ideas for improving this development setup:
 If you run into issues:
 1. Check the terminal output where the mock server is running
 2. Check the browser console (F12) for JavaScript errors
-3. Try stopping the server (Ctrl+C) and starting again
-4. Delete `node_modules` folder and run `npm install` again
+3. Try stopping the server (Ctrl+C) and starting it again
+4. Delete the `node_modules` folder and run `npm install` again
 

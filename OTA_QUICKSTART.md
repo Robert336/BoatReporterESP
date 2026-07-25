@@ -2,7 +2,7 @@
 
 ## Overview
 
-BoatReporterESP supports Over-The-Air (OTA) firmware updates via GitHub Releases. Once the initial firmware is flashed over USB, all subsequent updates can be delivered remotely — no physical access to the device required.
+BoatReporterESP supports over-the-air (OTA) firmware updates via GitHub Releases. Once the initial firmware is flashed over USB, all subsequent updates can be delivered remotely — no physical access to the device is required.
 
 - **Current firmware version**: `1.1.8`
 - **Default repository**: `Robert336/BoatReporterESP`
@@ -31,8 +31,8 @@ The binary is created at `.pio/build/prod/firmware.bin`.
 Defaults are pre-configured to `Robert336/BoatReporterESP` with auto-check and auto-install enabled. The device is ready to receive updates out of the box. Optionally verify:
 
 1. Open the ESP32 web interface (connect to its IP or AP mode)
-2. Open the **Settings** hub, then tap **"Firmware Updates (OTA)"**
-3. Confirm GitHub repository is set to your repo
+2. Open the **Settings** hub, then select **"Firmware Updates (OTA)"**
+3. Confirm the GitHub repository is set to your repo
 4. Confirm auto-check is enabled (default: ON, 24-hour interval)
 5. Confirm auto-install is enabled (default: ON)
 6. Confirm OTA notifications are enabled (default: ON)
@@ -77,11 +77,11 @@ pio run -e prod
 When auto-install is enabled, the device handles everything without user intervention:
 
 1. Checks for updates on the configured schedule (default: every 24 hours)
-2. Detects new version → sends "update available" notification
-3. Downloads firmware from GitHub in the background
-4. Installs to the OTA partition
-5. Reboots with new firmware
-6. Sends success notification
+2. Detects a new version → sends an "update available" notification
+3. Downloads the firmware from GitHub in the background
+4. Installs it to the OTA partition
+5. Reboots with the new firmware
+6. Sends a success notification
 
 **Total time offline**: 1–2 minutes.
 
@@ -91,7 +91,7 @@ When auto-install is enabled, the device handles everything without user interve
 2. Click **"Check for Updates"**
 3. If an update is available, click **"Install Update"**
 4. Enter the update password if one is configured
-5. Device downloads, installs, and reboots
+5. The device downloads, installs, and reboots
 
 ### Notification Templates
 
@@ -153,7 +153,7 @@ If new firmware fails to boot 3 times consecutively, the ESP32 bootloader automa
 
 ### Signal Strength Check
 
-Before downloading firmware, the device checks WiFi RSSI. If the signal is below **-70 dBm**, the update is aborted in a FAILED state. The "starting update" notification is **not** sent for weak-signal aborts, so you won't receive a start message followed by a failure.
+Before downloading firmware, the device checks WiFi RSSI. If the signal is below **-70 dBm**, the update is aborted in a FAILED state. The "starting update" notification is **not** sent for weak-signal aborts, so you will not receive a start message followed by a failure.
 
 The version-check API call (lightweight HTTPS GET) is not gated by RSSI — only the download commit is blocked.
 
@@ -194,14 +194,14 @@ Set an update password on the OTA settings page to require confirmation for manu
 1. Ensure auto-install is enabled on the OTA settings page
 2. Click **"Check for Updates"** (or wait for the scheduled check)
 3. The device should automatically download, install, and reboot
-4. Receive success notification after reboot
+4. Receive a success notification after reboot
 
 ### Testing Rollback with Bad Firmware
 
 1. Create a release with firmware that crashes immediately (e.g., `ESP.restart()` in `setup()`)
 2. Install via OTA
 3. Expected: device boots, crashes, reboots 3 times, then rolls back to the previous version
-4. Receive rollback notification
+4. Receive a rollback notification
 
 ### Testing Error Scenarios
 
@@ -232,9 +232,9 @@ Set an update password on the OTA settings page to require confirmation for manu
 | "No updates available" when update exists | Check GitHub release tag format: `vX.Y.Z`; verify asset is named exactly `firmware.bin`; ensure release is published (not draft) |
 | Download fails | Verify WiFi has internet access; check GitHub repo is public or token provided; verify free heap memory |
 | Update fails | Check firmware built for correct board (`upesy_wroom`); verify partition scheme supports OTA; review serial logs for specific errors |
-| Device won't boot after update | Wait ~30 seconds for automatic rollback; if rollback fails, flash via USB |
-| No notifications | Check SMS/Discord credentials configured; verify OTA notifications enabled in settings; confirm WiFi connected |
-| Auto-install not working | Verify auto-check is also enabled; check last-check time — may need to wait for next scheduled check; click "Check for Updates" to trigger immediately |
+| Device will not boot after update | Wait ~30 seconds for automatic rollback; if rollback fails, flash via USB |
+| No notifications | Check SMS/Discord credentials are configured; verify OTA notifications are enabled in settings; confirm WiFi is connected |
+| Auto-install not working | Verify auto-check is also enabled; check the last-check time — you may need to wait for the next scheduled check; click "Check for Updates" to trigger it immediately |
 
 ## Verification Checklist
 

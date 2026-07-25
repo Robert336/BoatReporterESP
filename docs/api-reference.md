@@ -1109,7 +1109,7 @@ curl -X POST http://192.168.4.1/ota/settings \
 
 Any request to an unknown path triggers a `302 Found` redirect to the root.
 This is how the captive portal works: OS-level portal probes (Apple, Android,
-Windows, ChromeOS) hit random URLs, receive a 3xx, and open a mini‑browser
+Windows, ChromeOS) request random URLs, receive a 3xx, and open a mini‑browser
 pointed at the dashboard. The response is intentionally tiny (no body) to free
 the single‑connection slot quickly.
 
@@ -1134,7 +1134,7 @@ Success responses from mutating endpoints (POST) use:
 }
 ```
 
-plus any endpoint‑specific fields.
+plus any endpoint-specific fields.
 
 ---
 

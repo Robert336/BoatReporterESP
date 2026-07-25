@@ -17,7 +17,7 @@ The unit testing setup uses **PlatformIO's native test framework** with Unity as
 
 ### Benefits
 
-- **No hardware required**: Test without connecting ESP32, sensors, or network
+- **No hardware required**: Test without connecting the ESP32, sensors, or network
 - **Fast feedback**: Tests complete in seconds
 - **Automated regression testing**: Catch bugs before deployment
 - **CI/CD ready**: Can integrate with automated build pipelines
@@ -76,17 +76,17 @@ These mocks allow the core logic to compile and run on your development machine.
 **Option 2: ESP32 Hardware Testing (No GCC Required)**
 - PlatformIO Core or PlatformIO IDE
 - ESP32 board connected via USB
-- No GCC installation needed - uses ESP32 toolchain
+- No GCC installation needed — uses the ESP32 toolchain
 
-**Note for Windows users**: If you don't want to install GCC, see [`TESTING_WITHOUT_GCC.md`](TESTING_WITHOUT_GCC.md) for alternative testing approaches, or use the ESP32 hardware testing method below.
+**Note for Windows users**: If you prefer not to install GCC, see [`TESTING_WITHOUT_GCC.md`](TESTING_WITHOUT_GCC.md) for alternative testing approaches, or use the ESP32 hardware testing method below.
 
-### Run All Tests (Native - Fast, Requires GCC)
+### Run All Tests (Native — Fast, Requires GCC)
 
 ```bash
 pio test -e native
 ```
 
-### Run All Tests (ESP32 Hardware - No GCC Required)
+### Run All Tests (ESP32 Hardware — No GCC Required)
 
 ```bash
 pio test -e esp32-test
@@ -94,9 +94,9 @@ pio test -e esp32-test
 
 This will:
 1. Compile the tests for ESP32
-2. Upload to your connected ESP32
+2. Upload them to your connected ESP32
 3. Run the tests on the hardware
-4. Display results in serial monitor
+4. Display the results in the serial monitor
 
 ### Run Specific Test Suite
 
@@ -305,7 +305,7 @@ void setUp(void) {
 
 ### "Test not found" error
 
-**Problem**: Test file not in correct directory structure
+**Problem**: Test file not in the correct directory structure
 
 **Solution**: Ensure test files are in `test/test_*/` directories and named `test_*.cpp`
 
@@ -314,8 +314,8 @@ void setUp(void) {
 **Problem**: Testing private methods
 
 **Solutions**:
-1. Test through public interface (preferred)
-2. Make methods protected and use friend class
+1. Test through the public interface (preferred)
+2. Make methods protected and use a friend class
 3. Extract logic to separate testable functions
 
 ## Known Divergence: StateMachine.h vs. main.cpp
@@ -368,7 +368,7 @@ if (output.sendEmergencyNotification) {
 
 ## Continuous Integration
 
-To run tests in CI/CD pipeline:
+To run tests in a CI/CD pipeline:
 
 ```yaml
 # Example GitHub Actions
@@ -386,11 +386,9 @@ To run tests in CI/CD pipeline:
 
 ## Questions or Issues?
 
-If you encounter issues with tests or want to add new test coverage, please:
+If you encounter issues with tests or want to add test coverage:
 
 1. Check this README for troubleshooting steps
 2. Review existing test files for examples
 3. Ensure mocks are properly configured
-4. Verify test environment is set up correctly in `platformio.ini`
-
-Happy testing! 🧪
+4. Verify the test environment is set up correctly in `platformio.ini`
