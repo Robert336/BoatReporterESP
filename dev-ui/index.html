@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>BilgeRise</title>
-<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-<link rel="prefetch" href="/settings">
-<style>
+  <meta charset="UTF-8">
+  <title>BilgeRise</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+  <link rel="prefetch" href="/settings">
+  <style>
 html{height:100%;overflow:hidden}
 *{box-sizing:border-box}
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;background:#f7f5f1;color:#1c1917;font-size:16px;line-height:1.4;-webkit-font-smoothing:antialiased;height:100%;overflow:hidden;overscroll-behavior:none}
@@ -50,73 +50,73 @@ h2{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;
 .handle.dragging .dot{stroke-width:3}
 .input.error{border-color:#dc2626;background:#fff8f8}
 .field-msg{font-size:12px;color:#dc2626;margin-top:3px;min-height:14px;line-height:1.3}
-</style>
+  </style>
 </head>
 <body>
-<div class="app">
-<header>
-<h1>BilgeRise</h1>
-<a href="/settings" class="gear" aria-label="Settings">⚙</a>
-</header>
+  <div class="app">
+    <header>
+      <h1>BilgeRise</h1>
+      <a href="/settings" class="gear" aria-label="Settings">⚙</a>
+    </header>
 
-<div class="card statusrow">
-<span class="pill"><span class="dot" id="wifi_dot"></span><span id="wifi_label">…</span></span>
-<span class="pill" id="sensor_pill"><span class="dot ok" id="sensor_dot"></span><span id="sensor_label">sensor</span></span>
-</div>
+    <div class="card statusrow">
+      <span class="pill"><span class="dot" id="wifi_dot"></span><span id="wifi_label">…</span></span>
+      <span class="pill" id="sensor_pill"><span class="dot ok" id="sensor_dot"></span><span id="sensor_label">sensor</span></span>
+    </div>
 
-<div class="card gauge-card">
-<svg viewBox="0 0 320 200" aria-hidden="true">
-<path d="M40 170 A 120 120 0 0 1 280 170" fill="none" stroke="#f5f5f4" stroke-width="14" stroke-linecap="round"/>
-<path id="arc_safe" d="" fill="none" stroke="#65a30d" stroke-width="14" stroke-linecap="round"/>
-<path id="arc_warn" d="" fill="none" stroke="#ea580c" stroke-width="14" stroke-linecap="round"/>
-<path id="arc_bad" d="" fill="none" stroke="#dc2626" stroke-width="14" stroke-linecap="round"/>
-<g class="handle" id="handle_t1">
-<circle id="t1_hit" cx="0" cy="0" r="30" fill="transparent"/>
-<circle id="t1_dot" class="dot" cx="0" cy="0" r="14" fill="#fff" stroke="#1c1917" stroke-width="3" style="fill: rgb(234, 88, 12);"/>
-</g>
-<g class="handle" id="handle_t2">
-<circle id="t2_hit" cx="0" cy="0" r="30" fill="transparent"/>
-<circle id="t2_dot" class="dot" cx="0" cy="0" r="14" fill="#fff" stroke="#1c1917" stroke-width="3" style="fill: rgb(220, 38, 38);"/>
-</g>
-<text id="t1_lbl" font-size="11" fill="#44403c" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif">T1</text>
-<text id="t2_lbl" font-size="11" fill="#44403c" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif">T2</text>
-<text x="38" y="192" font-size="11" fill="#a8a29e" font-family="-apple-system,Helvetica,Arial,sans-serif">0</text>
-<text x="270" y="192" font-size="11" fill="#a8a29e" font-family="-apple-system,Helvetica,Arial,sans-serif">100</text>
-<g id="dirty_pill" style="display:none" pointer-events="none">
-<rect x="100" y="115" width="120" height="22" rx="11" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
-<text x="160" y="130" font-size="11" fill="#92400e" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif">unsaved changes</text>
-</g>
-<line id="needle" x1="160" y1="170" x2="160" y2="60" stroke="#1c1917" stroke-width="4" stroke-linecap="round"/>
-<circle cx="160" cy="170" r="7" fill="#1c1917"/>
-<circle cx="160" cy="170" r="3" fill="#fff"/>
-</svg>
-<div class="readout">
-<span class="num" id="water_level">--</span><span class="unit">cm</span>
-<div class="status" id="status_text">—</div>
-<div id="rate_info" style="display:none;font-size:13px;color:#78716c;margin-top:4px"></div>
-</div>
-</div>
+    <div class="card gauge-card">
+      <svg viewBox="0 0 320 200" aria-hidden="true">
+        <path d="M40 170 A 120 120 0 0 1 280 170" fill="none" stroke="#f5f5f4" stroke-width="14" stroke-linecap="round"/>
+        <path id="arc_safe" d="" fill="none" stroke="#65a30d" stroke-width="14" stroke-linecap="round"/>
+        <path id="arc_warn" d="" fill="none" stroke="#ea580c" stroke-width="14" stroke-linecap="round"/>
+        <path id="arc_bad" d="" fill="none" stroke="#dc2626" stroke-width="14" stroke-linecap="round"/>
+        <g class="handle" id="handle_t1">
+          <circle id="t1_hit" cx="0" cy="0" r="30" fill="transparent"/>
+          <circle id="t1_dot" class="dot" cx="0" cy="0" r="14" fill="#fff" stroke="#1c1917" stroke-width="3" style="fill: rgb(234, 88, 12);"/>
+        </g>
+        <g class="handle" id="handle_t2">
+          <circle id="t2_hit" cx="0" cy="0" r="30" fill="transparent"/>
+          <circle id="t2_dot" class="dot" cx="0" cy="0" r="14" fill="#fff" stroke="#1c1917" stroke-width="3" style="fill: rgb(220, 38, 38);"/>
+        </g>
+        <text id="t1_lbl" font-size="11" fill="#44403c" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif">T1</text>
+        <text id="t2_lbl" font-size="11" fill="#44403c" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif">T2</text>
+        <text x="38" y="192" font-size="11" fill="#a8a29e" font-family="-apple-system,Helvetica,Arial,sans-serif">0</text>
+        <text x="270" y="192" font-size="11" fill="#a8a29e" font-family="-apple-system,Helvetica,Arial,sans-serif">100</text>
+        <g id="dirty_pill" style="display:none" pointer-events="none">
+          <rect x="100" y="115" width="120" height="22" rx="11" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+          <text x="160" y="130" font-size="11" fill="#92400e" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif">unsaved changes</text>
+        </g>
+        <line id="needle" x1="160" y1="170" x2="160" y2="60" stroke="#1c1917" stroke-width="4" stroke-linecap="round"/>
+        <circle cx="160" cy="170" r="7" fill="#1c1917"/>
+        <circle cx="160" cy="170" r="3" fill="#fff"/>
+      </svg>
+      <div class="readout">
+        <span class="num" id="water_level">--</span><span class="unit">cm</span>
+        <div class="status" id="status_text">—</div>
+        <div id="rate_info" style="display:none;font-size:13px;color:#78716c;margin-top:4px"></div>
+      </div>
+    </div>
 
-<div class="card">
-<h2>Emergency thresholds</h2>
-<div class="fields">
-<div class="field">
-<label>Tier 1 · SMS</label>
-<div class="input"><input type="number" id="tier1" step="0.1" min="5" max="100" inputmode="decimal"><span class="sfx">cm</span></div>
-<div class="field-msg" id="t1_msg"></div>
-</div>
-<div class="field">
-<label>Tier 2</label>
-<div class="input"><input type="number" id="tier2" step="0.1" min="5" max="100" inputmode="decimal"><span class="sfx">cm</span></div>
-<div class="field-msg" id="t2_msg"></div>
-</div>
-</div>
-<button class="btn" id="upd" onclick="updateThresholds()">Update thresholds</button>
-<div class="msg" id="msg"></div>
-</div>
-</div>
+    <div class="card">
+      <h2>Emergency thresholds</h2>
+      <div class="fields">
+        <div class="field">
+          <label>Tier 1 · SMS</label>
+          <div class="input"><input type="number" id="tier1" step="0.1" min="5" max="100" inputmode="decimal"><span class="sfx">cm</span></div>
+          <div class="field-msg" id="t1_msg"></div>
+        </div>
+        <div class="field">
+          <label>Tier 2</label>
+          <div class="input"><input type="number" id="tier2" step="0.1" min="5" max="100" inputmode="decimal"><span class="sfx">cm</span></div>
+          <div class="field-msg" id="t2_msg"></div>
+        </div>
+      </div>
+      <button class="btn" id="upd" onclick="updateThresholds()">Update thresholds</button>
+      <div class="msg" id="msg"></div>
+    </div>
+  </div>
 
-<script>
+  <script>
 var MAX=100,t1=null,t2=null,t1Saved=null,t2Saved=null,cur=0,curValid=false,fieldErrors=false,submitted=false;
 function setFE(id,mid,msg){
 document.getElementById(id).parentElement.classList.toggle('error',msg!=='');
@@ -218,10 +218,10 @@ render();setStatus();syncDirty();
 function loadInit(){
 fetch('/init').then(r=>r.json()).then(d=>{
 applyStatus(d.wifi);applyReading(d.sensor);applyThresholds(d.thresholds);
-}).catch(e=>{document.getElementById('wifi_label').textContent='offline'})
+}).catch(e=>{document.getElementById('wifi_label').textContent='offline'});
 }
 function loadStatus(){
-fetch('/status').then(r=>r.json()).then(d=>applyStatus(d)).catch(e=>{document.getElementById('wifi_label').textContent='offline'})
+fetch('/status').then(r=>r.json()).then(d=>applyStatus(d)).catch(e=>{document.getElementById('wifi_label').textContent='offline'});
 }
 function loadReading(){
 fetch('/read').then(r=>r.json()).then(d=>applyReading(d)).catch(e=>{})
@@ -275,6 +275,6 @@ window.addEventListener('pointercancel',dragEnd);
 render();syncDirty();loadInit();
 setInterval(loadReading,2000);
 setInterval(loadStatus,10000);
-</script>
+  </script>
 </body>
 </html>

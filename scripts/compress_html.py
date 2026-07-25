@@ -4,7 +4,6 @@ import os
 
 project_dir = env["PROJECT_DIR"]
 dev_ui_dir  = os.path.join(project_dir, "dev-ui")
-src_html_dir = os.path.join(project_dir, "src", "html")
 
 # (source_dir, filename, varname)
 pages = [
@@ -13,7 +12,7 @@ pages = [
     (dev_ui_dir,  "notifications.html", "NOTIFICATIONS_HTML"),
     (dev_ui_dir,  "settings.html",      "SETTINGS_HTML"),
     (dev_ui_dir,  "debug.html",         "DEBUG_HTML"),
-    (src_html_dir, "ota.html",          "OTA_HTML"),
+    (dev_ui_dir,  "ota.html",          "OTA_HTML"),
 ]
 
 out_path = os.path.join(project_dir, "src", "compressed_pages.h")

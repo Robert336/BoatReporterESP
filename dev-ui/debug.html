@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Calibration · BilgeRise</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="prefetch" href="/settings">
-<style>
+  <meta charset="UTF-8">
+  <title>Calibration · BilgeRise</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="prefetch" href="/settings">
+  <style>
 *{box-sizing:border-box}
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;background:#f7f5f1;color:#1c1917;font-size:16px;line-height:1.4;-webkit-font-smoothing:antialiased}
 .app{max-width:520px;margin:0 auto;padding:16px}
@@ -48,68 +48,68 @@ label .hint{font-weight:normal;color:#a8a29e;margin-left:4px;font-size:12px}
 .api a{color:#44403c;text-decoration:none;padding:8px 12px;background:#f5f5f4;border:1px solid #e7e5e4;border-radius:8px;font-size:13px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .api a:active{background:#e7e5e4}
 .helptext{font-size:12px;color:#a8a29e;margin-top:6px;line-height:1.5}
-</style>
+  </style>
 </head>
 <body>
-<div class="app">
-<header>
-<a href="/settings" class="back" aria-label="Back">‹</a>
-<h1>Calibration</h1>
-</header>
+  <div class="app">
+    <header>
+      <a href="/settings" class="back" aria-label="Back">‹</a>
+      <h1>Calibration</h1>
+    </header>
 
-<div class="card">
-<div class="head"><h2>Live sensor reading</h2><span class="pill"><span class="dot" id="live_dot"></span><span id="live_state">…</span></span></div>
-<div class="live">
-<div class="stat"><div class="k">Raw</div><div class="v" id="r_mv">— mV</div></div>
-<div class="stat"><div class="k">Level</div><div class="v" id="r_lv">— cm</div></div>
-<div class="stat"><div class="k">Cal mode</div><div class="v" id="r_cal">—</div></div>
-</div>
-<div class="refresh">refreshing every 2 s</div>
-</div>
+    <div class="card">
+      <div class="head"><h2>Live sensor reading</h2><span class="pill"><span class="dot" id="live_dot"></span><span id="live_state">…</span></span></div>
+      <div class="live">
+        <div class="stat"><div class="k">Raw</div><div class="v" id="r_mv">— mV</div></div>
+        <div class="stat"><div class="k">Level</div><div class="v" id="r_lv">— cm</div></div>
+        <div class="stat"><div class="k">Cal mode</div><div class="v" id="r_cal">—</div></div>
+      </div>
+      <div class="refresh">refreshing every 2 s</div>
+    </div>
 
-<div class="card">
-<h2>Zero point</h2>
-<div class="cal-summary">Current: <b id="cur_zero">—</b></div>
-<label>Reading at reference <span class="hint">millivolts</span></label>
-<div class="input"><input type="number" id="zero_mv" min="0" max="3300"><span class="sfx">mV</span></div>
-<div class="row2">
-<div>
-<label>Reference level <span class="hint">optional</span></label>
-<div class="input"><input type="number" id="zero_lv" value="0" step="0.1" min="0"><span class="sfx">cm</span></div>
-</div>
-<div></div>
-</div>
-<button class="btn" onclick="calZero()">Set zero point</button>
-<div class="msg" id="zero_msg"></div>
-<div class="helptext">Leave reference at 0 unless calibrating against a known offset.</div>
-</div>
+    <div class="card">
+      <h2>Zero point</h2>
+      <div class="cal-summary">Current: <b id="cur_zero">—</b></div>
+      <label>Reading at reference <span class="hint">millivolts</span></label>
+      <div class="input"><input type="number" id="zero_mv" min="0" max="3300"><span class="sfx">mV</span></div>
+      <div class="row2">
+        <div>
+          <label>Reference level <span class="hint">optional</span></label>
+          <div class="input"><input type="number" id="zero_lv" value="0" step="0.1" min="0"><span class="sfx">cm</span></div>
+        </div>
+        <div></div>
+      </div>
+      <button class="btn" onclick="calZero()">Set zero point</button>
+      <div class="msg" id="zero_msg"></div>
+      <div class="helptext">Leave reference at 0 unless calibrating against a known offset.</div>
+    </div>
 
-<div class="card">
-<h2>Second point · 2-point calibration</h2>
-<div class="cal-summary">Current: <b id="cur_p2">—</b></div>
-<label>Reading at known level <span class="hint">millivolts</span></label>
-<div class="input"><input type="number" id="p2_mv" min="0" max="3300"><span class="sfx">mV</span></div>
-<label>Known water level</label>
-<div class="input"><input type="number" id="p2_lv" step="0.1" min="0"><span class="sfx">cm</span></div>
-<button class="btn" onclick="calP2()">Set second point</button>
-<div class="msg" id="p2_msg"></div>
-<div class="helptext">Take a measurement at a known water level (e.g. fill to a mark) and enter both values.</div>
-</div>
+    <div class="card">
+      <h2>Second point · 2-point calibration</h2>
+      <div class="cal-summary">Current: <b id="cur_p2">—</b></div>
+      <label>Reading at known level <span class="hint">millivolts</span></label>
+      <div class="input"><input type="number" id="p2_mv" min="0" max="3300"><span class="sfx">mV</span></div>
+      <label>Known water level</label>
+      <div class="input"><input type="number" id="p2_lv" step="0.1" min="0"><span class="sfx">cm</span></div>
+      <button class="btn" onclick="calP2()">Set second point</button>
+      <div class="msg" id="p2_msg"></div>
+      <div class="helptext">Take a measurement at a known water level (e.g. fill to a mark) and enter both values.</div>
+    </div>
 
-<div class="card" id="api">
-<h2>Debug · API endpoints</h2>
-<div class="api">
-<a href="/read" target="_blank">/read</a>
-<a href="/calibration" target="_blank">/calibration</a>
-<a href="/status" target="_blank">/status</a>
-<a href="/notifications" target="_blank">/notifications</a>
-<a href="/emergency-settings" target="_blank">/emergency-settings</a>
-</div>
-<div class="helptext">Open in a new tab to view raw JSON.</div>
-</div>
-</div>
+    <div class="card" id="api">
+      <h2>Debug · API endpoints</h2>
+      <div class="api">
+        <a href="/read" target="_blank">/read</a>
+        <a href="/calibration" target="_blank">/calibration</a>
+        <a href="/status" target="_blank">/status</a>
+        <a href="/notifications" target="_blank">/notifications</a>
+        <a href="/emergency-settings" target="_blank">/emergency-settings</a>
+      </div>
+      <div class="helptext">Open in a new tab to view raw JSON.</div>
+    </div>
+  </div>
 
-<script>
+  <script>
 function el(id){return document.getElementById(id)}
 function flash(id,t,cls){var m=el(id);m.textContent=t;m.className='msg '+(cls||'');if(cls==='ok')setTimeout(function(){m.textContent='';m.className='msg'},2500)}
 var autoFill=true;
@@ -156,6 +156,6 @@ else flash('p2_msg','✗ '+(d.error||'failed'),'bad');
 fetch('/debug/init').then(r=>r.json()).then(d=>{applyReading(d.reading||{});applyCal(d.calibration)}).catch(e=>{});
 setInterval(refresh,2000);
 if(location.hash==='#api'){setTimeout(function(){var t=document.getElementById('api');if(t)t.scrollIntoView({behavior:'smooth',block:'start'})},100)}
-</script>
+  </script>
 </body>
 </html>

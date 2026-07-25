@@ -254,14 +254,20 @@
         "graphMode": "none",
         "justifyMode": "center",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "reduceOptions": { "calcs": ["last"], "fields": "", "values": false },
         "textMode": "value_and_name"
       },
       "targets": [
         {
           "datasource": { "type": "influxdb", "uid": "influxdb_boat" },
           "refId": "A",
-          "query": "from(bucket: \"boat\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"boat_availability\" and r._field == \"value\")\n  |> filter(fn: (r) => r[\"device\"] =~ /${device:regex}/)\n  |> last()"
+          "query": "from(bucket: \"boat\")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r._measurement == \"boat_availability\" and r._field == \"value\")
+  |> filter(fn: (r) => r[\"device\"] =~ /${device:regex}/)
+  |> last()
+  |> rename(columns: { value: \"Status\" })
+  |> keep(columns: [\"_time\", \"_value\", \"_field\"])"
         }
       ]
     },
@@ -360,14 +366,20 @@
         "graphMode": "none",
         "justifyMode": "center",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "reduceOptions": { "calcs": ["last"], "fields": "", "values": false },
         "textMode": "value_and_name"
       },
       "targets": [
         {
           "datasource": { "type": "influxdb", "uid": "influxdb_boat" },
           "refId": "A",
-          "query": "from(bucket: \"boat\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"boat_telemetry\" and r._field == \"fw_version\")\n  |> filter(fn: (r) => r[\"device\"] =~ /${device:regex}/)\n  |> last()"
+          "query": "from(bucket: \"boat\")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r._measurement == \"boat_telemetry\" and r._field == \"fw_version\")
+  |> filter(fn: (r) => r[\"device\"] =~ /${device:regex}/)
+  |> last()
+  |> rename(columns: { fw_version: \"Firmware Version\" })
+  |> keep(columns: [\"_time\", \"_value\", \"_field\"])"
         }
       ]
     },
@@ -427,14 +439,20 @@
         "graphMode": "none",
         "justifyMode": "center",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "reduceOptions": { "calcs": ["last"], "fields": "", "values": false },
         "textMode": "value_and_name"
       },
       "targets": [
         {
           "datasource": { "type": "influxdb", "uid": "influxdb_boat" },
           "refId": "A",
-          "query": "from(bucket: \"boat\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"boat_telemetry\" and (r._field == \"emergency_level_cm\" or r._field == \"urgent_emergency_level_cm\"))\n  |> filter(fn: (r) => r[\"device\"] =~ /${device:regex}/)\n  |> last()"
+          "query": "from(bucket: \"boat\")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r._measurement == \"boat_telemetry\" and (r._field == \"emergency_level_cm\" or r._field == \"urgent_emergency_level_cm\"))
+  |> filter(fn: (r) => r[\"device\"] =~ /${device:regex}/)
+  |> last()
+  |> rename(columns: { emergency_level_cm: \"Emergency\", urgent_emergency_level_cm: \"Urgent\" })
+  |> keep(columns: [\"_time\", \"_value\", \"_field\"])"
         }
       ]
     },
