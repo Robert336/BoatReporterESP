@@ -21,7 +21,7 @@
 
 ## Overview
 
-BoatReporterESP is an ESP32-based bilge-water monitoring system that continuously measures water level via a 4–20 mA pressure sensor, detects flood conditions through a two-tier state machine, and dispatches alerts over SMS (Twilio), Discord webhooks, and a custom HTTP endpoint. It publishes structured telemetry to an MQTT broker for time-series dashboards (Grafana/InfluxDB) and supports over-the-air firmware updates from GitHub Releases. A captive-portal web interface on the device's own Wi-Fi access point handles all configuration — no companion app required.
+BoatReporterESP is an ESP32-based bilge-water monitoring system that continuously measures water level via a 4–20 mA pressure sensor, detects flood conditions through a two-tier state machine, and dispatches alerts over SMS (Twilio), Discord webhooks, and a custom HTTP endpoint. It publishes structured telemetry to an MQTT broker for time-series dashboards (Grafana/InfluxDB) and supports over-the-air firmware updates from GitHub Releases. A captive-portal web interface on the device's own Wi-Fi access point handles all configuration; no companion app is required.
 
 The firmware is organized around a single-threaded `loop()` on Core 1 that runs the state machine, sensor reads, MQTT polling, and web server, while Core 0 hosts two dedicated FreeRTOS tasks: one for outbound HTTP notifications and one for background OTA version checks. All persistent configuration lives in NVS (non-volatile storage) and is accessed through a fast in-RAM cache (`SettingsStore`).
 
@@ -109,7 +109,7 @@ stateDiagram-v2
 
 - **Two-tier emergency**: Tier 1 (`emergencyWaterLevel_cm`) triggers SMS/Discord/HTTP notifications at a configurable frequency. Tier 2 (`urgentEmergencyWaterLevel_cm`) additionally pulses the horn/alert output (GPIO 26) with configurable on/off durations.
 - **Debounce**: Both entering and leaving EMERGENCY require the condition to persist for `EMERGENCY_TIMEOUT_MS` (default 5 s), preventing false alarms from transient splashes.
-- **Safety-first transitions**: CONFIG is an overlay — sensor errors and flood conditions always force an exit to ERROR or EMERGENCY, even while the web portal is active.
+- **Safety-first transitions**: CONFIG is an overlay; sensor errors and flood conditions always force an exit to ERROR or EMERGENCY, even while the web portal is active.
 - **Silence toggle**: A 5-second button hold during EMERGENCY silences notifications and the horn. A second 5-second hold re-enables them. Silence auto-clears on return to NORMAL.
 - **Sensor fault in EMERGENCY**: A sustained sensor fault during a flood degrades to ERROR rather than latching in EMERGENCY indefinitely on stale data.
 
@@ -128,7 +128,7 @@ The `WaterPressureSensor` class (`include/WaterPressureSensor.h`) wraps an ADS11
 #### Features
 
 - **Median filter**: A 10-sample circular buffer; `readLevel()` returns the rolling median, rejecting impulse noise.
-- **1 Hz sample gate**: `readLevel()` is internally gated to one ADC read per second. Calls from the tight `loop()` are cheap — they return the cached result between samples.
+- **1 Hz sample gate**: `readLevel()` is internally gated to one ADC read per second. Calls from the tight `loop()` are cheap; they return the cached result between samples.
 - **Rate-of-change tracking**: 7 snapshots at 5-minute intervals (30-minute window). `getRateOfChange_cm30min()` returns the cm change extrapolated from oldest to newest snapshot, or NaN if fewer than 2 valid snapshots exist. Included in emergency alert messages.
 - **Stuck/flatline detection**: 180 consecutive byte-identical raw ADC samples (~3 minutes at 1 Hz) indicate a frozen line or dead transducer. The reading is invalidated.
 - **I2C bus recovery**: On I2C read failure, `recoverBus()` attempts up to `BUS_RECOVERY_MAX_ATTEMPTS` (10) retries with bus reset. If all fail, `isBusUnrecoverable()` returns true and a one-shot notification is sent.
@@ -170,7 +170,7 @@ flowchart LR
 
 #### Key Design Decisions
 
-- **Latest-wins emergency mailbox** (`emergencyMailbox`): Depth-1 queue written with `xQueueOverwrite`. During a WiFi outage, repeated emergency alerts coalesce — when connectivity returns, the owner receives only the most recent snapshot, not a flood of stale messages.
+- **Latest-wins emergency mailbox** (`emergencyMailbox`): Depth-1 queue written with `xQueueOverwrite`. During a WiFi outage, repeated emergency alerts coalesce; when connectivity returns, the owner receives only the most recent snapshot, not a flood of stale messages.
 - **16-slot FIFO ring buffer** (`fifoQueue`): For one-shot events (silence confirmations, sensor recovery, bus errors). Each message is distinct and must be delivered.
 - **Strict priority**: The task always drains the emergency mailbox before the FIFO. Wake-up is via direct task notification (`xTaskNotifyGive`), not a queue set, guaranteeing ordering.
 - **Per-channel retry**: Failed critical alerts are retried up to 4 times with exponential backoff (5 s → 15 s → 30 s).
@@ -288,7 +288,7 @@ flowchart TB
 
 - **Single source of truth**: `SettingsValues` (typedef for `AlarmSettings`) is shared between the state machine, `ConfigServer`, and `SettingsStore`. `ConfigServer` writes; the state machine reads via the in-RAM copy.
 - **No NVS I/O on the hot path**: `SettingsStore::get()` returns a const reference to the in-RAM struct. `load()` is called once at boot and after any config save.
-- **NVS namespace**: `"emergency"` — separate from WiFi, OTA, and calibration namespaces.
+- **NVS namespace**: `"emergency"`; separate from WiFi, OTA, and calibration namespaces.
 
 #### Stored Values
 
@@ -306,7 +306,7 @@ flowchart TB
 
 #### Features
 
-- **Multi-network storage**: Up to 10 SSID/password pairs stored in NVS (`"wifi"` namespace). Fixed-size `char[]` storage — no heap fragmentation.
+- **Multi-network storage**: Up to 10 SSID/password pairs stored in NVS (`"wifi"` namespace). Fixed-size `char[]` storage; no heap fragmentation.
 - **Auto-connect to best available**: `connectToBestNetwork()` scans and picks the strongest known network.
 - **Rescan fallback (H1/H2)**: After 6 consecutive failed `WiFi.reconnect()` attempts (3 minutes), falls back to a full scan-and-pick cycle. Sticky disconnect reasons (4-way handshake timeout, beacon timeout, auth failure) escalate after only 2 attempts.
 - **AP+STA mode during CONFIG**: The device runs both station and access point simultaneously during configuration.
@@ -324,7 +324,7 @@ flowchart TB
 | Double blink | `PATTERN_DOUBLE_BLINK` | NORMAL state, WiFi disconnected |
 | Slow blink | `PATTERN_SLOW_BLINK` | CONFIG state |
 | Fast blink | `PATTERN_FAST_BLINK` | ERROR state |
-| Off (forced) | `PATTERN_OFF` | EMERGENCY state — intentionally dark to avoid visual distraction during a flood |
+| Off (forced) | `PATTERN_OFF` | EMERGENCY state; intentionally dark to avoid visual distraction during a flood |
 
 The LED is explicitly forced off in EMERGENCY to prevent a leftover pattern (e.g., WiFi-disconnected double blink) from running through the emergency.
 
@@ -348,9 +348,9 @@ flowchart TB
     MainTask -->|"esp_task_wdt_reset() each iteration"| TWDT
 ```
 
-- **Core 0**: Dedicated to blocking I/O — HTTP requests for notifications and OTA downloads. Both tasks run at priority 1.
+- **Core 0**: Dedicated to blocking I/O: HTTP requests for notifications and OTA downloads. Both tasks run at priority 1.
 - **Core 1**: The Arduino `setup()`/`loop()` task. Handles all real-time sensor reading, state evaluation, and GPIO control. Registered with the task watchdog (10 s timeout).
-- **Watchdog**: `esp_task_wdt_init(10, true)` — if `loop()` stalls for more than 10 seconds, the ESP32 reboots automatically.
+- **Watchdog**: `esp_task_wdt_init(10, true)`; if `loop()` stalls for more than 10 seconds, the ESP32 reboots automatically.
 
 ## Data Flow
 
@@ -395,8 +395,8 @@ Defined in `platformio.ini`:
 
 | Environment | Platform | Purpose | Key Flags |
 |-------------|----------|---------|-----------|
-| `dev` | espressif32 | Development — all logging enabled | *(none)* |
-| `prod` | espressif32 | Production — critical logs only | `-D PRODUCTION_BUILD`, `-D FIRMWARE_VERSION="1.1.8"` |
+| `dev` | espressif32 | Development, all logging enabled | *(none)* |
+| `prod` | espressif32 | Production, critical logs only | `-D PRODUCTION_BUILD`, `-D FIRMWARE_VERSION="1.1.8"` |
 | `mock` | espressif32 | Soak testing with simulated sensor data (no hardware) | `-D ENABLE_MOCK_MODE` |
 | `native` | native | Host-side unit tests | `-D UNIT_TESTING`, `-std=c++11` |
 | `esp32-test` | espressif32 | On-device tests with mock sensor | `-D UNIT_TESTING`, `-D ENABLE_MOCK_MODE` |
@@ -412,11 +412,11 @@ All ESP32 environments share:
 
 ## Partition Layout
 
-From `partitions.csv` — 4 MB flash, OTA-capable:
+From `partitions.csv`: 4 MB flash, OTA-capable:
 
 | Name | Type | SubType | Offset | Size | Notes |
 |------|------|---------|--------|------|-------|
-| `nvs` | data | nvs | 0x9000 | 0x5000 (20 KB) | Non-volatile storage — preserved across OTA updates |
+| `nvs` | data | nvs | 0x9000 | 0x5000 (20 KB) | Non-volatile storage, preserved across OTA updates |
 | `otadata` | data | ota | 0xe000 | 0x2000 (8 KB) | OTA boot partition selector |
 | `app0` | app | ota_0 | 0x10000 | 0x1e0000 (1.9 MB) | Primary firmware slot |
 | `app1` | app | ota_1 | 0x1f0000 | 0x1e0000 (1.9 MB) | Secondary firmware slot |

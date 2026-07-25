@@ -1,6 +1,6 @@
 # Screenshots
 
-Drop the project's screenshots here. They are referenced from [`README.md`](../../README.md) and [`server-stack/README.md`](../../server-stack/README.md) using relative paths, so as soon as a PNG lands at the expected filename it appears in the docs — no markdown edits needed.
+Drop the project's screenshots here. They are referenced from [`README.md`](../../README.md) and [`server-stack/README.md`](../../server-stack/README.md) using relative paths, so as soon as a PNG lands at the expected filename it appears in the docs; no markdown edits are needed.
 
 ## Config server (capture on a phone, or via the mock server)
 
@@ -20,10 +20,10 @@ Flash the `mock` firmware (`pio run -e mock -t upload`) and let it run 15–30 m
 
 | File | Content |
 |------|---------|
-| [`grafana-full.png`](grafana-full.png) | Full "Boat Reporter — Bilge Monitor" dashboard — all panels in one shot |
+| [`grafana-full.png`](grafana-full.png) | Full "Boat Reporter — Bilge Monitor" dashboard; all panels in one shot |
 
 ## Tips
 
-- Capture at 2× (retina) and let GitHub downscale — crisper on all displays.
+- Capture at 2× (retina) and let GitHub downscale; crisper on all displays.
 - The config UI is mobile-first (`max-width: 480px`), so phone-sized captures look intentional. Use a narrow browser window or phone.
 - Pick one Grafana theme (dark or light) and keep it consistent across all Grafana shots.

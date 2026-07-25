@@ -1,16 +1,16 @@
-# ESP32 BilgeRise — Development UI
+# ESP32 BilgeRise: Development UI
 
 This folder contains a standalone development environment for the web interface. It allows you to develop and test the UI rapidly without needing to compile and upload to the ESP32 on every change.
 
 ## What's Inside
 
-- **index.html** — Main dashboard page
-- **wifi-config.html** — WiFi network configuration page
-- **notifications.html** — Notification settings (SMS via Twilio, Discord, Custom HTTP, MQTT)
-- **settings.html** — Settings hub page
-- **debug.html** — Debug and calibration interface
-- **mock-server.js** — Node.js server that mimics the ESP32 API endpoints (mocks most of them — see the endpoint list below for gaps)
-- **package.json** — Node.js dependencies
+- **index.html**: Main dashboard page
+- **wifi-config.html**: WiFi network configuration page
+- **notifications.html**: Notification settings (SMS via Twilio, Discord, Custom HTTP, MQTT)
+- **settings.html**: Settings hub page
+- **debug.html**: Debug and calibration interface
+- **mock-server.js**: Node.js server that mimics the ESP32 API endpoints (mocks most of them; see the endpoint list below for gaps)
+- **package.json**: Node.js dependencies
 
 ## Quick Start
 
@@ -58,7 +58,7 @@ Navigate to:
 - **Settings**: http://localhost:3000/settings
 - **Debug page**: http://localhost:3000/debug
 
-Note: page URLs match the routes served by the real ESP32 — no `.html` extension.
+Note: page URLs match the routes served by the real ESP32; no `.html` extension.
 
 ### 5. Develop
 
@@ -81,60 +81,60 @@ The `mock-server.js` creates a local web server that:
 
 ### API Endpoints Implemented
 
-These routes match the routes registered in `src/ConfigServer.cpp`. Page URLs have no `.html` extension — the mock serves them at the same paths as the real firmware.
+These routes match the routes registered in `src/ConfigServer.cpp`. Page URLs have no `.html` extension; the mock serves them at the same paths as the real firmware.
 
-The mock implements most of these; routes it does not are flagged with ⚠️ **not mocked** and will 404 against the mock server. In particular, the Twilio-credentials endpoint and the Custom HTTP channel endpoints are newer firmware routes that have not been added to `mock-server.js` yet — if you are working on the notifications page, expect the mock to 404 for those until they are added.
+The mock implements most of these; routes it does not are flagged with ⚠️ **not mocked** and will 404 against the mock server. In particular, the Twilio-credentials endpoint and the Custom HTTP channel endpoints are newer firmware routes that have not been added to `mock-server.js` yet; if you are working on the notifications page, expect the mock to 404 for those until they are added.
 
-**Pages (GET — served by mock as HTML files):**
-- `GET /` — Main dashboard (BilgeRise) (`index.html`)
-- `GET /wifi-config` — WiFi config page (`wifi-config.html`)
-- `GET /notifications-page` — Notifications page: SMS (Twilio), Discord, Custom HTTP, MQTT (`notifications.html`)
-- `GET /settings` — Settings hub (`settings.html`)
-- `GET /debug` — Debug & calibration page (`debug.html`)
-- `GET /ota-settings` — OTA firmware page (`src/html/ota.html`) — ⚠️ **not mocked**
+**Pages (GET, served by mock as HTML files):**
+- `GET /`: Main dashboard (BilgeRise) (`index.html`)
+- `GET /wifi-config`: WiFi config page (`wifi-config.html`)
+- `GET /notifications-page`: Notifications page: SMS (Twilio), Discord, Custom HTTP, MQTT (`notifications.html`)
+- `GET /settings`: Settings hub (`settings.html`)
+- `GET /debug`: Debug & calibration page (`debug.html`)
+- `GET /ota-settings`: OTA firmware page (`src/html/ota.html`); ⚠️ **not mocked**
 
 **Init (merged JSON for fast page load):**
-- `GET /init` — Dashboard init data; includes `sensor.rate_cm_30min` (conditionally — omitted until 5+ minutes of readings exist, i.e. at least 2 snapshots in the rate buffer)
-- `GET /settings/init` — Settings init data
-- `GET /debug/init` — Combined load for debug page: `{ reading: {...}, calibration: {...} }`
+- `GET /init`: Dashboard init data; includes `sensor.rate_cm_30min` (conditionally; omitted until 5+ minutes of readings exist, i.e. at least 2 snapshots in the rate buffer)
+- `GET /settings/init`: Settings init data
+- `GET /debug/init`: Combined load for debug page: `{ reading: {...}, calibration: {...} }`
 
 **Sensor & Calibration:**
-- `GET /read` — Current sensor reading (simulated)
-- `GET /calibration` — Calibration settings
-- `POST /calibrate/zero` — Set zero point
-- `POST /calibrate/point2` — Set second calibration point
+- `GET /read`: Current sensor reading (simulated)
+- `GET /calibration`: Calibration settings
+- `POST /calibrate/zero`: Set zero point
+- `POST /calibrate/point2`: Set second calibration point
 
 **Emergency Settings:**
-- `GET /emergency-settings` — Current thresholds
-- `POST /calibration/emergency-level` — Set Tier 1 threshold
-- `POST /emergency/urgent-level` — Set Tier 2 threshold
-- `POST /emergency/test-pin` — Test emergency pin
+- `GET /emergency-settings`: Current thresholds
+- `POST /calibration/emergency-level`: Set Tier 1 threshold
+- `POST /emergency/urgent-level`: Set Tier 2 threshold
+- `POST /emergency/test-pin`: Test emergency pin
 
 **Notifications:**
-- `GET /notifications` — Current notification settings
-- `GET /notifications/status` — Lean, secret-free status-only JSON (booleans only) for live polling; powers the status pills
-- `POST /notifications/phone` — Save destination phone number
-- `POST /notifications/twilio` — Save Twilio creds (sid, token, svc_sid) — ⚠️ **not mocked** (newer route)
-- `POST /notifications/discord` — Save Discord webhook
-- `POST /notifications/custom` — Configure Custom HTTP channel (endpoint, content-type, auth none/basic/bearer, body template with `{{message}}`) — ⚠️ **not mocked** (newer route)
-- `POST /notifications/mqtt` — Configure MQTT broker (host, port, user, pass, topic, tls)
-- `POST /notifications/emergency-freq` — Set notification frequency (`freq_ms`)
-- `POST /notifications/test/sms` — Test SMS (simulated)
-- `POST /notifications/test/discord` — Test Discord (simulated)
-- `POST /notifications/test/custom` — Test Custom HTTP channel — ⚠️ **not mocked** (newer route)
-- `POST /notifications/test/mqtt` — Test MQTT (simulated)
+- `GET /notifications`: Current notification settings
+- `GET /notifications/status`: Lean, secret-free status-only JSON (booleans only) for live polling; powers the status pills
+- `POST /notifications/phone`: Save destination phone number
+- `POST /notifications/twilio`: Save Twilio creds (sid, token, svc_sid); ⚠️ **not mocked** (newer route)
+- `POST /notifications/discord`: Save Discord webhook
+- `POST /notifications/custom`: Configure Custom HTTP channel (endpoint, content-type, auth none/basic/bearer, body template with `{{message}}`); ⚠️ **not mocked** (newer route)
+- `POST /notifications/mqtt`: Configure MQTT broker (host, port, user, pass, topic, tls)
+- `POST /notifications/emergency-freq`: Set notification frequency (`freq_ms`)
+- `POST /notifications/test/sms`: Test SMS (simulated)
+- `POST /notifications/test/discord`: Test Discord (simulated)
+- `POST /notifications/test/custom`: Test Custom HTTP channel; ⚠️ **not mocked** (newer route)
+- `POST /notifications/test/mqtt`: Test MQTT (simulated)
 
 **WiFi:**
-- `GET /status` — WiFi connection status
-- `GET /wifi/networks` — List stored networks
-- `POST /config` — Save WiFi credentials
-- `POST /wifi/remove` — Remove a stored network
+- `GET /status`: WiFi connection status
+- `GET /wifi/networks`: List stored networks
+- `POST /config`: Save WiFi credentials
+- `POST /wifi/remove`: Remove a stored network
 
-**OTA (⚠️ not mocked — see `src/html/ota.html` and `src/ConfigServer.cpp`):**
-- `GET /ota/status` — Current OTA state JSON
-- `GET /ota/check` — Trigger update check
-- `POST /ota/update` — Start firmware install
-- `POST /ota/settings` — Save OTA configuration
+**OTA (⚠️ not mocked, see `src/html/ota.html` and `src/ConfigServer.cpp`):**
+- `GET /ota/status`: Current OTA state JSON
+- `GET /ota/check`: Trigger update check
+- `POST /ota/update`: Start firmware install
+- `POST /ota/settings`: Save OTA configuration
 
 ## Development Workflow
 
@@ -156,14 +156,14 @@ All buttons and forms work as they would on the real ESP32:
 ### Using Browser DevTools
 
 You can now use the full browser developer tools:
-- **Console** — view JavaScript errors and debug logs
-- **Network tab** — inspect API requests and responses
-- **Elements tab** — experiment with CSS in real time
-- **Application tab** — check localStorage if you add it
+- **Console**: view JavaScript errors and debug logs
+- **Network tab**: inspect API requests and responses
+- **Elements tab**: experiment with CSS in real time
+- **Application tab**: check localStorage if you add it
 
 ## Deploying Changes to ESP32
 
-When you are satisfied with your UI changes, build the firmware — the pipeline handles the rest automatically.
+When you are satisfied with your UI changes, build the firmware; the pipeline handles the rest automatically.
 
 ### How the Build Pipeline Works
 

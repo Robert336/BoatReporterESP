@@ -14,7 +14,7 @@
 - Check the serial monitor for actual millivolt readings
 
 ### No SMS alerts received
-- Verify Twilio credentials in the web interface (**Settings → Notifications → SMS · Twilio**) — Account SID, Auth Token, and Messaging Service SID are write-only fields saved to NVS
+- Verify Twilio credentials in the web interface (**Settings → Notifications → SMS · Twilio**): Account SID, Auth Token, and Messaging Service SID are write-only fields saved to NVS
 - Check the phone number format in the web interface (must include country code, e.g. +1234567890)
 - Verify the ESP32 has internet connectivity (check the serial monitor)
 - Check that the Twilio account has credits (for paid accounts) or verified numbers (trial accounts)

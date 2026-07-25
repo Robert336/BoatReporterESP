@@ -1,14 +1,14 @@
 # BoatReporterESP
 
-**An ESP32-based bilge monitoring system (firmware v1.1.8).** It continuously measures water level in your boat's bilge, dispatches emergency alerts the moment the level crosses a danger threshold, and streams live telemetry to a self-hosted Grafana dashboard — so you can check on your vessel from anywhere.
+**An ESP32-based bilge monitoring system (firmware v1.1.8).** It continuously measures water level in your boat's bilge, dispatches emergency alerts the moment the level crosses a danger threshold, and streams live telemetry to a self-hosted Grafana dashboard, so you can check on your vessel from anywhere.
 
 <img width="500" alt="hero image" src="https://github.com/user-attachments/assets/67ef94db-ea68-4508-ad74-67d70f768ae9" />
 
 **At a glance:** water-level monitoring (5–100 cm) · two-tier SMS/Discord/webhook emergency alerts · captive-portal web config (no app to install) · remote OTA firmware updates · live Grafana monitoring dashboard.
 
-![Grafana monitoring dashboard — live water level, system state, and device health](docs/screenshots/grafana-full.png)
+![Grafana monitoring dashboard: live water level, system state, and device health](docs/screenshots/grafana-full.png)
 
-![Built-in captive-portal web interface — dashboard, settings, notifications, WiFi, and calibration pages](docs/screenshots/web-config-pages-v2.png)
+![Built-in captive-portal web interface: dashboard, settings, notifications, WiFi, and calibration pages](docs/screenshots/web-config-pages-v2.png)
 
 ## Contents
 
@@ -24,36 +24,36 @@
 
 ## Why
 
-Bilge pumps fail. Float switches stick. And you are not always at the dock to notice. BoatReporterESP is a low-cost ESP32 module installed in the bilge that monitors water level continuously and alerts you before conditions become critical — via SMS, Discord, or any HTTP webhook — while a live dashboard lets you review trends from anywhere. There is no cloud subscription and no companion app to install: all configuration is handled through a mobile-friendly web interface served by the device itself.
+Bilge pumps fail. Float switches stick. And you are not always at the dock to notice. BoatReporterESP is a low-cost ESP32 module installed in the bilge that monitors water level continuously and alerts you before conditions become critical (via SMS, Discord, or any HTTP webhook) while a live dashboard lets you review trends from anywhere. There is no cloud subscription and no companion app to install: all configuration is handled through a mobile-friendly web interface served by the device itself.
 
 ## Features
 
-- **Real-time Water Level Monitoring** — 4–20 mA pressure sensor sampled through an ADS1115 16-bit ADC (I2C, 100 kHz, address 0x48); usable range 5–100 cm
-- **Two-Tier Emergency Alerts** — Tier 1 (default 30 cm) triggers SMS, Discord, and custom-HTTP notifications; Tier 2 (default 50 cm) provides a higher threshold for the most critical conditions
-- **Live Monitoring Dashboard** — self-hosted Grafana stack (Mosquitto → Telegraf → InfluxDB → Grafana) shows live level, rate-of-change, system-state timeline, connectivity, and device health. See [`server-stack/README.md`](server-stack/README.md)
-- **No-App Web Config** — multi-page UI (dashboard, WiFi, notifications, settings, calibration, OTA) served as gzip-compressed HTML through a captive portal; optimized for mobile browsers
-- **Remote OTA Updates** — firmware updates pulled from GitHub Releases, with automatic update checking and installation enabled by default and automatic rollback on failure
-- **MQTT Telemetry + Home Assistant** — structured JSON every 60 s plus full log streaming to a configurable broker
-- **Two-Point Calibration** — accurate sensor calibration for your specific setup
-- **Sensor Hardening** — I2C auto-recovery, stuck and over-range detection, and sustained-failure owner notifications
+- **Real-time Water Level Monitoring**: 4–20 mA pressure sensor sampled through an ADS1115 16-bit ADC (I2C, 100 kHz, address 0x48); usable range 5–100 cm
+- **Two-Tier Emergency Alerts**: Tier 1 (default 30 cm) triggers SMS, Discord, and custom-HTTP notifications; Tier 2 (default 50 cm) provides a higher threshold for the most critical conditions
+- **Live Monitoring Dashboard**: self-hosted Grafana stack (Mosquitto → Telegraf → InfluxDB → Grafana) shows live level, rate-of-change, system-state timeline, connectivity, and device health. See [`server-stack/README.md`](server-stack/README.md)
+- **No-App Web Config**: multi-page UI (dashboard, WiFi, notifications, settings, calibration, OTA) served as gzip-compressed HTML through a captive portal; optimized for mobile browsers
+- **Remote OTA Updates**: firmware updates pulled from GitHub Releases, with automatic update checking and installation enabled by default and automatic rollback on failure
+- **MQTT Telemetry + Home Assistant**: structured JSON every 60 s plus full log streaming to a configurable broker
+- **Two-Point Calibration**: accurate sensor calibration for your specific setup
+- **Sensor Hardening**: I2C auto-recovery, stuck and over-range detection, and sustained-failure owner notifications
 
 <details>
-<summary><strong>For developers</strong> — firmware-internal details</summary>
+<summary><strong>For developers</strong>: firmware-internal details</summary>
 
-- **Notification Worker** — SMS, Discord, and webhook HTTP calls run on a dedicated FreeRTOS task (Core 0); a latest-wins coalescing policy prevents stale-message backlogs after WiFi outages
-- **System State Machine** — NORMAL, ERROR, EMERGENCY, and CONFIG states; the GPIO 12 status LED reflects NORMAL/ERROR/CONFIG (including a WiFi-disconnected double-blink)
-- **Task Watchdog** — automatic reboot if the main loop stalls (10-second timeout)
-- **NTP Time Synchronization** — accurate timestamping of events
-- **Persistent Storage** — WiFi credentials, calibration values, and all notification settings persisted to NVS
-- **Mock Sensor Mode** — full firmware with simulated sensor data via the `env:mock` build environment (no hardware required)
-- **No Compile-Time Secrets** — Twilio, Discord, custom-HTTP, and MQTT credentials are entered through the web UI and stored in NVS
+- **Notification Worker**: SMS, Discord, and webhook HTTP calls run on a dedicated FreeRTOS task (Core 0); a latest-wins coalescing policy prevents stale-message backlogs after WiFi outages
+- **System State Machine**: NORMAL, ERROR, EMERGENCY, and CONFIG states; the GPIO 12 status LED reflects NORMAL/ERROR/CONFIG (including a WiFi-disconnected double-blink)
+- **Task Watchdog**: automatic reboot if the main loop stalls (10-second timeout)
+- **NTP Time Synchronization**: accurate timestamping of events
+- **Persistent Storage**: WiFi credentials, calibration values, and all notification settings persisted to NVS
+- **Mock Sensor Mode**: full firmware with simulated sensor data via the `env:mock` build environment (no hardware required)
+- **No Compile-Time Secrets**: Twilio, Discord, custom-HTTP, and MQTT credentials are entered through the web UI and stored in NVS
 
 </details>
 
 ## Quick Start
 
 1. **Clone** this repository.
-2. **No compile-time secrets are required.** All credentials (Twilio, Discord, custom-HTTP, MQTT) are configured at runtime through the web UI and stored in NVS. `include/secrets.h.example` is a placeholder template — copy it to `include/secrets.h` only if you need compile-time overrides (none are required for normal operation).
+2. **No compile-time secrets are required.** All credentials (Twilio, Discord, custom-HTTP, MQTT) are configured at runtime through the web UI and stored in NVS. `include/secrets.h.example` is a placeholder template. Copy it to `include/secrets.h` only if you need compile-time overrides (none are required for normal operation).
 3. **Build & upload** to your ESP32:
    ```bash
    # Production build (use this on the boat)
@@ -65,7 +65,7 @@ Bilge pumps fail. Float switches stick. And you are not always at the dock to no
    # Mock sensor build (no hardware needed)
    pio run -e mock --target upload
    ```
-4. **Configure in the browser** — on first boot the device opens a captive portal. Connect to the `ESP32-BilgeRise-Setup` WiFi access point (the password is unique per device and printed to the serial monitor at 115200 baud), browse to `http://192.168.4.1`, and enter your WiFi and alert credentials.
+4. **Configure in the browser**: on first boot the device opens a captive portal. Connect to the `ESP32-BilgeRise-Setup` WiFi access point (the password is unique per device and printed to the serial monitor at 115200 baud), browse to `http://192.168.4.1`, and enter your WiFi and alert credentials.
 
 > **Build pipeline note:** `scripts/compress_html.py` automatically gzips the web UI from `dev-ui/` and `src/html/` into `src/compressed_pages.h` on every build, so no manual HTML embedding is required.
 
@@ -123,16 +123,16 @@ flowchart LR
 
 The sections above cover the essentials. For everything else, see the [`docs/`](docs/README.md) hub:
 
-- **[Configuration](docs/configuration.md)** — first-time setup, WiFi, Twilio/Discord/custom-HTTP credentials, two-point calibration, emergency thresholds, MQTT broker
-- **[Usage](docs/usage.md)** — LED patterns, system states, button functions, alert behavior
-- **[MQTT & Telemetry](docs/mqtt-telemetry.md)** — log and structured telemetry topics, the JSON payload, Home Assistant / Grafana ingestion
-- **[Troubleshooting](docs/troubleshooting.md)** — WiFi, sensor, alert, LED, and web-interface fixes
-- **[Hardware & Assembly](docs/hardware.md)** — full parts list, wiring, and step-by-step assembly
-- **[Monitoring stack](server-stack/README.md)** — self-hosted Grafana (Mosquitto → Telegraf → InfluxDB → Grafana), including WAN/TLS deployment
-- **[OTA updates](OTA_QUICKSTART.md)** — remote firmware update walkthrough
-- **[Architecture](docs/architecture.md)** — component layout, FreeRTOS tasks, data flow
-- **[API Reference](docs/api-reference.md)** — ConfigServer REST endpoints
-- **[Web UI development](dev-ui/README.md)** — mock server for developing the config pages without flashing
+- **[Configuration](docs/configuration.md)**: first-time setup, WiFi, Twilio/Discord/custom-HTTP credentials, two-point calibration, emergency thresholds, MQTT broker
+- **[Usage](docs/usage.md)**: LED patterns, system states, button functions, alert behavior
+- **[MQTT & Telemetry](docs/mqtt-telemetry.md)**: log and structured telemetry topics, the JSON payload, Home Assistant / Grafana ingestion
+- **[Troubleshooting](docs/troubleshooting.md)**: WiFi, sensor, alert, LED, and web-interface fixes
+- **[Hardware & Assembly](docs/hardware.md)**: full parts list, wiring, and step-by-step assembly
+- **[Monitoring stack](server-stack/README.md)**: self-hosted Grafana (Mosquitto → Telegraf → InfluxDB → Grafana), including WAN/TLS deployment
+- **[OTA updates](OTA_QUICKSTART.md)**: remote firmware update walkthrough
+- **[Architecture](docs/architecture.md)**: component layout, FreeRTOS tasks, data flow
+- **[API Reference](docs/api-reference.md)**: ConfigServer REST endpoints
+- **[Web UI development](dev-ui/README.md)**: mock server for developing the config pages without flashing
 
 ## Development
 

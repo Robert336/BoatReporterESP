@@ -1,22 +1,22 @@
 # MQTT Telemetry & Logging
 
-The device streams all log output to an MQTT broker in addition to serial. This enables live monitoring without a physical serial connection — useful for a boat at a marina.
+The device streams all log output to an MQTT broker in addition to serial. This enables live monitoring without a physical serial connection, useful for a boat at a marina.
 
-**Configuration** — set via the web interface Notifications page (NVS-backed):
-- Broker host / port (default fallback: `192.168.2.41:1883` — override this for your network)
+**Configuration**: set via the web interface Notifications page (NVS-backed):
+- Broker host / port (default fallback: `192.168.2.41:1883`; override this for your network)
 - Optional username / password
 - Base topic (default: `boat/<mac>`)
 
 **Topics published:**
-- `<baseTopic>/log` — plaintext log lines (all `LOG_*` macros)
-- `<baseTopic>/availability` — `"online"` on connect, `"offline"` as LWT
-- `<baseTopic>/telemetry` — structured JSON sensor reading, published every 60 s (retained)
+- `<baseTopic>/log`: plaintext log lines (all `LOG_*` macros)
+- `<baseTopic>/availability`: `"online"` on connect, `"offline"` as LWT
+- `<baseTopic>/telemetry`: structured JSON sensor reading, published every 60 s (retained)
 
 The log queue is a 16-slot ring buffer (~4 KB RAM). Messages dropped during a slow/blocked connection are counted and reported in the periodic status log.
 
 ## Telemetry Topic (for dashboards / Home Assistant)
 
-In addition to the plaintext log, the device publishes a numeric, structured reading to `<baseTopic>/telemetry` once per minute. Unlike the log topic, this is machine-parseable — feed it to a time-series pipeline (e.g. Telegraf → InfluxDB → Grafana) or to Home Assistant. The message is **retained**, so a consumer that connects later immediately sees the last reading.
+In addition to the plaintext log, the device publishes a numeric, structured reading to `<baseTopic>/telemetry` once per minute. Unlike the log topic, this is machine-parseable: feed it to a time-series pipeline (e.g. Telegraf → InfluxDB → Grafana) or to Home Assistant. The message is **retained**, so a consumer that connects later immediately sees the last reading.
 
 ```json
 {

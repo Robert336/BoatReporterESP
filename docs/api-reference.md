@@ -49,7 +49,7 @@ avoiding multiple round‑trips.
 
 #### `GET /init`
 
-Dashboard init — sensor reading, WiFi status, and thresholds.
+Dashboard init: sensor reading, WiFi status, and thresholds.
 
 **Response:**
 
@@ -62,14 +62,14 @@ Dashboard init — sensor reading, WiFi status, and thresholds.
     "rssi": -55                 // int (dBm)
   },
   "sensor": {
-    "sensorAvailable": true,    // bool — false if waterSensor is null
-    "valid": true,              // bool — whether the current reading is in range
-    "level_cm": 12.50,          // float (2 decimals) — only present when valid
-    "rate_cm_30min": 0.25       // float (2 decimals) — rate of change, only when available
+    "sensorAvailable": true,    // bool: false if waterSensor is null
+    "valid": true,              // bool: whether the current reading is in range
+    "level_cm": 12.50,          // float (2 decimals): only present when valid
+    "rate_cm_30min": 0.25       // float (2 decimals): rate of change, only when available
   },
   "thresholds": {
-    "emergencyWaterLevel_cm": 15.00,       // float (2 decimals) — Tier 1
-    "urgentEmergencyWaterLevel_cm": 30.00  // float (2 decimals) — Tier 2
+    "emergencyWaterLevel_cm": 15.00,       // float (2 decimals): Tier 1
+    "urgentEmergencyWaterLevel_cm": 30.00  // float (2 decimals): Tier 2
   }
 }
 ```
@@ -82,7 +82,7 @@ curl http://192.168.4.1/init
 
 #### `GET /settings/init`
 
-Settings init — notification config booleans, emergency frequency, WiFi status,
+Settings init: notification config booleans, emergency frequency, WiFi status,
 and calibration flag.
 
 **Response:**
@@ -112,7 +112,7 @@ curl http://192.168.4.1/settings/init
 
 #### `GET /debug/init`
 
-Debug init — current sensor reading (raw millivolts) and calibration data.
+Debug init: current sensor reading (raw millivolts) and calibration data.
 
 **Response:**
 
@@ -121,14 +121,14 @@ Debug init — current sensor reading (raw millivolts) and calibration data.
   "reading": {
     "sensorAvailable": true,   // bool
     "valid": true,             // bool
-    "millivolts": 1250.50,     // float (2 decimals) — raw ADC millivolts
-    "level_cm": 12.50          // float (2 decimals) — only present when valid
+    "millivolts": 1250.50,     // float (2 decimals): raw ADC millivolts
+    "level_cm": 12.50          // float (2 decimals): only present when valid
   },
   "calibration": {
     "zeroPoint_mv": 600,       // int
     "hasTwoPointCalibration": true,  // bool
-    "secondPoint_mv": 2500,    // int — only when hasTwoPointCalibration is true
-    "secondPoint_cm": 50.00    // float (2 decimals) — only when hasTwoPointCalibration is true
+    "secondPoint_mv": 2500,    // int: only when hasTwoPointCalibration is true
+    "secondPoint_cm": 50.00    // float (2 decimals): only when hasTwoPointCalibration is true
   }
 }
 ```
@@ -192,7 +192,7 @@ Save WiFi credentials. Returns an HTML confirmation page.
 | `ssid`     | string | Yes      | WiFi network SSID  |
 | `password` | string | Yes      | WiFi password      |
 
-**Response:** `text/html` — success page with a link back to `/`.
+**Response:** `text/html`; success page with a link back to `/`.
 
 **Status codes:**
 
@@ -253,9 +253,9 @@ Current sensor reading.
 {
   "sensorAvailable": true,     // bool
   "valid": true,               // bool
-  "millivolts": 1250.50,       // float (2 decimals) — raw ADC millivolts
-  "level_cm": 12.50,           // float (2 decimals) — only present when valid
-  "rate_cm_30min": 0.25        // float (2 decimals) — rate of change, only when available
+  "millivolts": 1250.50,       // float (2 decimals): raw ADC millivolts
+  "level_cm": 12.50,           // float (2 decimals): only present when valid
+  "rate_cm_30min": 0.25        // float (2 decimals): rate of change, only when available
 }
 ```
 
@@ -284,8 +284,8 @@ Current calibration settings.
 {
   "zeroPoint_mv": 600,         // int
   "hasTwoPointCalibration": true,  // bool
-  "secondPoint_mv": 2500,      // int — only when hasTwoPointCalibration is true
-  "secondPoint_cm": 50.00      // float (2 decimals) — only when hasTwoPointCalibration is true
+  "secondPoint_mv": 2500,      // int: only when hasTwoPointCalibration is true
+  "secondPoint_cm": 50.00      // float (2 decimals): only when hasTwoPointCalibration is true
 }
 ```
 
@@ -387,9 +387,9 @@ Current emergency thresholds.
 
 ```json
 {
-  "emergencyWaterLevel_cm": 15.00,       // float (2 decimals) — Tier 1
+  "emergencyWaterLevel_cm": 15.00,       // float (2 decimals): Tier 1
   "emergencyNotifFreq_ms": 300000,       // int (milliseconds)
-  "urgentEmergencyWaterLevel_cm": 30.00  // float (2 decimals) — Tier 2
+  "urgentEmergencyWaterLevel_cm": 30.00  // float (2 decimals): Tier 2
 }
 ```
 
@@ -509,15 +509,15 @@ Current notification settings (full detail, includes secrets like webhook URLs).
 ```json
 {
   "hasPhoneNumber": true,          // bool
-  "phoneNumber": "+15551234567",   // string — only when hasPhoneNumber is true
-  "hasTwilioCreds": true,          // bool — Twilio API credentials configured
+  "phoneNumber": "+15551234567",   // string: only when hasPhoneNumber is true
+  "hasTwilioCreds": true,          // bool: Twilio API credentials configured
   "hasDiscordWebhook": true,       // bool
-  "discordWebhook": "https://discord.com/api/webhooks/...",  // string — only when configured
+  "discordWebhook": "https://discord.com/api/webhooks/...",  // string: only when configured
   "hasCustomChannel": true,        // bool
   "customEndpoint": "https://example.com/alert",   // string
   "customCtype": "application/json",               // string
-  "customAuth": "bearer",                          // string — "none", "basic", or "bearer"
-  "customTmpl": "{\"text\":\"{{message}}\"}",      // string — body template
+  "customAuth": "bearer",                          // string: "none", "basic", or "bearer"
+  "customTmpl": "{\"text\":\"{{message}}\"}",      // string: body template
   "mqttConfigured": true,          // bool
   "mqttConnected": false,          // bool
   "mqttHost": "broker.example.com", // string
@@ -536,7 +536,7 @@ curl http://192.168.4.1/notifications
 
 #### `GET /notifications/status`
 
-Lean status‑only JSON — booleans only, no secrets. Designed for periodic polling
+Lean status-only JSON; booleans only, no secrets. Designed for periodic polling
 (e.g. updating live status indicators on the settings page).
 
 **Response:**
@@ -595,7 +595,7 @@ curl -X POST http://192.168.4.1/notifications/phone \
 #### `POST /notifications/twilio`
 
 Set Twilio account credentials (SID, auth token, messaging service SID). All
-three fields are optional — only provided values are updated.
+three fields are optional; only provided values are updated.
 
 **Request parameters (form data):**
 
@@ -710,7 +710,7 @@ curl -X POST http://192.168.4.1/notifications/custom \
 
 #### `POST /notifications/mqtt`
 
-Configure the MQTT broker. All parameters are optional — only provided fields
+Configure the MQTT broker. All parameters are optional; only provided fields
 are updated. The service reconnects automatically after any change.
 
 **Request parameters (form data):**
@@ -959,9 +959,9 @@ Current OTA state and configuration.
 ```json
 {
   "currentVersion": "1.1.8",          // string
-  "availableVersion": "1.2.0",        // string — empty if no update found
+  "availableVersion": "1.2.0",        // string: empty if no update found
   "updateAvailable": true,            // bool
-  "state": "idle",                    // string — one of: idle, checking, update_available,
+  "state": "idle",                    // string: one of: idle, checking, update_available,
                                       //          downloading, installing, success, failed
   "lastError": "",                    // string
   "autoCheckEnabled": true,           // bool
@@ -993,7 +993,7 @@ Manually trigger an update check against the configured GitHub repository.
 {
   "success": true,
   "updateAvailable": true,
-  "version": "1.2.0"          // string — only present when updateAvailable is true
+  "version": "1.2.0"          // string: only present when updateAvailable is true
 }
 ```
 
@@ -1021,7 +1021,7 @@ response may not be received.
 |------------|--------|----------|------------------------------------------|
 | `password` | string | No       | Update password (if one was configured)  |
 
-**Response (success — may not be received due to reboot):**
+**Response (success; may not be received due to reboot):**
 
 ```json
 {
@@ -1035,7 +1035,7 @@ response may not be received.
 ```json
 {
   "success": false,
-  "error": "Password required"   // example — actual error from OTAManager
+  "error": "Password required"   // example: actual error from OTAManager
 }
 ```
 
@@ -1056,7 +1056,7 @@ curl -X POST http://192.168.4.1/ota/update \
 
 #### `POST /ota/settings`
 
-Configure OTA update settings. All parameters are optional — only provided
+Configure OTA update settings. All parameters are optional; only provided
 fields are updated.
 
 **Request parameters (form data):**

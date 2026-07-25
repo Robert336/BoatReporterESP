@@ -1,8 +1,8 @@
-# OTA Updates — Quick Start
+# OTA Updates: Quick Start
 
 ## Overview
 
-BoatReporterESP supports over-the-air (OTA) firmware updates via GitHub Releases. Once the initial firmware is flashed over USB, all subsequent updates can be delivered remotely — no physical access to the device is required.
+BoatReporterESP supports over-the-air (OTA) firmware updates via GitHub Releases. Once the initial firmware is flashed over USB, all subsequent updates can be delivered remotely. No physical access to the device is required.
 
 - **Current firmware version**: `1.1.8`
 - **Default repository**: `Robert336/BoatReporterESP`
@@ -155,7 +155,7 @@ If new firmware fails to boot 3 times consecutively, the ESP32 bootloader automa
 
 Before downloading firmware, the device checks WiFi RSSI. If the signal is below **-70 dBm**, the update is aborted in a FAILED state. The "starting update" notification is **not** sent for weak-signal aborts, so you will not receive a start message followed by a failure.
 
-The version-check API call (lightweight HTTPS GET) is not gated by RSSI — only the download commit is blocked.
+The version-check API call (lightweight HTTPS GET) is not gated by RSSI; only the download commit is blocked.
 
 ### Flood Abort
 
@@ -234,7 +234,7 @@ Set an update password on the OTA settings page to require confirmation for manu
 | Update fails | Check firmware built for correct board (`upesy_wroom`); verify partition scheme supports OTA; review serial logs for specific errors |
 | Device will not boot after update | Wait ~30 seconds for automatic rollback; if rollback fails, flash via USB |
 | No notifications | Check SMS/Discord credentials are configured; verify OTA notifications are enabled in settings; confirm WiFi is connected |
-| Auto-install not working | Verify auto-check is also enabled; check the last-check time — you may need to wait for the next scheduled check; click "Check for Updates" to trigger it immediately |
+| Auto-install not working | Verify auto-check is also enabled; check the last-check time; you may need to wait for the next scheduled check. Click "Check for Updates" to trigger it immediately |
 
 ## Verification Checklist
 

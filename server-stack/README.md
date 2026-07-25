@@ -19,7 +19,7 @@ ESP32 ──MQTT──▶ Mosquitto ──▶ Telegraf ──▶ InfluxDB ──
 ## Requirements
 
 - A **64-bit** Raspberry Pi OS (Pi 3/4/5, 2 GB+ RAM). InfluxDB 2.x has no 32-bit
-  build — `uname -m` should report `aarch64`.
+  build; `uname -m` should report `aarch64`.
 - Docker + the Compose plugin: `curl -fsSL https://get.docker.com | sh`
 - **Recommended:** put Docker's data on an external SSD/USB rather than the SD
   card. InfluxDB writes continuously and will wear out an SD card over time.
@@ -41,14 +41,14 @@ the Grafana datasource + the **Boat Reporter — Bilge Monitor** dashboard.
 > dynamic IP, Cloudflare DDNS) and a runbook for when a device cannot connect, see
 > [DEPLOYMENT.md](DEPLOYMENT.md).
 
-- **Grafana:** `http://<pi-ip>:3000` — log in with `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD`.
+- **Grafana:** `http://<pi-ip>:3000`; log in with `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD`.
 - **InfluxDB UI** (optional/debug): `http://<pi-ip>:8086`.
 
 ## Point the device at the Pi
 
 In the device's web UI → **Notifications → MQTT broker**, set the broker host to
 the **Pi's LAN IP** and port `1883`. (Settings persist in NVS; the firmware
-default `192.168.2.41` only applies to a device that has never been configured —
+default `192.168.2.41` only applies to a device that has never been configured;
 see the note in the [main README](../README.md#mqtt-broker-configuration).)
 
 ## Verify data is flowing
@@ -61,14 +61,14 @@ docker exec -it boat-mosquitto mosquitto_sub -t 'boat/+/telemetry' -v
 docker compose logs -f telegraf
 ```
 
-Then open Grafana — the dashboard's **Device** dropdown will list each unit by
+Then open Grafana; the dashboard's **Device** dropdown will list each unit by
 its MAC-derived id, and panels populate within a minute or two. For a quick
 end-to-end test without hardware, flash the `mock` firmware build (`pio run -e
-mock -t upload`) — it publishes simulated readings on the same topics.
+mock -t upload`); it publishes simulated readings on the same topics.
 
 ## WAN / TLS deployment
 
-The default config is an open, anonymous broker — acceptable on a trusted LAN, but
+The default config is an open, anonymous broker; acceptable on a trusted LAN, but
 **never expose port 1883 to the internet**. To let a boat on marina WiFi reach
 the broker, use a domain name pointed at your home IP, port-forward the **TLS**
 port only, and lock the broker down with certificates + auth + ACLs.
@@ -81,7 +81,7 @@ ESP32 (marina WiFi) ──TLS:8883──▶ home router (port-forward) ──▶
 
 ### 1. Domain + Dynamic DNS
 
-Point a DNS-only (**grey-cloud**, never proxied — Cloudflare's proxy only does
+Point a DNS-only (**grey-cloud**, never proxied; Cloudflare's proxy only does
 HTTP and would break MQTT) A record at your home IP, and keep it current as your
 ISP rotates the IP:
 
@@ -91,14 +91,14 @@ ISP rotates the IP:
             /path/to/server-stack/ddns/cloudflare-ddns.sh >> /var/log/ddns.log 2>&1
 ```
 
-Or — simplest — run it as the bundled **`cloudflare-ddns` compose service** (set
-`CF_*` in `.env`; no host cron needed) — see
+Or (simplest) run it as the bundled **`cloudflare-ddns` compose service** (set
+`CF_*` in `.env`; no host cron needed); see
 [DEPLOYMENT.md](DEPLOYMENT.md#dynamic-dns-compose-service).
-(DuckDNS works equally well if you'd rather not manage a domain.)
+(DuckDNS works equally well if you would rather not manage a domain.)
 
 ### 2. TLS certificate (Let's Encrypt, DNS-01)
 
-We use the **DNS-01** challenge because only 8883 is open — there's no inbound
+We use the **DNS-01** challenge because only 8883 is open; there is no inbound
 80/443 for an HTTP challenge. With Cloudflare DNS:
 
 ```bash
@@ -154,7 +154,7 @@ In the device UI → **Notifications → MQTT broker**:
 
 | Field | Value |
 |-------|-------|
-| Broker host | `mqtt.example.com` (the **domain**, not an IP — it is verified against the cert) |
+| Broker host | `mqtt.example.com` (the **domain**, not an IP; it is verified against the cert) |
 | Port | `8883` |
 | Use TLS encryption | ✅ |
 | Username / Password | the `boat-<mac>` credentials you created |
@@ -179,17 +179,17 @@ update that bundle and reflash.
 The same pipeline doubles as a full remote-monitoring setup: a self-hosted
 Grafana dashboard with the live water level, rate-of-change trend, and a
 system-state timeline, plus connectivity and device health (uptime, firmware,
-OTA checks, heap, chip temperature) — all reported by a low-cost ESP32 sitting
+OTA checks, heap, chip temperature); all reported by a low-cost ESP32 sitting
 in the bilge.
 
 What you get:
 
-- **Live bilge state** — current level, the 30-minute rate-of-change trend,
+- **Live bilge state**: current level, the 30-minute rate-of-change trend,
   and the NORMAL / CONFIG / ERROR / EMERGENCY timeline, with Tier 1 / Tier 2
   threshold lines.
-- **Connectivity** — RSSI history and online/offline status derived from the
+- **Connectivity**: RSSI history and online/offline status derived from the
   retained LWT topic.
-- **Device health** — uptime, firmware version, last OTA check, heap usage,
+- **Device health**: uptime, firmware version, last OTA check, heap usage,
   and chip temperature, so a sick unit can be diagnosed remotely instead of at
   the dock.
 
@@ -199,7 +199,7 @@ What you get:
 
 Every 60 s the device publishes a retained JSON payload to
 `<baseTopic>/telemetry`. Telegraf parses it with a `json_v2` object consumer
-that ingests **every field automatically** — all 13 land in InfluxDB with no
+that ingests **every field automatically**; all 13 land in InfluxDB with no
 Telegraf config change:
 
 | Field | Type | Meaning |
@@ -210,7 +210,7 @@ Telegraf config change:
 | `sensor_error` | bool | true when the latest sample was invalid |
 | `valid` | bool | validity of `level_cm` in this message |
 | `rssi` | int | WiFi signal strength (dBm) |
-| `chip_temp_c` | float | ESP32-WROOM-32 die temperature — uncalibrated, relative trend only, **not** ambient |
+| `chip_temp_c` | float | ESP32-WROOM-32 die temperature; uncalibrated, relative trend only, **not** ambient |
 | `emergency_level_cm` | float | configured Tier 1 threshold |
 | `urgent_emergency_level_cm` | float | configured Tier 2 threshold |
 | `fw_version` | string | firmware version |
@@ -224,7 +224,7 @@ The provisioned dashboard (**Boat Reporter — Bilge Monitor**, uid
 `boat-reporter`) has 12 panels. Its Flux queries hardcode the InfluxDB bucket
 `boat`, and the **Device** dropdown selects a unit by its MAC-derived id.
 
-> 📸 **Screenshot source:** `docs/screenshots/grafana-full.png` — full dashboard capture with real/mock data flowing, referenced from the main README.
+> 📸 **Screenshot source:** `docs/screenshots/grafana-full.png`: full dashboard capture with real/mock data flowing, referenced from the main README.
 
 | Panel | Source field | Notes |
 |-------|--------------|-------|
@@ -234,14 +234,14 @@ The provisioned dashboard (**Boat Reporter — Bilge Monitor**, uid
 | WiFi Signal (RSSI) | `rssi` | link health (dBm) |
 | System State | `state` | NORMAL / CONFIG / ERROR / EMERGENCY timeline |
 | Connectivity | `boat_availability` | online / offline from the retained LWT topic |
-| Chip Temperature (diagnostic) | `chip_temp_c` | uncalibrated, relative trend only — **not** ambient/cabin temp |
+| Chip Temperature (diagnostic) | `chip_temp_c` | uncalibrated, relative trend only; **not** ambient/cabin temp |
 | Uptime | `uptime_s` | device uptime (seconds) |
 | Firmware | `fw_version` | currently running firmware version |
 | Last OTA Check | `last_fw_check_s` | seconds since the last OTA update check |
 | Emergency Thresholds | `emergency_level_cm` / `urgent_emergency_level_cm` | configured Tier 1 / Tier 2 thresholds (cm) |
 | Heap Used (%) | derived from `heap_free` | memory pressure (percent, min 0) |
 
-The last six panels are operational metadata for remote diagnosis — they let
+The last six panels are operational metadata for remote diagnosis; they let
 you confirm a unit is alive, on the expected firmware, phoning home for OTA
 checks, and not leaking memory, all without physical access.
 

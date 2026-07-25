@@ -6,18 +6,18 @@ Thanks for your interest in contributing. BoatReporterESP is an ESP32-based bilg
 
 ```
 src/                 Firmware source (Arduino + FreeRTOS)
-include/             Headers — BoardPins.h is the single source of truth for the GPIO map
+include/             Headers: BoardPins.h is the single source of truth for the GPIO map
 dev-ui/              Standalone mock server for developing the web UI without flashing
 server-stack/        Self-hosted Grafana monitoring stack (Mosquitto/Telegraf/InfluxDB/Grafana)
 docs/                User-facing documentation
 test/                Native unit tests (run on the host, not the ESP32)
-scripts/             Build scripts — compress_html.py gzips the web UI into src/compressed_pages.h
+scripts/             Build scripts: compress_html.py gzips the web UI into src/compressed_pages.h
 ```
 
 ## Setting up a build
 
 1. Install [PlatformIO](https://platformio.org/) (VS Code extension or CLI).
-2. Clone the repo. **No `secrets.h` is required** — all credentials (Twilio, Discord, custom-HTTP, MQTT) are entered at runtime in the web UI and stored in NVS. `include/secrets.h.example` is an empty template.
+2. Clone the repo. **No `secrets.h` is required**: all credentials (Twilio, Discord, custom-HTTP, MQTT) are entered at runtime in the web UI and stored in NVS. `include/secrets.h.example` is an empty template.
 3. Build the environment appropriate to your task:
 
    ```bash
@@ -35,7 +35,7 @@ Edit the HTML in `dev-ui/*.html` (or `src/html/ota.html`). You can iterate again
 cd dev-ui && npm install && npm start   # http://localhost:3000
 ```
 
-When any PlatformIO build runs, `scripts/compress_html.py` automatically gzips the pages into `src/compressed_pages.h` — no manual HTML embedding is required. See [`dev-ui/README.md`](dev-ui/README.md) for the mock server's endpoint coverage (a few newer routes are not yet mocked).
+When any PlatformIO build runs, `scripts/compress_html.py` automatically gzips the pages into `src/compressed_pages.h`. No manual HTML embedding is required. See [`dev-ui/README.md`](dev-ui/README.md) for the mock server's endpoint coverage (a few newer routes are not yet mocked).
 
 ## Tests
 
@@ -50,9 +50,9 @@ See [`test/TESTING_README.md`](test/TESTING_README.md) for the test philosophy a
 ## Submitting changes
 
 1. Fork the repository and create a branch from `main`.
-2. Make your change. Keep commits focused — the project uses [Conventional Commits](https://www.conventionalcommits.org/) style messages (e.g. `fix(wifi): …`, `feat(ota): …`, `docs: …`).
+2. Make your change. Keep commits focused: the project uses [Conventional Commits](https://www.conventionalcommits.org/) style messages (e.g. `fix(wifi): …`, `feat(ota): …`, `docs: …`).
 3. If you add or change user-visible behavior, update the relevant doc under [`docs/`](docs/) or the root `README.md`.
-4. Bump `FIRMWARE_VERSION` in [`include/Version.h`](include/Version.h) and [`platformio.ini`](platformio.ini) if your change ships to devices — the two must match.
+4. Bump `FIRMWARE_VERSION` in [`include/Version.h`](include/Version.h) and [`platformio.ini`](platformio.ini) if your change ships to devices; the two must match.
 5. Open a pull request against `main` and fill in the PR template.
 
 ## Firmware versioning

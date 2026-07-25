@@ -1,4 +1,4 @@
-# BoatReporterESP — Documentation
+# BoatReporterESP Documentation
 
 This folder holds the deep documentation for BoatReporterESP. The [main README](../README.md) is a short landing page; everything beyond the quick start lives here.
 
@@ -16,12 +16,12 @@ This folder holds the deep documentation for BoatReporterESP. The [main README](
 
 ## Related project docs (repo root)
 
-- [`server-stack/README.md`](../server-stack/README.md) — the self-hosted Grafana monitoring stack (Mosquitto → Telegraf → InfluxDB → Grafana), including WAN/TLS deployment
-- [`server-stack/DEPLOYMENT.md`](../server-stack/DEPLOYMENT.md) — live runbook for the broker (DDNS, certs, ACLs, debugging connect failures)
-- [`dev-ui/README.md`](../dev-ui/README.md) — the standalone mock server for developing the web UI without flashing the ESP32
-- [`OTA_QUICKSTART.md`](../OTA_QUICKSTART.md) — remote firmware update walkthrough
-- [`test/TESTING_README.md`](../test/TESTING_README.md) — the unit-test suite
+- [`server-stack/README.md`](../server-stack/README.md): the self-hosted Grafana monitoring stack (Mosquitto → Telegraf → InfluxDB → Grafana), including WAN/TLS deployment
+- [`server-stack/DEPLOYMENT.md`](../server-stack/DEPLOYMENT.md): live runbook for the broker (DDNS, certs, ACLs, debugging connect failures)
+- [`dev-ui/README.md`](../dev-ui/README.md): the standalone mock server for developing the web UI without flashing the ESP32
+- [`OTA_QUICKSTART.md`](../OTA_QUICKSTART.md): remote firmware update walkthrough
+- [`test/TESTING_README.md`](../test/TESTING_README.md): the unit-test suite
 
 ## Screenshots
 
-[`screenshots/`](screenshots/README.md) — where to place the config-server and Grafana captures referenced from the READMEs, plus a capture checklist.
+[`screenshots/`](screenshots/README.md): where to place the config-server and Grafana captures referenced from the READMEs, plus a capture checklist.
