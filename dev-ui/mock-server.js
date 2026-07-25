@@ -25,6 +25,7 @@ const gzippedPages = {
     notifications: gzipPage('notifications.html'),
     wifiConfig: gzipPage('wifi-config.html'),
     debug: gzipPage('debug.html'),
+    ota: gzipPage('ota.html'),
 };
 
 function sendGzippedPage(res, buf) {
@@ -104,6 +105,28 @@ app.get('/settings', (req, res) => sendGzippedPage(res, gzippedPages.settings));
 app.get('/notifications-page', (req, res) => sendGzippedPage(res, gzippedPages.notifications));
 app.get('/wifi-config', (req, res) => sendGzippedPage(res, gzippedPages.wifiConfig));
 app.get('/debug', (req, res) => sendGzippedPage(res, gzippedPages.debug));
+app.get('/ota-settings', (req, res) => sendGzippedPage(res, gzippedPages.ota));
+
+// ============================================================================
+// SETTINGS INIT ENDPOINT (combined load for settings page)
+// ============================================================================
+
+app.get('/settings/init', (req, res) => {
+    res.json({
+        notifications: {
+            hasPhoneNumber: mockState.hasPhoneNumber,
+            hasDiscordWebhook: mockState.hasDiscordWebhook,
+            mqttConfigured: mockState.mqttConfigured,
+            mqttConnected: mockState.mqttConnected,
+        },
+        emergencyNotifFreq_ms: mockState.emergencyNotifFreq_ms,
+        wifi: {
+            connected: mockState.connected,
+            ssid: mockState.ssid,
+        },
+        hasTwoPointCalibration: mockState.hasTwoPointCalibration,
+    });
+});
 
 // ============================================================================
 // INIT ENDPOINT (combined load for dashboard)
@@ -377,6 +400,84 @@ app.post('/notifications/test/mqtt', (req, res) => {
 });
 
 // ============================================================================
+// OTA / FIRMWARE UPDATE ENDPOINTS
+// ============================================================================
+
+// OTA mock state
+let otaState = {
+    currentVersion: '2.1.0',
+    githubRepo: 'owner/bilgerise-firmware',
+    autoCheckEnabled: true,
+    autoInstallEnabled: false,
+    checkIntervalHours: 24,
+    notificationsEnabled: true,
+    hasGithubToken: false,
+    hasUpdatePassword: false,
+    updateAvailable: true,
+    availableVersion: '2.2.0',
+    timeSinceLastCheckHours: 3.5,
+    state: 'idle',
+    lastError: null,
+};
+
+app.get('/ota/status', (req, res) => {
+    res.json(otaState);
+});
+
+app.post('/ota/check', (req, res) => {
+    otaState.state = 'checking';
+    console.log('[OTA] Checking for updates...');
+    // Simulate async check completing after a short delay
+    setTimeout(() => {
+        otaState.state = 'idle';
+        otaState.timeSinceLastCheckHours = 0;
+        console.log('[OTA] Check complete. Update available:', otaState.updateAvailable);
+    }, 1500);
+    res.json({ success: true });
+});
+
+app.post('/ota/update', (req, res) => {
+    const password = req.body.password;
+    if (otaState.hasUpdatePassword && !password) {
+        res.status(401).json({ success: false, error: 'Password required' });
+        return;
+    }
+    otaState.state = 'installing';
+    console.log('[OTA] Installing update...');
+    // Simulate install + reboot
+    setTimeout(() => {
+        otaState.currentVersion = otaState.availableVersion;
+        otaState.updateAvailable = false;
+        otaState.availableVersion = null;
+        otaState.state = 'idle';
+        console.log('[OTA] Update installed. New version:', otaState.currentVersion);
+    }, 3000);
+    res.json({ success: true });
+});
+
+app.post('/ota/settings', (req, res) => {
+    const { github_owner, github_repo, github_token, update_password,
+            auto_check, auto_install, check_interval_hours, notifications_enabled } = req.body;
+    if (github_owner && github_repo) {
+        otaState.githubRepo = github_owner + '/' + github_repo;
+    }
+    if (github_token) {
+        otaState.hasGithubToken = true;
+        console.log('[OTA] GitHub token saved');
+    }
+    if (update_password) {
+        otaState.hasUpdatePassword = true;
+        console.log('[OTA] Update password saved');
+    }
+    if (auto_check !== undefined) otaState.autoCheckEnabled = (auto_check === 'true');
+    if (auto_install !== undefined) otaState.autoInstallEnabled = (auto_install === 'true');
+    if (check_interval_hours) otaState.checkIntervalHours = parseInt(check_interval_hours) || 24;
+    if (notifications_enabled !== undefined) otaState.notificationsEnabled = (notifications_enabled === 'true');
+    console.log('[OTA] Settings saved');
+    res.json({ success: true });
+});
+
+// ============================================================================
 // START
 // ============================================================================
 
@@ -392,6 +493,7 @@ app.listen(PORT, () => {
     console.log(`  Notifications:     http://localhost:${PORT}/notifications-page`);
     console.log(`  Wi-Fi Config:      http://localhost:${PORT}/wifi-config`);
     console.log(`  Calibration:       http://localhost:${PORT}/debug`);
+    console.log(`  OTA / Firmware:    http://localhost:${PORT}/ota-settings`);
     console.log('');
     console.log('Sensor readings update every 2 seconds with random variation');
     console.log('='.repeat(60));

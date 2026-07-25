@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Firmware · BilgeRise</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="prefetch" href="/settings">
-<style>
+  <meta charset="UTF-8">
+  <title>Firmware · BilgeRise</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="prefetch" href="/settings">
+  <style>
 *{box-sizing:border-box}
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;background:#f7f5f1;color:#1c1917;font-size:16px;line-height:1.4;-webkit-font-smoothing:antialiased}
 .app{max-width:480px;margin:0 auto;padding:16px}
@@ -57,77 +57,77 @@ label .unset{font-weight:600;color:#a8a29e;margin-left:4px}
 .update-banner .ub-version{font-size:20px;font-weight:600;letter-spacing:-0.01em;margin-bottom:2px}
 .update-banner .ub-from{font-size:13px;opacity:.8}
 .warn-note{font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-top:10px}
-</style>
+  </style>
 </head>
 <body>
-<div class="app">
-<header>
-<a href="/settings" class="back" aria-label="Back">&#8249;</a>
-<h1>Firmware</h1>
-</header>
+  <div class="app">
+    <header>
+      <a href="/settings" class="back" aria-label="Back">‹</a>
+      <h1>Firmware</h1>
+    </header>
 
-<!-- Current version + update status -->
-<div class="card">
-<div class="head"><h2>Current version</h2><span class="pill" id="state_pill"><span class="dot" id="state_dot"></span><span id="state_label">...</span></span></div>
-<div class="version" id="cur_ver">--</div>
-<div class="subline" id="last_check">Last checked --</div>
-<div class="update-banner" id="update_banner">
-<div class="ub-title">Update available</div>
-<div class="ub-version" id="avail_ver">--</div>
-<div class="ub-from" id="avail_from"></div>
-</div>
-<div class="status" id="update_status">Loading...</div>
-<div class="actions">
-<button class="btn secondary" id="check_btn" onclick="checkUpdates()">Check for updates</button>
-<button class="btn" id="install_btn" onclick="installUpdate()" disabled>Install update</button>
-</div>
-<label>Update password <span class="hint" id="pwd_hint">if set</span></label>
-<div class="input"><input type="password" id="update_pwd" placeholder="Leave blank if no password" autocomplete="off"></div>
-</div>
+    <!-- Current version + update status -->
+    <div class="card">
+      <div class="head"><h2>Current version</h2><span class="pill" id="state_pill"><span class="dot" id="state_dot"></span><span id="state_label">...</span></span></div>
+      <div class="version" id="cur_ver">--</div>
+      <div class="subline" id="last_check">Last checked --</div>
+      <div class="update-banner" id="update_banner">
+        <div class="ub-title">Update available</div>
+        <div class="ub-version" id="avail_ver">--</div>
+        <div class="ub-from" id="avail_from"></div>
+      </div>
+      <div class="status" id="update_status">Loading...</div>
+      <div class="actions">
+        <button class="btn secondary" id="check_btn" onclick="checkUpdates()">Check for updates</button>
+        <button class="btn" id="install_btn" onclick="installUpdate()" disabled>Install update</button>
+      </div>
+      <label>Update password <span class="hint" id="pwd_hint">if set</span></label>
+      <div class="input"><input type="password" id="update_pwd" placeholder="Leave blank if no password" autocomplete="off"></div>
+    </div>
 
-<!-- OTA settings -->
-<div class="card">
-<div class="head"><h2>Repository</h2></div>
-<label>GitHub repository <span class="hint">owner/repo</span></label>
-<div class="input"><input type="text" id="gh_repo" placeholder="owner/repository"></div>
-<div class="helptext">Where firmware releases are published</div>
-<label>GitHub token <span class="hint" id="token_state">optional · write-only</span></label>
-<div class="input"><input type="password" id="gh_token" placeholder="Leave blank to keep current" autocomplete="off"></div>
-<div class="helptext">Personal access token for private repositories. Leave blank to keep existing.</div>
-<label>Update password <span class="hint" id="pwd_state">optional · write-only</span></label>
-<div class="input"><input type="password" id="ota_pwd" placeholder="Leave blank to keep current" autocomplete="off"></div>
-<div class="helptext">Require password to install updates manually. Leave blank to keep existing.</div>
-</div>
+    <!-- OTA settings -->
+    <div class="card">
+      <div class="head"><h2>Repository</h2></div>
+      <label>GitHub repository <span class="hint">owner/repo</span></label>
+      <div class="input"><input type="text" id="gh_repo" placeholder="owner/repository"></div>
+      <div class="helptext">Where firmware releases are published</div>
+      <label>GitHub token <span class="hint" id="token_state">optional · write-only</span></label>
+      <div class="input"><input type="password" id="gh_token" placeholder="Leave blank to keep current" autocomplete="off"></div>
+      <div class="helptext">Personal access token for private repositories. Leave blank to keep existing.</div>
+      <label>Update password <span class="hint" id="pwd_state">optional · write-only</span></label>
+      <div class="input"><input type="password" id="ota_pwd" placeholder="Leave blank to keep current" autocomplete="off"></div>
+      <div class="helptext">Require password to install updates manually. Leave blank to keep existing.</div>
+    </div>
 
-<!-- Automatic updates -->
-<div class="card">
-<div class="head"><h2>Automatic updates</h2></div>
-<div class="check"><input type="checkbox" id="auto_check"><label for="auto_check">Check for updates automatically</label></div>
-<label>Check interval <span class="hint">hours</span></label>
-<div class="input"><input type="number" id="check_interval" min="12" max="168" value="24"><span class="sfx">h</span></div>
-<div class="helptext">How often to poll GitHub for new releases (12–168 hours)</div>
-<div class="check"><input type="checkbox" id="auto_install"><label for="auto_install">Install updates automatically</label></div>
-<div class="warn-note">&#9888;&#65039; When enabled, updates install without confirmation. The device will reboot.</div>
-<div class="check"><input type="checkbox" id="notify"><label for="notify">Send OTA notifications</label></div>
-<div class="helptext">SMS / Discord notifications about update status</div>
-<div class="actions">
-<button class="btn" onclick="saveSettings()">Save settings</button>
-</div>
-<div class="msg" id="settings_msg"></div>
-</div>
+    <!-- Automatic updates -->
+    <div class="card">
+      <div class="head"><h2>Automatic updates</h2></div>
+      <div class="check"><input type="checkbox" id="auto_check"><label for="auto_check">Check for updates automatically</label></div>
+      <label>Check interval <span class="hint">hours</span></label>
+      <div class="input"><input type="number" id="check_interval" min="12" max="168" value="24"><span class="sfx">h</span></div>
+      <div class="helptext">How often to poll GitHub for new releases (12–168 hours)</div>
+      <div class="check"><input type="checkbox" id="auto_install"><label for="auto_install">Install updates automatically</label></div>
+      <div class="warn-note">&#9888;&#65039; When enabled, updates install without confirmation. The device will reboot.</div>
+      <div class="check"><input type="checkbox" id="notify"><label for="notify">Send OTA notifications</label></div>
+      <div class="helptext">SMS / Discord notifications about update status</div>
+      <div class="actions">
+        <button class="btn" onclick="saveSettings()">Save settings</button>
+      </div>
+      <div class="msg" id="settings_msg"></div>
+    </div>
 
-</div>
+  </div>
 
-<script>
+  <script>
 function el(id){return document.getElementById(id)}
 function flash(id,t,cls){var m=el(id);m.textContent=t;m.className='msg '+(cls||'');if(cls==='ok')setTimeout(function(){m.textContent='';m.className='msg'},2500)}
 function setPill(dot,lbl,state,text){el(dot).className='dot '+state;el(lbl).textContent=text}
 
-let checking=false,updating=false;
+var checking=false,updating=false;
 
 function applyStatus(d){
 try{
-// --- Always populate these, regardless of state ---
+// Always populate these, regardless of state
 el('cur_ver').textContent=d.currentVersion||'--';
 el('gh_repo').value=d.githubRepo||'';
 el('auto_check').checked=!!d.autoCheckEnabled;
@@ -135,7 +135,7 @@ el('auto_install').checked=!!d.autoInstallEnabled;
 el('check_interval').value=d.checkIntervalHours||24;
 el('notify').checked=!!d.notificationsEnabled;
 
-// Last checked — handle null/undefined gracefully
+// Last checked - handle null/undefined gracefully
 var lc=el('last_check');
 if(d.timeSinceLastCheckHours!=null){
 lc.textContent='Last checked '+d.timeSinceLastCheckHours.toFixed(1)+' hours ago';
@@ -143,7 +143,7 @@ lc.textContent='Last checked '+d.timeSinceLastCheckHours.toFixed(1)+' hours ago'
 lc.textContent='Last checked --';
 }
 
-// Token / password "is set" indicators (write-only — never display values)
+// Token / password "is set" indicators (write-only - never display values)
 var ts=el('token_state');
 if(d.hasGithubToken){ts.textContent='set';ts.className='set'}
 else{ts.textContent='optional · write-only';ts.className='hint'}
@@ -151,7 +151,7 @@ var ps=el('pwd_state');
 if(d.hasUpdatePassword){ps.textContent='set';ps.className='set'}
 else{ps.textContent='optional · write-only';ps.className='hint'}
 
-// Update-available banner — dedicated element with version number
+// Update-available banner - dedicated element with version number
 var banner=el('update_banner');
 if(d.updateAvailable&&d.availableVersion){
 banner.className='update-banner show';
@@ -267,6 +267,6 @@ flash('settings_msg',d.error||'Failed','bad');
 
 loadStatus();
 setInterval(loadStatus,5000);
-</script>
+  </script>
 </body>
 </html>
