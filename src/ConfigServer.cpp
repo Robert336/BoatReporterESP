@@ -662,6 +662,10 @@ bool ConfigServer::isAllowedPortalTarget(const String& url) {
         if (host == seedHost) return true;
     }
 
+    // Allow the connectivity-probe URL itself: it's the fallback seed when
+    // the portal never sent a redirect Location.
+    if (host == "connectivitycheck.gstatic.com") return true;
+
     // Allow RFC1918 / link-local literal IPs (portal appliances on the LAN).
     IPAddress ip;
     if (ip.fromString(host)) {
@@ -784,8 +788,12 @@ void ConfigServer::handlePortalRelay() {
     }
     String url = server->hasArg("u") ? server->arg("u") : portalProxySeedUrl;
     if (url.length() == 0) {
-        JsonResponder::sendError(server, 400, "No portal URL known — reconnect and retry detection");
-        return;
+        // No seed captured and no explicit target: the probe never saw a
+        // redirect Location (some portals answer 200 with the page instead).
+        // Fall back to re-fetching the probe URL itself — the hijack will
+        // redirect us to the splash page, which the relay follows.
+        url = String("http://connectivitycheck.gstatic.com/generate_204");
+        LOG_INFO("Portal relay: no seed URL, re-probing through hijack");
     }
     if (!isAllowedPortalTarget(url)) {
         LOG_INFO("Portal proxy: rejected target %s", url.c_str());
@@ -827,7 +835,7 @@ void ConfigServer::handlePortalRelay() {
             body = server->arg("plain");
             http.addHeader("Content-Type", "application/json");
             code = http.POST((uint8_t*)body.c_str(), body.length());
-        } else {
+        } else if (server->args() > 0) {
             // Classic form submit: re-serialize the phone's form fields and
             // submit as the ESP32.
             for (int i = 0; i < server->args(); i++) {
@@ -836,6 +844,13 @@ void ConfigServer::handlePortalRelay() {
                 body += urlEncodeForProxy(server->argName(i)) + "=" + urlEncodeForProxy(server->arg(i));
             }
             code = http.POST(body);
+        } else {
+            // No parsed form fields and not JSON — the body is raw
+            // (WebServer only parses urlencoded bodies; anything else lands
+            // in arg("plain")). Forward verbatim with the original type.
+            body = server->arg("plain");
+            if (ctype.length()) http.addHeader("Content-Type", ctype);
+            code = http.POST((uint8_t*)body.c_str(), body.length());
         }
     } else {
         code = http.GET();
