@@ -7,7 +7,14 @@
 #include "Version.h"
 #include "compressed_pages.h"
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include <esp_task_wdt.h>
+
+// Full Mozilla root CA bundle (same mechanism as OTAManager) so the portal
+// relay can verify hosted splash portals over HTTPS — e.g. Cambium cnMaestro
+// (cnmaestro.*), which is HTTPS-only. LAN portal appliances are plain HTTP
+// and never touch this path.
+extern const uint8_t rootca_crt_bundle_start[] asm("_binary_x509_crt_bundle_start");
 
 // ============================================================================
 // NETWORK STACK INSTRUMENTATION (dev build only)
@@ -787,8 +794,18 @@ void ConfigServer::handlePortalRelay() {
     }
 
     esp_task_wdt_reset();
+    // HTTPS targets (hosted splash portals like cnMaestro) go through
+    // WiFiClientSecure with the Mozilla root bundle; plain-HTTP LAN portals
+    // use the default client. Declared outside the if so the client outlives
+    // the request.
+    WiFiClientSecure secureClient;
     HTTPClient http;
-    http.begin(url);
+    if (url.startsWith("https://")) {
+        secureClient.setCACertBundle(rootca_crt_bundle_start);
+        http.begin(secureClient, url);
+    } else {
+        http.begin(url);
+    }
     http.setTimeout(5000);
     // Follow redirects manually: auto-follow would hop to an unchecked host
     // (portal -> RADIUS FQDN chains are common), bypassing the allowlist.

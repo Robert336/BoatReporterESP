@@ -445,6 +445,12 @@ void WiFiManager::runPortalProbe() {
     } else if (code >= 300 && code < 400) {
         newState = PortalState::PORTAL;
         loginUrl = http.header("Location");
+        // Some gateways return a relative Location (e.g. "/login?...") —
+        // resolve it against the probe URL so downstream consumers
+        // (UI deep-link, relay seed) always get an absolute URL.
+        if (loginUrl.startsWith("/")) {
+            loginUrl = "http://connectivitycheck.gstatic.com" + loginUrl;
+        }
     } else if (code == 200) {
         // generate_204 should never return 200 — a portal served its page.
         newState = PortalState::PORTAL;
