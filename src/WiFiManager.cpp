@@ -26,6 +26,11 @@ WiFiManager::~WiFiManager() {
 void WiFiManager::begin() {
     loadCredentials();
     loadCustomMac();
+    if (_customMac.length()) {
+        LOG_NETWORK("[WIFI] Loaded custom STA MAC from NVS: %s", _customMac.c_str());
+    } else {
+        LOG_NETWORK("[WIFI] No custom STA MAC in NVS — using factory MAC");
+    }
     WiFi.mode(WIFI_STA);
     applyCustomMac();
     WiFi.onEvent(onWiFiEvent, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
@@ -93,17 +98,35 @@ bool WiFiManager::setCustomMac(const String& mac) {
 void WiFiManager::applyCustomMac() {
     if (_customMac.length() == 0) return;
     uint8_t bytes[6];
-    if (!parseMac(_customMac, bytes)) return;
+    if (!parseMac(_customMac, bytes)) {
+        LOG_NETWORK("[WIFI] Custom MAC not applied: failed to parse '%s'", _customMac.c_str());
+        return;
+    }
     // Must be called while the STA is not associated; esp_wifi_set_mac fails
     // mid-association. Callers run this before WiFi.begin() or after a full
     // teardown. Only valid for STA (the AP-side MAC stays factory).
     if (WiFi.status() == WL_CONNECTED) {
-        LOG_NETWORK("[WIFI] Custom MAC takes effect on next reconnect (currently associated)");
+        LOG_NETWORK("[WIFI] Custom MAC not applied — STA associated; will retry on next reconnect");
         return;
     }
+    LOG_NETWORK("[WIFI] Setting STA MAC to %02X:%02X:%02X:%02X:%02X:%02X",
+                bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5]);
     esp_err_t err = esp_wifi_set_mac(WIFI_IF_STA, bytes);
     if (err != ESP_OK) {
-        LOG_CRITICAL("[WIFI] esp_wifi_set_mac failed: %d", err);
+        LOG_CRITICAL("[WIFI] esp_wifi_set_mac failed: %d (%s)", err, esp_err_to_name(err));
+        return;
+    }
+    // Read back the MAC the radio is actually using. esp_wifi_set_mac can
+    // return ESP_OK without taking effect on some framework versions, so
+    // verify rather than trust the return code alone.
+    uint8_t actual[6] = {0};
+    esp_wifi_get_mac(WIFI_IF_STA, actual);
+    bool match = memcmp(actual, bytes, 6) == 0;
+    LOG_NETWORK("[WIFI] STA MAC readback: %02X:%02X:%02X:%02X:%02X:%02X (%s)",
+                actual[0], actual[1], actual[2], actual[3], actual[4], actual[5],
+                match ? "matches" : "MISMATCH");
+    if (!match) {
+        LOG_CRITICAL("[WIFI] Custom MAC NOT applied — readback mismatch (set_mac returned OK but radio kept its MAC)");
     }
 }
 
