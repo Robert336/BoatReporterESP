@@ -81,7 +81,7 @@ Work down this list — each step isolates one layer:
 # 1. DNS resolves to the host's CURRENT public IP?
 getent hosts mqtt.bilgerise.garageforge.ca      # what the fleet will reach
 curl -s https://api.ipify.org                    # the host's actual public IP
-#    Mismatch → DDNS isn't running. Check the timer; run the script by hand.
+#    Mismatch → DDNS isn't running. Check the cloudflare-ddns container; run the script by hand.
 
 # 2. Is the broker healthy on the host itself? (proves cert + listener)
 openssl s_client -connect 127.0.0.1:8883 -servername mqtt.bilgerise.garageforge.ca </dev/null \
