@@ -34,8 +34,10 @@ inline void logMessage(uint8_t level, const char* fmt, ...) {
                        :                                  "[DBG]  ";
 
     // Format into a single stack buffer — vsnprintf once, both sinks read it.
-    // Buffer size matches the old per-macro _buf size (256 B).
-    char buf[256];
+    // 512 B accommodates long single-line payloads such as captive-portal
+    // login URLs (cnMaestro's can exceed 255 B once the `s=` session token
+    // and all ga_* params are included), which the old 256 B buffer truncated.
+    char buf[512];
     va_list args;
     va_start(args, fmt);
     int n = vsnprintf(buf, sizeof(buf) - 1, fmt, args);
@@ -51,7 +53,7 @@ inline void logMessage(uint8_t level, const char* fmt, ...) {
     size_t prefixLen = strlen(prefix);
     size_t msgLen    = strlen(buf);
     // Build prefixed message in a second small buffer to avoid memmove complexity
-    char mqttBuf[256];
+    char mqttBuf[512];
     size_t copyLen = sizeof(mqttBuf) - prefixLen - 1;
     if (copyLen > msgLen) copyLen = msgLen;
     memcpy(mqttBuf, prefix, prefixLen);
