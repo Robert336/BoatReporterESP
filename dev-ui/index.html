@@ -192,7 +192,10 @@ else{el.textContent='safe';el.className='status'}
 }
 function applyStatus(d){
 var dot=document.getElementById('wifi_dot'),lbl=document.getElementById('wifi_label');
-if(d.connected){dot.className='dot ok';lbl.textContent=d.ssid||'Connected'}
+if(d.connected){
+if(d.portalState==='portal'){dot.className='dot warn';lbl.textContent='Sign-in needed'}
+else{dot.className='dot ok';lbl.textContent=d.ssid||'Connected'}
+}
 else{dot.className='dot bad';lbl.textContent='Disconnected'}
 }
 function applyReading(d){

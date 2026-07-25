@@ -10,6 +10,15 @@ static constexpr int MAX_NETWORKS = 10;
 static constexpr int CONNECT_TIMEOUT_MS = 15000; // 15 secs
 static constexpr uint32_t RECONNECT_INTERVAL_MS = 30000; // 30 secs between retry attempts
 
+// Captive-portal detection cadence. A probe is a ~1-3s blocking HTTP GET, so
+// it runs on its own throttle from maintainConnection() — never in the hot
+// path. The fast re-check after a fresh association catches portals within a
+// few seconds of connect; the slow cadence catches portal session expiry
+// (many marinas de-auth after ~24h) without hammering the network.
+static constexpr uint32_t PORTAL_PROBE_AFTER_CONNECT_MS = 3000;
+static constexpr uint32_t PORTAL_PROBE_INTERVAL_MS      = 120000; // 2 min
+static constexpr int      PORTAL_PROBE_TIMEOUT_MS       = 4000;
+
 // H1/H2: after this many consecutive failed WiFi.reconnect() attempts, fall
 // back to a full connectToBestNetwork() scan-and-pick cycle instead of retrying
 // the same (possibly permanently-gone) AP forever.
@@ -32,6 +41,15 @@ struct WiFiCredential {
     char password[PASS_MAX];
 };
 
+// Captive-portal reachability classification. UNKNOWN until the first probe
+// after association completes; ONLINE means the connectivity probe passed
+// un-hijacked; PORTAL means HTTP traffic is being intercepted (marina login).
+enum class PortalState : uint8_t {
+    UNKNOWN = 0,
+    ONLINE  = 1,
+    PORTAL  = 2,
+};
+
 class WiFiManager {
 private:
     Preferences preferences;
@@ -51,6 +69,14 @@ private:
     volatile uint8_t _lastDisconnectReason = 0; // written by WiFi event task
     uint32_t _reconnectAttemptCount = 0;
     uint32_t _lastReconnectAttempt = 0;
+    uint32_t _connectedAtMs = 0; // millis() at association (probe scheduling)
+
+    // Captive-portal detection state. Only meaningful while WL_CONNECTED.
+    PortalState _portalState = PortalState::UNKNOWN;
+    uint32_t    _lastPortalProbe = 0;
+    bool        _portalProbePending = false; // schedule fast probe after (re)connect
+    String      _portalLoginUrl;             // redirect Location captured from portal
+    String      _portalSsid;                 // SSID the current portal state applies to
 
     WiFiManager();
     void loadCredentials();
@@ -60,6 +86,12 @@ private:
     // HANDSHAKE_TIMEOUT, AUTH_FAIL) that are known to sometimes require a full
     // disconnect+rescan rather than a plain WiFi.reconnect().
     static bool isStickyDisconnectReason(uint8_t reason);
+    // Blocking captive-portal probe (~1-4s). Sets _portalState/_portalLoginUrl
+    // and persists the per-SSID flag. Caller must have fed the task watchdog.
+    void runPortalProbe();
+    // NVS per-network portal flag ("portal_N" in the wifi namespace).
+    void setPortalFlagForCurrentSsid(bool portal);
+    bool getPortalFlagForSsid(const char* ssid);
 
 public:
     static WiFiManager& getInstance();
@@ -82,5 +114,21 @@ public:
     bool isConnected();
     int  getRSSI(); // Returns current RSSI in dBm, 0 if not connected
     void disconnect();
+
+    // === Captive portal state ===
+    // L2 association says nothing about real internet reachability behind a
+    // marina captive portal. getPortalState() is refreshed by the periodic
+    // probe in maintainConnection(); isInternetReachable() is the gate
+    // outbound channels should consult before attempting traffic.
+    PortalState getPortalState() const { return _portalState; }
+    const String& getPortalLoginUrl() const { return _portalLoginUrl; }
+    bool isInternetReachable() { return isConnected() && _portalState != PortalState::PORTAL; }
+    // True if a stored network was previously seen behind a captive portal
+    // (persisted in NVS), used by the UI to pre-warn before the first probe.
+    bool storedNetworkHadPortal(const char* ssid) { return getPortalFlagForSsid(ssid); }
+    // Force an immediate probe on the next maintainConnection() tick
+    // (used when portal-assist mode wants fast feedback after the user
+    // completes the portal flow).
+    void requestPortalProbe() { _portalProbePending = true; }
 };
 

@@ -30,6 +30,10 @@ constexpr const char SENSOR_CALIBRATION_NAMESPACE[] = "sensor_cal";
 constexpr const char AP_SSID[] = "ESP32-BilgeRise-Setup";
 constexpr unsigned long SERVER_TIMEOUT_MS = 240000;
 constexpr int DNS_PORT = 53; // Standard DNS port for captive portal
+// Time budget for portal-assist mode: AP stays up while the user completes
+// the marina splash page through /portal/proxy. Auto-exits sooner when the
+// connectivity probe flips to ONLINE.
+constexpr uint32_t PORTAL_ASSIST_TIMEOUT_MS = 300000; // 5 min
 
 // Emergency settings validation limits
 constexpr float MIN_EMERGENCY_WATER_LEVEL_CM = WATER_LEVEL_RANGE_MIN_CM; // 5.0 cm
@@ -69,6 +73,19 @@ private:
     void handleStatus();                    // Return WiFi connection status JSON
     void handleWiFiNetworks();              // GET /wifi/networks — stored SSID list JSON
     void handleWiFiRemove();               // POST /wifi/remove — remove a stored network
+
+    // === Captive Portal Assist Handlers ===
+    void handlePortalStatus();              // GET /portal/status — probe state + login URL JSON
+    void handlePortalAssist();              // POST /portal/assist — enter time-bounded assist mode
+    void handlePortalProxy();               // GET|POST /portal/proxy?u=... — relay portal page with ESP32's identity
+    bool portalAssistActive = false;
+    uint32_t portalAssistStartMs = 0;
+    String portalProxySeedUrl;              // login URL captured from the portal hijack
+    // Allowlist check: only relay to the captured portal host (open-relay guard).
+    bool isAllowedPortalTarget(const String& url);
+    // Rewrite href/src/action URLs in a fetched portal page to route back
+    // through /portal/proxy so the whole flow completes with the ESP32's identity.
+    String rewritePortalHtml(const String& html, const String& pageUrl);
     
     // === Sensor Calibration Handlers ===
     void handleCalibrateZero();             // POST: Set zero calibration point

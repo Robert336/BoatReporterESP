@@ -2,6 +2,7 @@
 
 #include "HttpPoster.h"
 #include "Logger.h"
+#include "WiFiManager.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
 
@@ -14,6 +15,15 @@ bool HttpPoster::post(const char* tag,
                       const char*  authSecret) {
     if (!WiFi.isConnected()) {
         LOG_NETWORK("%s WiFi not connected, cannot send", tag);
+        return false;
+    }
+
+    // Fail fast behind a captive portal: association is up but all HTTP is
+    // intercepted, so a send here burns the 10s timeout against the portal's
+    // hijack and can never succeed. The caller retries on its own schedule
+    // once the connectivity probe flips ONLINE.
+    if (WiFiManager::getInstance().getPortalState() == PortalState::PORTAL) {
+        LOG_NETWORK("%s Captive portal active - deferring send", tag);
         return false;
     }
 

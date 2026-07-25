@@ -3,6 +3,7 @@
 #include "Logger.h"
 #include <esp_task_wdt.h>
 #include <esp_timer.h>
+#include <HTTPClient.h>
 
 
 // Singleton instance getter
@@ -126,20 +127,33 @@ void WiFiManager::removeNetwork(const char* ssid) {
             storedNetworks.erase(it); // value storage — no delete[] needed
 
             if (preferences.begin(WIFI_PREFERENCES_NAMESPACE, false)) {
-                // Rewrite the compacted list in-place (no clear needed)
+                // Rewrite the compacted list in-place (no clear needed).
+                // portal_N flags must shift with the entries — reading them
+                // into a temp array first since we're overwriting as we go.
+                bool portalFlags[MAX_NETWORKS] = {};
+                for (int i = 0; i < (int)storedNetworks.size() + 1 && i < MAX_NETWORKS; i++) {
+                    char key[16];
+                    snprintf(key, sizeof(key), "portal_%d", i);
+                    portalFlags[i] = preferences.getBool(key, false);
+                }
                 for (int i = 0; i < (int)storedNetworks.size(); i++) {
-                    char key_ssid[16], key_pass[16];
+                    char key_ssid[16], key_pass[16], key_portal[16];
                     snprintf(key_ssid, sizeof(key_ssid), "ssid_%d", i);
                     snprintf(key_pass, sizeof(key_pass), "pass_%d", i);
+                    snprintf(key_portal, sizeof(key_portal), "portal_%d", i);
                     preferences.putString(key_ssid, storedNetworks[i].ssid);
                     preferences.putString(key_pass, storedNetworks[i].password);
+                    // Entry i+1 shifted down into slot i
+                    if (i + 1 < MAX_NETWORKS) preferences.putBool(key_portal, portalFlags[i + 1]);
                 }
                 // Delete the now-stale last slot
-                char stale_ssid[16], stale_pass[16];
+                char stale_ssid[16], stale_pass[16], stale_portal[16];
                 snprintf(stale_ssid, sizeof(stale_ssid), "ssid_%d", (int)storedNetworks.size());
                 snprintf(stale_pass, sizeof(stale_pass), "pass_%d", (int)storedNetworks.size());
+                snprintf(stale_portal, sizeof(stale_portal), "portal_%d", (int)storedNetworks.size());
                 preferences.remove(stale_ssid);
                 preferences.remove(stale_pass);
+                preferences.remove(stale_portal);
                 preferences.putInt("count", storedNetworks.size());
                 preferences.end();
                 LOG_NETWORK("Removed network: %s", removed.c_str());
@@ -217,6 +231,11 @@ void WiFiManager::connectToBestNetwork() {
             _connectedSinceUs = esp_timer_get_time();
             _disconnectedSinceUs = 0;
             _reconnectAttemptCount = 0;
+            _connectedAtMs = millis();
+            // Fresh association — portal state is unknown until the probe runs.
+            _portalState = PortalState::UNKNOWN;
+            _portalLoginUrl = "";
+            _portalProbePending = true;
             LOG_NETWORK("[WIFI] Connected! IP: %s", WiFi.localIP().toString().c_str());
         } else {
             isWiFiConnected = false;
@@ -268,8 +287,35 @@ void WiFiManager::maintainConnection() {
             _disconnectedSinceUs = 0;
             _reconnectAttemptCount = 0;
             _lastDisconnectReason = 0;
+            _connectedAtMs = millis();
+            _portalState = PortalState::UNKNOWN;
+            _portalLoginUrl = "";
+            _portalProbePending = true;
+        }
+
+        // Captive-portal probe — throttled, blocking up to PORTAL_PROBE_TIMEOUT_MS.
+        uint32_t nowMs = millis();
+        // A pending probe fires once the link has been up for
+        // PORTAL_PROBE_AFTER_CONNECT_MS (DNS/DHCP settle time), or immediately
+        // when requestPortalProbe() was called with the link already up
+        // (portal-assist mode polling for the user's click-through).
+        bool due = _portalProbePending
+            ? (nowMs - _connectedAtMs >= PORTAL_PROBE_AFTER_CONNECT_MS)
+            : (nowMs - _lastPortalProbe >= PORTAL_PROBE_INTERVAL_MS);
+        if (due) {
+            _portalProbePending = false;
+            _lastPortalProbe = nowMs;
+            esp_task_wdt_reset();
+            runPortalProbe();
+            esp_task_wdt_reset();
         }
         return;
+    }
+
+    // Not associated — portal state is meaningless until we reconnect.
+    if (_portalState != PortalState::UNKNOWN) {
+        _portalState = PortalState::UNKNOWN;
+        _portalLoginUrl = "";
     }
 
     uint32_t now = millis();
@@ -365,5 +411,105 @@ bool WiFiManager::isStickyDisconnectReason(uint8_t reason) {
         default:
             return false;
     }
+}
+
+// ============================================================================
+// CAPTIVE PORTAL DETECTION
+// ============================================================================
+//
+// Probes the Android/Chrome connectivity-check endpoint. An un-hijacked
+// network answers 204 with an empty body; a captive portal answers 200 with
+// its splash page or 302s to its login URL. The portal's redirect Location is
+// captured so the config UI can deep-link the user to the marina login page
+// (and seed the /portal/proxy relay).
+
+static const char PORTAL_PROBE_URL[] = "http://connectivitycheck.gstatic.com/generate_204";
+
+void WiFiManager::runPortalProbe() {
+    if (WiFi.status() != WL_CONNECTED) return;
+
+    HTTPClient http;
+    http.begin(PORTAL_PROBE_URL);
+    http.setTimeout(PORTAL_PROBE_TIMEOUT_MS);
+    http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+    // Capture the portal's Location header on a 3xx hijack.
+    const char* headers[] = {"Location"};
+    http.collectHeaders(headers, 1);
+
+    int code = http.GET();
+    PortalState newState;
+    String loginUrl;
+
+    if (code == 204) {
+        newState = PortalState::ONLINE;
+    } else if (code >= 300 && code < 400) {
+        newState = PortalState::PORTAL;
+        loginUrl = http.header("Location");
+    } else if (code == 200) {
+        // generate_204 should never return 200 — a portal served its page.
+        newState = PortalState::PORTAL;
+    } else if (code > 0) {
+        // Other 4xx/5xx from the probe endpoint itself — treat as portal-ish
+        // interference rather than healthy internet.
+        newState = PortalState::PORTAL;
+        LOG_NETWORK("[PORTAL] Probe returned unexpected HTTP %d", code);
+    } else {
+        // TCP/DNS failure — inconclusive (flaky signal, DNS slow). Keep the
+        // previous state rather than flapping ONLINE<->PORTAL on noise.
+        LOG_NETWORK("[PORTAL] Probe failed: %s (keeping previous state)",
+                    http.errorToString(code).c_str());
+        http.end();
+        return;
+    }
+    http.end();
+
+    if (newState != _portalState) {
+        LOG_NETWORK("[PORTAL] State: %s -> %s%s",
+                    _portalState == PortalState::ONLINE ? "ONLINE" :
+                    _portalState == PortalState::PORTAL ? "PORTAL" : "UNKNOWN",
+                    newState == PortalState::ONLINE ? "ONLINE" :
+                    newState == PortalState::PORTAL ? "PORTAL" : "UNKNOWN",
+                    newState == PortalState::PORTAL && loginUrl.length()
+                        ? (String(" login=") + loginUrl).c_str() : "");
+        _portalState = newState;
+        _portalSsid = WiFi.SSID();
+        setPortalFlagForCurrentSsid(newState == PortalState::PORTAL);
+    }
+    if (loginUrl.length() > 0) {
+        _portalLoginUrl = loginUrl;
+    } else if (newState == PortalState::ONLINE) {
+        _portalLoginUrl = "";
+    }
+}
+
+void WiFiManager::setPortalFlagForCurrentSsid(bool portal) {
+    String current = WiFi.SSID();
+    for (int i = 0; i < (int)storedNetworks.size(); i++) {
+        if (current == storedNetworks[i].ssid) {
+            if (preferences.begin(WIFI_PREFERENCES_NAMESPACE, false)) {
+                char key[16];
+                snprintf(key, sizeof(key), "portal_%d", i);
+                preferences.putBool(key, portal);
+                preferences.end();
+            }
+            return;
+        }
+    }
+}
+
+bool WiFiManager::getPortalFlagForSsid(const char* ssid) {
+    for (int i = 0; i < (int)storedNetworks.size(); i++) {
+        if (strcmp(storedNetworks[i].ssid, ssid) == 0) {
+            if (preferences.begin(WIFI_PREFERENCES_NAMESPACE, true)) {
+                char key[16];
+                snprintf(key, sizeof(key), "portal_%d", i);
+                bool flag = preferences.getBool(key, false);
+                preferences.end();
+                return flag;
+            }
+            return false;
+        }
+    }
+    return false;
 }
 #endif // UNIT_TESTING

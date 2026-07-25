@@ -45,6 +45,12 @@ let mockState = {
     rssi: -45,
     storedNetworks: ['MyWiFi', 'BoatWiFi'], // mirrors WiFiManager::getStoredSSIDs()
 
+    // Captive portal simulation: 'online' | 'portal' | 'unknown'
+    // Set to 'portal' to exercise the sign-in banner + assist flow.
+    portalState: 'online',
+    portalLoginUrl: '',
+    portalAssistActive: false,
+
     // Sensor calibration
     zeroPoint_mv: 500,
     hasTwoPointCalibration: true,
@@ -139,6 +145,8 @@ app.get('/init', (req, res) => {
             ssid: mockState.ssid,
             ip: mockState.ip,
             rssi: mockState.rssi,
+            portalState: mockState.portalState,
+            portalLoginUrl: mockState.portalLoginUrl,
         },
         sensor: {
             sensorAvailable: true,
@@ -163,6 +171,8 @@ app.get('/status', (req, res) => {
         ssid: mockState.ssid,
         ip: mockState.ip,
         rssi: mockState.rssi,
+        portalState: mockState.portalState,
+        portalLoginUrl: mockState.portalLoginUrl,
     });
 });
 
@@ -193,6 +203,58 @@ app.post('/wifi/remove', (req, res) => {
     mockState.storedNetworks = mockState.storedNetworks.filter(s => s !== ssid);
     console.log(`[WIFI] Removed stored network: ${ssid}`);
     res.json({ success: true });
+});
+
+// ============================================================================
+// CAPTIVE PORTAL ASSIST ENDPOINTS
+// ============================================================================
+
+app.get('/portal/status', (req, res) => {
+    res.json({
+        state: mockState.portalState,
+        loginUrl: mockState.portalLoginUrl,
+        assistActive: mockState.portalAssistActive,
+        ssid: mockState.ssid,
+    });
+});
+
+app.post('/portal/assist', (req, res) => {
+    if (!mockState.connected) {
+        res.status(409).json({ error: 'Not associated to a network' });
+        return;
+    }
+    mockState.portalAssistActive = true;
+    console.log('[PORTAL] Assist mode started');
+    res.json({ success: true, loginUrl: mockState.portalLoginUrl });
+});
+
+// In the mock, the proxy shows a fake marina splash page; POSTing the form
+// simulates the portal accepting the sign-in and opening the network.
+app.get('/portal/proxy', (req, res) => {
+    if (!mockState.portalAssistActive) {
+        res.status(409).json({ error: 'Portal assist mode not active' });
+        return;
+    }
+    res.send(`<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Marina Guest Wi-Fi (mock)</title></head>
+<body style="font-family:sans-serif;max-width:420px;margin:40px auto;padding:0 16px">
+<h2>Harbor View Marina</h2>
+<p>Mock splash page served via /portal/proxy</p>
+<form method="POST" action="/portal/proxy">
+<label><input type="checkbox" required> I accept the terms of service</label><br><br>
+<button type="submit" style="padding:10px 20px">Connect</button>
+</form></body></html>`);
+});
+
+app.post('/portal/proxy', (req, res) => {
+    mockState.portalState = 'online';
+    mockState.portalAssistActive = false;
+    mockState.portalLoginUrl = '';
+    console.log('[PORTAL] Mock sign-in accepted - network now ONLINE');
+    res.send(`<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="font-family:sans-serif;max-width:420px;margin:40px auto;padding:0 16px">
+<h2>Connected!</h2><p>The portal has opened. You can close this page.</p>
+<p><a href="/wifi-config">Back to Wi-Fi settings</a></p></body></html>`);
 });
 
 // ============================================================================
