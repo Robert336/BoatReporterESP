@@ -616,6 +616,8 @@ void ConfigServer::handlePortalStatus() {
 
 void ConfigServer::handlePortalAssist() {
     WiFiManager& wifiMgr = WiFiManager::getInstance();
+    LOG_INFO("Portal assist: requested (connected=%d, portalState=%d, free heap=%u)",
+             (int)wifiMgr.isConnected(), (int)wifiMgr.getPortalState(), (unsigned)ESP.getFreeHeap());
     if (!wifiMgr.isConnected()) {
         JsonResponder::sendError(server, 409, "Not associated to a network");
         return;
@@ -782,6 +784,7 @@ String ConfigServer::rewritePortalHtml(const String& html, const String& pageUrl
 
 void ConfigServer::handlePortalRelay() {
     PROFILE_REQUEST("/portal/relay");
+    LOG_INFO("Portal relay: request u=%.80s", server->hasArg("u") ? server->arg("u").c_str() : "(seed)");
     if (!portalAssistActive) {
         JsonResponder::sendError(server, 409, "Portal assist mode not active");
         return;
@@ -825,6 +828,7 @@ void ConfigServer::handlePortalRelay() {
     }
 
     int code;
+    uint32_t fetchStartMs = millis();
     if (server->method() == HTTP_POST) {
         String ctype = server->hasHeader("Content-Type") ? server->header("Content-Type") : "";
         String body;
@@ -856,6 +860,7 @@ void ConfigServer::handlePortalRelay() {
         code = http.GET();
     }
     esp_task_wdt_reset();
+    LOG_INFO("Portal relay: upstream HTTP %d in %ums", code, (unsigned)(millis() - fetchStartMs));
 
     if (code <= 0) {
         LOG_INFO("Portal proxy: fetch failed for %s: %s", url.c_str(), http.errorToString(code).c_str());
