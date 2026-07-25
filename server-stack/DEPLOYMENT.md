@@ -3,7 +3,7 @@
 Operational notes for the **actual running** BoatReporter broker, complementing
 the generic setup guide in [README.md](README.md). The README is a reusable
 template (`mqtt.example.com`, a Pi); this file records how the real instance is
-wired and how to debug it when a device can't connect.
+wired and how to debug it when a device cannot connect.
 
 ## Topology
 
@@ -65,9 +65,9 @@ docker compose logs -f cloudflare-ddns         # "updated ... -> <ip>" / "alread
 ```
 
 The record MUST stay **DNS-only (grey-cloud)** — the script enforces
-`proxied:false`, but don't flip it on in the dashboard either.
+`proxied:false`, but do not flip it on in the dashboard either.
 
-## Troubleshooting: device can't reach the broker
+## Troubleshooting: device cannot reach the broker
 
 > **`[E][WiFiClientSecure.cpp] connect(): start_ssl_client: -1` is a TCP-connect
 > failure, NOT a TLS/cert error.** A `-1` means the socket never connected, so

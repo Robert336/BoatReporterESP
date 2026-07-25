@@ -174,7 +174,7 @@ flowchart LR
 - **16-slot FIFO ring buffer** (`fifoQueue`): For one-shot events (silence confirmations, sensor recovery, bus errors). Each message is distinct and must be delivered.
 - **Strict priority**: The task always drains the emergency mailbox before the FIFO. Wake-up is via direct task notification (`xTaskNotifyGive`), not a queue set, guaranteeing ordering.
 - **Per-channel retry**: Failed critical alerts are retried up to 4 times with exponential backoff (5 s → 15 s → 30 s).
-- **Channel coalescing**: All channels for a message are packed into one `NotifMsg` struct (bitmask of `CHAN_*` flags), preventing partial delivery (e.g., SMS sent but Discord dropped).
+- **Channel coalescing**: All channels for a message are packed into one `NotifMsg` struct (bitmask of `CHAN_*` flags), preventing partial delivery (e.g. SMS sent but Discord dropped).
 
 #### Notification Channels
 

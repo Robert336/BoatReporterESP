@@ -1,10 +1,10 @@
 # Testing Without GCC/Native Platform
 
-If you don't want to install GCC on Windows, you can still test your logic using the built-in mock mode that's already in your code.
+If you prefer not to install GCC on Windows, you can still test your logic using the built-in mock mode that is already in your code.
 
 ## Using Built-in Mock Mode
 
-Your `WaterPressureSensor` class already has mock functionality! You can test on the actual ESP32 hardware (or in the dev environment) without physical sensors.
+Your `WaterPressureSensor` class already has mock functionality. You can test on the actual ESP32 hardware (or in the dev environment) without physical sensors.
 
 ### Enable Mock Mode
 
@@ -14,7 +14,7 @@ Mock mode is controlled by a build flag, not a source edit. Use the `env:mock` b
 pio run -e mock --target upload
 ```
 
-This defines `ENABLE_MOCK_MODE`, which causes `main.cpp` to set `USE_MOCK = true` at compile time. The sensor generates random water level readings (4–20 cm range) without needing the physical sensor connected. All other firmware features (WiFi, web interface, MQTT, OTA, notifications) behave normally.
+This defines `ENABLE_MOCK_MODE`, which causes `main.cpp` to set `USE_MOCK = true` at compile time. The sensor generates random water level readings (4–20 cm range) without the physical sensor connected. All other firmware features (WiFi, web interface, MQTT, OTA, notifications) behave normally.
 
 ### Test Build for ESP32 (No Native Compiler Required)
 
@@ -46,13 +46,13 @@ This runs the same Unity unit tests, but on the actual ESP32 hardware instead of
 ### Manual Testing via Serial Monitor
 
 1. Upload with `pio run -e mock --target upload`
-2. Open Serial Monitor (115200 baud)
+2. Open the Serial Monitor (115200 baud)
 3. Watch the logs to verify state machine behavior
 4. Use the debug/config web interface to test different scenarios
 
 ### Web-Based Testing
 
-You already have a great mock server setup in `dev-ui/`:
+You already have a mock server setup in `dev-ui/`:
 
 ```bash
 cd dev-ui
@@ -80,15 +80,15 @@ Then open `http://localhost:3000` to test the web interface with simulated senso
 ✅ No hardware needed at all
 ✅ Visual feedback
 ✅ Great for UI/API testing
-❌ Doesn't test ESP32 code directly
+❌ Does not test ESP32 code directly
 
 ## Recommendation
 
-For your use case, I'd suggest:
+For this use case:
 
-1. **Automated unit tests on ESP32**: Use `pio test -e esp32-test` (no GCC required!)
-2. **Quick manual testing**: Use `pio run -e mock --target upload` to run full firmware with simulated sensor
+1. **Automated unit tests on ESP32**: Use `pio test -e esp32-test` (no GCC required)
+2. **Quick manual testing**: Use `pio run -e mock --target upload` to run the full firmware with a simulated sensor
 3. **Full automated testing**: Install MinGW-w64 and use `pio test -e native` (fastest)
 4. **UI testing**: Use the mock server in `dev-ui/`
 
-The ESP32 test environment (`esp32-test`) gives you the best of both worlds - automated Unity tests without needing to install GCC on Windows!
+The ESP32 test environment (`esp32-test`) gives you the best of both worlds — automated Unity tests without needing to install GCC on Windows.

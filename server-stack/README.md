@@ -38,7 +38,7 @@ First launch initializes InfluxDB (org/bucket/token from `.env`) and auto-loads
 the Grafana datasource + the **Boat Reporter — Bilge Monitor** dashboard.
 
 > For how the live broker is actually deployed (Docker on the host, router DMZ,
-> dynamic IP, Cloudflare DDNS) and a runbook for when a device can't connect, see
+> dynamic IP, Cloudflare DDNS) and a runbook for when a device cannot connect, see
 > [DEPLOYMENT.md](DEPLOYMENT.md).
 
 - **Grafana:** `http://<pi-ip>:3000` — log in with `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD`.
@@ -54,7 +54,7 @@ see the note in the [main README](../README.md#mqtt-broker-configuration).)
 ## Verify data is flowing
 
 ```bash
-# Watch raw telemetry hit the broker (run on the Pi, or any LAN host):
+# Watch raw telemetry reach the broker (run on the Pi, or any LAN host):
 docker exec -it boat-mosquitto mosquitto_sub -t 'boat/+/telemetry' -v
 
 # Confirm Telegraf is writing (no errors = good):
@@ -68,7 +68,7 @@ mock -t upload`) — it publishes simulated readings on the same topics.
 
 ## WAN / TLS deployment
 
-The default config is an open, anonymous broker — fine on a trusted LAN, but
+The default config is an open, anonymous broker — acceptable on a trusted LAN, but
 **never expose port 1883 to the internet**. To let a boat on marina WiFi reach
 the broker, use a domain name pointed at your home IP, port-forward the **TLS**
 port only, and lock the broker down with certificates + auth + ACLs.
@@ -109,7 +109,7 @@ echo "MQTT_DOMAIN=mqtt.example.com" >> .env                # your hostname
 ```
 
 Let's Encrypt certs expire every 90 days. **Automate renewal** so the fleet
-doesn't lose connectivity:
+does not lose connectivity:
 
 ```bash
 # One-time setup after the first successful certificate:
@@ -154,7 +154,7 @@ In the device UI → **Notifications → MQTT broker**:
 
 | Field | Value |
 |-------|-------|
-| Broker host | `mqtt.example.com` (the **domain**, not an IP — it's verified against the cert) |
+| Broker host | `mqtt.example.com` (the **domain**, not an IP — it is verified against the cert) |
 | Port | `8883` |
 | Use TLS encryption | ✅ |
 | Username / Password | the `boat-<mac>` credentials you created |
@@ -252,7 +252,7 @@ checks, and not leaking memory, all without physical access.
 - **Bucket name:** the dashboard's Flux queries hardcode the bucket `boat`. If
   you change `INFLUX_BUCKET`, update the queries in
   `grafana/dashboards/boat-reporter.json` (or edit them in the Grafana UI).
-- **Broker authentication / internet exposure:** anonymous by default (fine on
+- **Broker authentication / internet exposure:** anonymous by default (acceptable on
   a trusted LAN). To require credentials and TLS for WAN access, see
   [WAN / TLS deployment](#wan--tls-deployment) above.
 - **Multiple boats:** the `boat/+/telemetry` wildcard ingests every device on

@@ -1,6 +1,6 @@
 # MQTT Telemetry & Logging
 
-The device streams all log output to an MQTT broker (in addition to serial). This enables live monitoring without a physical serial connection — useful for a boat at a marina.
+The device streams all log output to an MQTT broker in addition to serial. This enables live monitoring without a physical serial connection — useful for a boat at a marina.
 
 **Configuration** — set via the web interface Notifications page (NVS-backed):
 - Broker host / port (default fallback: `192.168.2.41:1883` — override this for your network)

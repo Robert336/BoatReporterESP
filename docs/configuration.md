@@ -141,7 +141,7 @@ In the web interface, open **Notification Settings → MQTT broker** and set:
 | **Port** | Defaults to `8883` (TLS enabled by default) |
 | **Use TLS encryption** | Encrypts the connection and validates the broker certificate. **Required when the broker is exposed over the internet** |
 | **Username** | Optional — leave blank for anonymous brokers |
-| **Password** | Optional, write-only. **Leave blank to keep the current password** — saving an unrelated change won't wipe it |
+| **Password** | Optional, write-only. **Leave blank to keep the current password** — saving an unrelated change will not wipe it |
 | **Base topic** | Optional — defaults to `boat/<6-hex-MAC>` |
 
 Click **Save** to apply (takes effect live, no reboot) and **Test** to publish a test message. The connection status pill polls every few seconds and shows `connected` / `disconnected` / `off`.
