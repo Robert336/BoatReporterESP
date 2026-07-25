@@ -482,6 +482,14 @@ void WiFiManager::runPortalProbe() {
         setPortalFlagForCurrentSsid(newState == PortalState::PORTAL);
     }
     if (loginUrl.length() > 0) {
+        // Always print the full captured portal URL, not just on state
+        // transitions — the marina can rotate session tokens between probes
+        // (cnMaestro's `s=` param), and field debugging needs the exact URL
+        // the device was handed. Serial is the only place the complete URL
+        // is visible (UI truncates nothing but nobody watches the UI).
+        if (loginUrl != _portalLoginUrl) {
+            LOG_NETWORK("[PORTAL] Login URL: %s", loginUrl.c_str());
+        }
         _portalLoginUrl = loginUrl;
     } else if (newState == PortalState::ONLINE) {
         _portalLoginUrl = "";
