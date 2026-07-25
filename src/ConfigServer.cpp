@@ -252,10 +252,10 @@ void ConfigServer::startSetupMode() {
     // index page to every probe).
     server->onNotFound([this]() { handleCaptivePortalProbe(); });
     
-    // Enable reading If-None-Match for ETag-based caching, Cookie for the
-    // portal proxy's session pass-through.
-    const char* headersToCollect[] = {"If-None-Match", "Cookie"};
-    server->collectHeaders(headersToCollect, 2);
+    // Enable reading If-None-Match for ETag-based caching, Cookie and
+    // Content-Type for the portal relay's session/body pass-through.
+    const char* headersToCollect[] = {"If-None-Match", "Cookie", "Content-Type"};
+    server->collectHeaders(headersToCollect, 3);
 
     // Start the server
     server->begin();
@@ -818,14 +818,25 @@ void ConfigServer::handlePortalRelay() {
 
     int code;
     if (server->method() == HTTP_POST) {
-        // Re-serialize the phone's form fields and submit as the ESP32.
+        String ctype = server->hasHeader("Content-Type") ? server->header("Content-Type") : "";
         String body;
-        for (int i = 0; i < server->args(); i++) {
-            if (server->argName(i) == "u") continue;
-            if (body.length()) body += "&";
-            body += urlEncodeForProxy(server->argName(i)) + "=" + urlEncodeForProxy(server->arg(i));
+        if (ctype.startsWith("application/json")) {
+            // JS-driven portals (cnMaestro's splash page) POST JSON via
+            // fetch(). WebServer gives us the raw body as arg("plain");
+            // forward it verbatim with the content type intact.
+            body = server->arg("plain");
+            http.addHeader("Content-Type", "application/json");
+            code = http.POST((uint8_t*)body.c_str(), body.length());
+        } else {
+            // Classic form submit: re-serialize the phone's form fields and
+            // submit as the ESP32.
+            for (int i = 0; i < server->args(); i++) {
+                if (server->argName(i) == "u") continue;
+                if (body.length()) body += "&";
+                body += urlEncodeForProxy(server->argName(i)) + "=" + urlEncodeForProxy(server->arg(i));
+            }
+            code = http.POST(body);
         }
-        code = http.POST(body);
     } else {
         code = http.GET();
     }
