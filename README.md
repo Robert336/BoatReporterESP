@@ -1,14 +1,35 @@
 # BoatReporterESP
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Version](https://img.shields.io/badge/version-1.1.8-blue)](https://github.com/Robert336/BoatReporterESP/releases)
+[![ESP32](https://img.shields.io/badge/ESP32-PlatformIO-orange)](https://platformio.org/)
+[![Framework](https://img.shields.io/badge/framework-Arduino-00979D)](https://www.arduino.cc/)
+[![C++](https://img.shields.io/badge/C%2B%2B-17-00599C)](https://en.cppreference.com/)
+
 **An ESP32-based bilge monitoring system (firmware v1.1.8).** It continuously measures water level in your boat's bilge, dispatches emergency alerts the moment the level crosses a danger threshold, and streams live telemetry to a self-hosted Grafana dashboard, so you can check on your vessel from anywhere.
+
+<details>
+<summary><strong>Preview</strong>: BoatReporterESP in action</summary>
 
 <img width="500" alt="hero image" src="https://github.com/user-attachments/assets/67ef94db-ea68-4508-ad74-67d70f768ae9" />
 
+</details>
+
 **At a glance:** water-level monitoring (5–100 cm) · two-tier SMS/Discord/webhook emergency alerts · captive-portal web config (no app to install) · remote OTA firmware updates · live Grafana monitoring dashboard.
+
+<details>
+<summary><strong>Grafana dashboard</strong>: live water level, system state, and device health</summary>
 
 ![Grafana monitoring dashboard: live water level, system state, and device health](docs/screenshots/grafana-full.png)
 
+</details>
+
+<details>
+<summary><strong>Web interface</strong>: dashboard, settings, notifications, WiFi, and calibration</summary>
+
 ![Built-in captive-portal web interface: dashboard, settings, notifications, WiFi, and calibration pages](docs/screenshots/web-config-pages-v2.png)
+
+</details>
 
 ## Contents
 
@@ -73,7 +94,12 @@ Full setup, calibration, and MQTT walkthroughs are in [docs/configuration.md](do
 
 ## Hardware & Wiring
 
+<details>
+<summary><strong>Hardware diagram</strong>: component callouts and assembly overview</summary>
+
 <img width="700" alt="unit diagram with callouts for different components" src="https://github.com/user-attachments/assets/d19359c8-c228-4b33-92cd-703549a533da" />
+
+</details>
 
 **Core components:** ESP32-WROOM · ADS1115 16-bit ADC · 4–20 mA depth sensor (0–100 cm) · current-to-voltage converter · DC-DC buck converter (12 V → 5 V) · 4-channel logic level shifter · waterproof enclosure with 7-pin connector · push button · status LED.
 
