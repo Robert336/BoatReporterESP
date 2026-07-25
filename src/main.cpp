@@ -116,6 +116,12 @@ NotificationWorker notifier;
 MQTTService mqtt;
 void setup() {
     Serial.begin(115200);
+    
+    // Print MAC address
+    uint8_t mac[6];
+    esp_read_mac(mac, ESP_MAC_WIFI_STA);
+    LOG_SETUP("[SETUP] Device MAC: %02X:%02X:%02X:%02X:%02X:%02X",
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
     // Drive unused GPIOs to a defined LOW state before any peripheral init.
     // See UNUSED_GPIOS above — curated allowlist, never a loop over all pins.
