@@ -73,6 +73,7 @@ private:
     void handleStatus();                    // Return WiFi connection status JSON
     void handleWiFiNetworks();              // GET /wifi/networks — stored SSID list JSON
     void handleWiFiRemove();               // POST /wifi/remove — remove a stored network
+    void handleWiFiMac();                  // GET/POST /wifi/mac — custom STA MAC address
 
     // === Captive Portal Assist Handlers ===
     void handlePortalStatus();              // GET /portal/status — probe state + login URL JSON

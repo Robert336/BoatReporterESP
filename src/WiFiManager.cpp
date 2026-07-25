@@ -3,6 +3,7 @@
 #include "Logger.h"
 #include <esp_task_wdt.h>
 #include <esp_timer.h>
+#include <esp_wifi.h>
 #include <HTTPClient.h>
 
 
@@ -24,9 +25,86 @@ WiFiManager::~WiFiManager() {
 
 void WiFiManager::begin() {
     loadCredentials();
+    loadCustomMac();
     WiFi.mode(WIFI_STA);
+    applyCustomMac();
     WiFi.onEvent(onWiFiEvent, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
     connectToBestNetwork();
+}
+
+bool WiFiManager::parseMac(const String& s, uint8_t out[6]) {
+    // Accepts "AA:BB:CC:DD:EE:FF" or "AA-BB-CC-DD-EE-FF". Colon is the
+    // canonical form; hyphen is tolerated since users paste Windows-style
+    // addresses. No shorthand forms — 17 chars exactly.
+    if (s.length() != 17) return false;
+    for (int i = 0; i < 6; i++) {
+        char hi = s.charAt(i * 3), lo = s.charAt(i * 3 + 1);
+        auto nib = [](char c) -> int {
+            if (c >= '0' && c <= '9') return c - '0';
+            if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+            if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+            return -1;
+        };
+        int h = nib(hi), l = nib(lo);
+        if (h < 0 || l < 0) return false;
+        out[i] = (uint8_t)((h << 4) | l);
+        if (i < 5) {
+            char sep = s.charAt(i * 3 + 2);
+            if (sep != ':' && sep != '-') return false;
+        }
+    }
+    return true;
+}
+
+void WiFiManager::loadCustomMac() {
+    if (preferences.begin(WIFI_PREFERENCES_NAMESPACE, true)) {
+        _customMac = preferences.getString("sta_mac", "");
+        preferences.end();
+    }
+}
+
+String WiFiManager::getCustomMac() {
+    return _customMac;
+}
+
+bool WiFiManager::setCustomMac(const String& mac) {
+    String trimmed = mac;
+    trimmed.trim();
+    if (trimmed.length() > 0) {
+        uint8_t bytes[6];
+        if (!parseMac(trimmed, bytes)) return false;
+        // Multicast/broadcast addresses (LSB of first byte = 1) are invalid as
+        // a station MAC; esp_wifi_set_mac would reject them anyway, but fail
+        // fast with a clear cause.
+        if (bytes[0] & 0x01) return false;
+    }
+    _customMac = trimmed;
+    _customMac.toUpperCase();
+    _customMac.replace('-', ':');
+    if (preferences.begin(WIFI_PREFERENCES_NAMESPACE, false)) {
+        preferences.putString("sta_mac", _customMac);
+        preferences.end();
+    }
+    applyCustomMac();
+    LOG_NETWORK("[WIFI] Custom STA MAC %s", _customMac.length() ? _customMac.c_str() : "cleared (factory MAC)");
+    return true;
+}
+
+void WiFiManager::applyCustomMac() {
+    if (_customMac.length() == 0) return;
+    uint8_t bytes[6];
+    if (!parseMac(_customMac, bytes)) return;
+    // Must be called while the STA is not associated; esp_wifi_set_mac fails
+    // mid-association. Callers run this before WiFi.begin() or after a full
+    // teardown. Only valid for STA (the AP-side MAC stays factory).
+    if (WiFi.status() == WL_CONNECTED) {
+        LOG_NETWORK("[WIFI] Custom MAC takes effect on next reconnect (currently associated)");
+        return;
+    }
+    esp_err_t err = esp_wifi_set_mac(WIFI_IF_STA, bytes);
+    if (err != ESP_OK) {
+        LOG_CRITICAL("[WIFI] esp_wifi_set_mac failed: %d", err);
+    }
 }
 
 void WiFiManager::loadCredentials() {
@@ -213,6 +291,10 @@ void WiFiManager::connectToBestNetwork() {
     if (bestNetwork != -1) {
         LOG_NETWORK("[WIFI] Connecting to: %s (%d dBm)", storedNetworks[bestNetwork].ssid, bestRSSI);
 
+        // Re-apply the custom STA MAC before each association. Scanning does
+        // not reset it, but this keeps the invariant local to the one place
+        // the radio actually associates.
+        applyCustomMac();
         WiFi.begin(storedNetworks[bestNetwork].ssid, storedNetworks[bestNetwork].password);
 
         unsigned long startTime = millis();

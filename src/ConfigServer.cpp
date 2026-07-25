@@ -149,6 +149,10 @@ void ConfigServer::startSetupMode() {
     // Route: POST /wifi/remove → remove a stored network by SSID
     server->on("/wifi/remove", HTTP_POST, [this]() { handleWiFiRemove(); });
 
+    // Route: GET/POST /wifi/mac → read or set the custom STA MAC address
+    server->on("/wifi/mac", HTTP_GET,  [this]() { handleWiFiMac(); });
+    server->on("/wifi/mac", HTTP_POST, [this]() { handleWiFiMac(); });
+
     // Captive portal assist (marina WiFi sign-in relay)
     server->on("/portal/status", HTTP_GET, [this]() { handlePortalStatus(); });
     server->on("/portal/assist", HTTP_POST, [this]() { handlePortalAssist(); });
@@ -576,6 +580,28 @@ void ConfigServer::handleWiFiNetworks() {
     }
     networksArr += "]";
     server->send(200, "application/json", networksArr);
+    serverStartTime = millis();
+}
+
+void ConfigServer::handleWiFiMac() {
+    WiFiManager& wifiMgr = WiFiManager::getInstance();
+    if (server->method() == HTTP_GET) {
+        // Report the currently effective STA MAC and any custom override, so
+        // the UI can show both (custom takes effect on next association).
+        JsonResponder().str("mac", WiFi.macAddress())
+                       .str("custom", wifiMgr.getCustomMac())
+                       .send(server);
+        return;
+    }
+    // POST: empty "mac" clears the override and reverts to the factory MAC.
+    String mac = server->hasArg("mac") ? server->arg("mac") : "";
+    if (wifiMgr.setCustomMac(mac)) {
+        JsonResponder().boolean("success", true).send(server);
+    } else {
+        JsonResponder().boolean("success", false)
+                       .str("message", "Invalid MAC — expected AA:BB:CC:DD:EE:FF (unicast)")
+                       .send(server, 400);
+    }
     serverStartTime = millis();
 }
 

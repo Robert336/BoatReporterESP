@@ -205,6 +205,22 @@ app.post('/wifi/remove', (req, res) => {
     res.json({ success: true });
 });
 
+// GET/POST /wifi/mac — custom STA MAC override (matches ConfigServer::handleWiFiMac)
+let mockCustomMac = '';
+app.get('/wifi/mac', (req, res) => {
+    res.json({ mac: mockCustomMac || '24:6F:28:A1:B2:C3', custom: mockCustomMac });
+});
+app.post('/wifi/mac', (req, res) => {
+    const mac = (req.body.mac || '').trim();
+    if (mac && !/^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$/.test(mac)) {
+        res.status(400).json({ success: false, message: 'Invalid MAC' });
+        return;
+    }
+    mockCustomMac = mac.toUpperCase().replace(/-/g, ':');
+    console.log(`[WIFI] Custom STA MAC: ${mockCustomMac || '(cleared)'}`);
+    res.json({ success: true });
+});
+
 // ============================================================================
 // CAPTIVE PORTAL ASSIST ENDPOINTS
 // ============================================================================

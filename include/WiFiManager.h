@@ -5,6 +5,11 @@
 #include <Preferences.h>
 #include <vector>
 
+// Custom STA MAC override. Empty string = use factory MAC. Applied via
+// esp_wifi_set_mac(WIFI_IF_STA, ...) before every association attempt, so
+// the address the AP sees can be changed from the config page without
+// reflashing. Must be a unicast address (LSB of first byte = 0).
+
 constexpr const char* WIFI_PREFERENCES_NAMESPACE = "wifi";
 static constexpr int MAX_NETWORKS = 10;
 static constexpr int CONNECT_TIMEOUT_MS = 15000; // 15 secs
@@ -80,6 +85,9 @@ private:
 
     WiFiManager();
     void loadCredentials();
+    void loadCustomMac();
+    void applyCustomMac();
+    String _customMac;
     static void onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info);
     static const char* reasonToString(uint8_t reason);
     // H2: true for disconnect reasons (4WAY_HANDSHAKE_TIMEOUT, BEACON_TIMEOUT,
@@ -112,6 +120,14 @@ public:
     void requestImmediateReconnect() { _lastReconnectAttempt = 0; }
     std::vector<String> getStoredSSIDs();
     bool isConnected();
+
+    // Custom STA MAC. Empty string = factory MAC. Persisted to NVS ("sta_mac"
+    // in the wifi namespace) and applied to the radio before the next
+    // association. Setting it while connected takes effect on the next
+    // reconnect/association.
+    String getCustomMac();
+    bool setCustomMac(const String& mac);
+    static bool parseMac(const String& s, uint8_t out[6]);
     int  getRSSI(); // Returns current RSSI in dBm, 0 if not connected
     void disconnect();
 

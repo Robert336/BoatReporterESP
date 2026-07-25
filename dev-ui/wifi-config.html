@@ -83,12 +83,40 @@ label{display:block;font-size:13px;color:#78716c;margin:10px 0 6px}
       </form>
       <div class="note">After saving, the ESP32 will try to connect. If it fails, the config portal will start automatically.</div>
     </div>
+
+    <div class="card">
+      <h2>Custom MAC address</h2>
+      <div class="stat" style="margin-bottom:10px"><div class="k">Current MAC (as seen by the network)</div><div class="v" id="s_mac">…</div></div>
+      <label>Override MAC</label>
+      <div class="input"><input type="text" id="mac" placeholder="AA:BB:CC:DD:EE:FF" autocomplete="off" spellcheck="false" maxlength="17"></div>
+      <div class="note">First byte must be even (unicast). Takes effect on the next connection attempt — save, then reconnect or reboot. Leave empty and save to restore the factory MAC.</div>
+      <button class="btn" id="mac_btn" onclick="saveMac()">Save MAC</button>
+      <div class="msg" id="mac_msg"></div>
+    </div>
   </div>
 
   <script>
 function el(id){return document.getElementById(id)}
 function toggleOpen(){
 el('pass_wrap').style.display=el('opennet').checked?'none':'';
+}
+function loadMac(){
+fetch('/wifi/mac').then(r=>r.json()).then(d=>{
+el('s_mac').textContent=d.mac||'—';
+if(d.custom&&!el('mac').dataset.touched){el('mac').value=d.custom}
+}).catch(()=>{el('s_mac').textContent='—'})
+}
+el('mac').addEventListener('input',function(){el('mac').dataset.touched='1'});
+function saveMac(){
+var v=el('mac').value.trim();
+if(v&&!/^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$/.test(v)){el('mac_msg').textContent='Expected format AA:BB:CC:DD:EE:FF';el('mac_msg').className='msg bad';return}
+var b=el('mac_btn');b.disabled=true;
+el('mac_msg').textContent='';el('mac_msg').className='msg';
+fetch('/wifi/mac',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'mac='+encodeURIComponent(v)})
+.then(r=>r.json().then(d=>{b.disabled=false;
+if(r.ok&&d.success){el('mac_msg').textContent=v?'✓ Saved — will apply on next connect':'✓ Cleared — factory MAC restored on next connect';el('mac_msg').className='msg ok';setTimeout(loadMac,1500)}
+else{el('mac_msg').textContent='✗ '+(d.message||'Failed to save');el('mac_msg').className='msg bad'}}))
+.catch(err=>{b.disabled=false;el('mac_msg').textContent='Error: '+err.message;el('mac_msg').className='msg bad'});
 }
 function load(){
 fetch('/status').then(r=>r.json()).then(d=>{
@@ -137,7 +165,7 @@ else{el('msg').textContent='✗ Failed to save';el('msg').className='msg bad'}
 }).catch(err=>{btn.disabled=false;btn.textContent='Save & connect';el('msg').textContent='Error: '+err.message;el('msg').className='msg bad'});
 return false;
 }
-load();setInterval(load,5000);
+load();loadMac();setInterval(load,5000);
   </script>
 </body>
 </html>
