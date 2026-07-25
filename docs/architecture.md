@@ -192,6 +192,7 @@ flowchart LR
 
 - **Access Point**: SSID `ESP32-BilgeRise-Setup` with a unique password derived from the ESP32 chip ID. IP: `192.168.4.1`.
 - **Captive portal**: DNS server on port 53 redirects all DNS queries to the device, triggering the phone's captive-portal detection.
+- **Marina portal assist**: When `WiFiManager` reports the associated network is behind a captive portal, `/portal/assist` plus the `/portal/relay` endpoints let the owner complete the marina's splash page from their phone — the device fetches and rewrites the portal's pages so the sign-in flow completes with the ESP32's own IP/MAC, whitelisting it. Assist mode is time-bounded (5 minutes) and exits automatically when the connectivity probe reports the network open. Relay targets are restricted to the captured portal host, private-range IPs, and the gateway (ports 80/443 only), and HTML above 16 KB is streamed without rewriting to bound heap usage.
 - **Gzip-compressed pages**: HTML pages are pre-compressed at build time (`scripts/compress_html.py`) and served with `Content-Encoding: gzip`.
 - **25+ REST API endpoints**: WiFi network management, sensor calibration, notification settings (SMS, Discord, Custom), MQTT broker config, OTA settings, and debug monitoring.
 - **Auto-timeout**: `SERVER_TIMEOUT_MS` (240 s) of inactivity triggers an automatic return to NORMAL via the state machine.
@@ -306,9 +307,11 @@ flowchart TB
 
 #### Features
 
-- **Multi-network storage**: Up to 10 SSID/password pairs stored in NVS (`"wifi"` namespace). Fixed-size `char[]` storage; no heap fragmentation.
+- **Multi-network storage**: Up to 10 SSID/password pairs stored in NVS (`"wifi"` namespace). Fixed-size `char[]` storage; no heap fragmentation. Open (passwordless) networks are supported for marina guest Wi‑Fi.
 - **Auto-connect to best available**: `connectToBestNetwork()` scans and picks the strongest known network.
 - **Rescan fallback (H1/H2)**: After 6 consecutive failed `WiFi.reconnect()` attempts (3 minutes), falls back to a full scan-and-pick cycle. Sticky disconnect reasons (4-way handshake timeout, beacon timeout, auth failure) escalate after only 2 attempts.
+- **Captive portal detection**: After association (and every 2 minutes while connected), the device probes a connectivity-check endpoint. A hijacked response (redirect or served page instead of `204`) marks the link `PORTAL` and captures the marina's sign-in URL; probe failures keep the previous state rather than flapping on a weak signal. Per-network results are persisted in NVS (`portal_N` flags).
+- **Portal-aware outbound gating**: `HttpPoster` (used by all notification channels) fails fast while the link is `PORTAL` instead of burning its 10 s timeout against the portal's hijack. Messages are retried on the normal schedule once the probe reports the network open.
 - **AP+STA mode during CONFIG**: The device runs both station and access point simultaneously during configuration.
 - **Connection health tracking**: Session durations logged using `esp_timer_get_time()` (microseconds, monotonic) to survive `millis()` rollover (~49.7 days).
 

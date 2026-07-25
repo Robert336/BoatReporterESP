@@ -5,6 +5,13 @@
 - **Solution 2**: Check WiFi signal strength near the installation location.
 - **Solution 3**: Verify the WiFi password is correct (check the serial monitor for connection errors).
 
+### WiFi shows "sign-in needed" / alerts stopped at a marina
+- The marina network has a captive portal. Open the Wi-Fi page in CONFIG mode and tap **"Open portal sign-in"** to complete the marina's splash page (see Configuration → Marina WiFi).
+- Marina portals commonly expire sessions after ~24 hours. The device re-checks every 2 minutes and will show **"sign-in needed"** again when the session lapses — repeat the sign-in.
+- The serial monitor shows `[PORTAL] State: ... -> PORTAL login=<url>` when a portal is detected, and `Captive portal active - deferring send` while notifications are held back.
+- `[PORTAL] Probe failed ... (keeping previous state)` means the probe couldn't reach the internet at all (weak signal) — the last known state is kept, so notifications are not blocked on a false reading.
+
+### No SMS alerts received
 ### Sensor readings seem inaccurate or invalid
 - Check wiring between the ESP32 and ADS1115 (SDA/SCL on GPIO 21/22 via the I2C logic level converter)
 - Verify the level shifter is connected correctly: LV side to ESP32 3.3V, HV side to 5V, GND on both sides
@@ -14,6 +21,7 @@
 - Check the serial monitor for actual millivolt readings
 
 ### No SMS alerts received
+- If the Wi-Fi page shows **"sign-in needed"**, a captive portal is blocking outbound traffic — complete the marina sign-in first (see above).
 - Verify Twilio credentials in the web interface (**Settings → Notifications → SMS · Twilio**): Account SID, Auth Token, and Messaging Service SID are write-only fields saved to NVS
 - Check the phone number format in the web interface (must include country code, e.g. +1234567890)
 - Verify the ESP32 has internet connectivity (check the serial monitor)

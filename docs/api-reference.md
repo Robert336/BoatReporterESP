@@ -59,7 +59,9 @@ Dashboard init: sensor reading, WiFi status, and thresholds.
     "connected": true,          // bool
     "ssid": "MyBoatWiFi",       // string
     "ip": "192.168.1.100",      // string
-    "rssi": -55                 // int (dBm)
+    "rssi": -55,                // int (dBm)
+    "portalState": "online",    // "online" | "portal" | "unknown"
+    "portalLoginUrl": ""        // string; see GET /status
   },
   "sensor": {
     "sensorAvailable": true,    // bool: false if waterSensor is null
@@ -155,9 +157,16 @@ WiFi connection status.
   "connected": true,           // bool
   "ssid": "MyBoatWiFi",        // string
   "ip": "192.168.1.100",       // string
-  "rssi": -55                  // int (dBm)
+  "rssi": -55,                 // int (dBm)
+  "portalState": "online",     // "online" | "portal" | "unknown"
+  "portalLoginUrl": ""         // string; portal's sign-in URL when portalState is "portal"
 }
 ```
+
+`portalState` reflects the captive-portal probe, not just L2 association:
+`unknown` until the first probe completes (~3 s after connect), `online` when
+the connectivity check passes un-hijacked, `portal` when the network is
+intercepting HTTP (marina sign-in required).
 
 ```bash
 curl http://192.168.4.1/status
@@ -190,7 +199,7 @@ Save WiFi credentials. Returns an HTML confirmation page.
 | Parameter  | Type   | Required | Description        |
 |------------|--------|----------|--------------------|
 | `ssid`     | string | Yes      | WiFi network SSID  |
-| `password` | string | Yes      | WiFi password      |
+| `password` | string | No       | WiFi password; omit or send empty for open networks (e.g. marina guest Wi‑Fi) |
 
 **Response:** `text/html`; success page with a link back to `/`.
 
@@ -199,7 +208,7 @@ Save WiFi credentials. Returns an HTML confirmation page.
 | Code | Condition                     |
 |------|-------------------------------|
 | 200  | Credentials saved             |
-| 400  | Missing `ssid` or `password`  |
+| 400  | Missing `ssid`                |
 
 ```bash
 curl -X POST http://192.168.4.1/config \
@@ -238,6 +247,101 @@ Remove a stored network by SSID.
 curl -X POST http://192.168.4.1/wifi/remove \
   -d "ssid=MarinaGuest"
 ```
+
+---
+
+### Captive Portal Assist (Marina WiFi)
+
+Marina networks commonly require a browser sign-in after association. The
+device detects this automatically (see `portalState` in `GET /status`), and
+these endpoints let the owner complete the sign-in from their phone: the
+device relays the portal's pages so the marina network sees the requests
+coming from the ESP32 itself, whitelisting the device.
+
+Assist mode is time‑bounded (**5 minutes**) and exits automatically once the
+connectivity probe reports the network is open.
+
+#### `GET /portal/status`
+
+Portal state and assist-mode status.
+
+**Response:**
+
+```json
+{
+  "state": "portal",                        // "online" | "portal" | "unknown"
+  "loginUrl": "http://10.1.0.1/login?...", // string; may be empty
+  "assistActive": true,                     // bool
+  "ssid": "MarinaGuest"                     // string
+}
+```
+
+```bash
+curl http://192.168.4.1/portal/status
+```
+
+---
+
+#### `POST /portal/assist`
+
+Enter portal-assist mode. Requires the device to be associated to a network.
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "loginUrl": "http://10.1.0.1/login?..."
+}
+```
+
+**Status codes:**
+
+| Code | Condition                    |
+|------|------------------------------|
+| 200  | Assist mode started          |
+| 409  | Not associated to a network  |
+
+```bash
+curl -X POST http://192.168.4.1/portal/assist
+```
+
+---
+
+#### `GET|POST /portal/relay`
+
+Relay the marina portal's pages through the device. `GET` fetches the portal
+page (defaulting to the captured `loginUrl`); links, images, and form actions
+in the returned HTML are rewritten to route back through the relay. `POST`
+submits the portal's sign-in form as the device. Responses are `no-store`.
+
+**Request parameters:**
+
+| Parameter | Type   | Required | Description                                  |
+|-----------|--------|----------|----------------------------------------------|
+| `u`       | string | No       | URL to fetch; defaults to the captured login URL |
+
+Relay targets are restricted to the captured portal host, private-range IPs,
+and the subnet gateway, on ports 80/443 only.
+
+**Status codes:**
+
+| Code | Condition                                        |
+|------|--------------------------------------------------|
+| 200  | Relayed page                                     |
+| 302  | Portal redirect; `Location` points back at the relay |
+| 400  | No portal URL known                              |
+| 403  | Target not allowed                               |
+| 409  | Assist mode not active                           |
+| 502  | Portal fetch failed                              |
+
+---
+
+#### `GET /portal/done`
+
+Confirmation page ("You're online") shown once the probe reports the portal
+has opened. The assist bar injected into relayed pages redirects here
+automatically.
 
 ---
 

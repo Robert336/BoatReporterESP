@@ -24,6 +24,19 @@ In the web interface:
 3. Click "Save WiFi Settings"
 4. The device will restart and connect to your network
 
+### Marina WiFi (captive portals)
+
+Many marinas run guest networks that require a browser sign-in after connecting. To add one:
+
+1. Enter the marina's SSID. If the network is open (no WPA password), tick **"Open network (no password)"** and leave the password field blank.
+2. Save. The device associates, then probes the network. Within a few seconds the Wi-Fi page shows an amber **"sign-in needed"** banner if a portal is detected.
+3. Tap **"Open portal sign-in"**. The marina's splash page loads, relayed through the device so the marina network recognizes it — complete the sign-in form as usual.
+4. The banner at the top of the page flips to **online** automatically once the portal opens, and a confirmation page appears. Alerts and telemetry resume on their own.
+
+Notes:
+- The device re-probes every 2 minutes while connected, so if the marina expires your session (common after ~24 hours), the **"sign-in needed"** banner will reappear — just repeat step 3.
+- If a portal's sign-in page does not load or its button does nothing through the relay (some JavaScript-heavy portals are incompatible), connect a laptop to the marina network to check the portal type and contact the marina if it requires SMS verification or payment.
+
 ## Getting API Credentials
 
 ### Twilio SMS Setup
