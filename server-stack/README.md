@@ -164,7 +164,6 @@ In the device UI → **Notifications → MQTT broker**:
 > NTP syncs (usually 10–60 s after WiFi association). The firmware retries with
 > exponential backoff, but **expect 1–3 minutes of dropped telemetry after every
 > power cycle**. This is normal and not a cert/config bug.
-| Username / Password | the `boat-<mac>` credentials you created |
 
 The firmware validates the broker cert against its bundled Let's Encrypt roots
 (`include/MqttRootCA.h`). If your broker ever uses a non-Let's-Encrypt CA,
@@ -175,16 +174,76 @@ update that bundle and reflash.
 > password · consider `fail2ban`/rate-limiting on the Pi for an internet-facing
 > service.
 
+## Monitoring
+
+The same pipeline doubles as a full remote-monitoring setup: a self-hosted
+Grafana dashboard with the live water level, rate-of-change trend, and a
+system-state timeline, plus connectivity and device health (uptime, firmware,
+OTA checks, heap, chip temperature) — all reported by a low-cost ESP32 sitting
+in the bilge.
+
+What you get:
+
+- **Live bilge state** — current level, the 30-minute rate-of-change trend,
+  and the NORMAL / CONFIG / ERROR / EMERGENCY timeline, with Tier 1 / Tier 2
+  threshold lines.
+- **Connectivity** — RSSI history and online/offline status derived from the
+  retained LWT topic.
+- **Device health** — uptime, firmware version, last OTA check, heap usage,
+  and chip temperature, so a sick unit can be diagnosed remotely instead of at
+  the dock.
+
+![Grafana monitoring dashboard](../docs/screenshots/grafana-full.png)
+
+### Telemetry payload
+
+Every 60 s the device publishes a retained JSON payload to
+`<baseTopic>/telemetry`. Telegraf parses it with a `json_v2` object consumer
+that ingests **every field automatically** — all 13 land in InfluxDB with no
+Telegraf config change:
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `level_cm` | float, null if NaN | current water level (cm) |
+| `rate_cm_30min` | float, null if NaN | rate-of-change trend (cm per 30 min) |
+| `state` | string | `NORMAL` / `ERROR` / `EMERGENCY` / `CONFIG` |
+| `sensor_error` | bool | true when the latest sample was invalid |
+| `valid` | bool | validity of `level_cm` in this message |
+| `rssi` | int | WiFi signal strength (dBm) |
+| `chip_temp_c` | float | ESP32-WROOM-32 die temperature — uncalibrated, relative trend only, **not** ambient |
+| `emergency_level_cm` | float | configured Tier 1 threshold |
+| `urgent_emergency_level_cm` | float | configured Tier 2 threshold |
+| `fw_version` | string | firmware version |
+| `last_fw_check_s` | int | seconds since last OTA update check |
+| `heap_free` | int | free heap (bytes) |
+| `uptime_s` | int | uptime (seconds, `millis()/1000`) |
+
 ## Dashboard panels
+
+The provisioned dashboard (**Boat Reporter — Bilge Monitor**, uid
+`boat-reporter`) has 12 panels. Its Flux queries hardcode the InfluxDB bucket
+`boat`, and the **Device** dropdown selects a unit by its MAC-derived id.
+
+> 📸 **Screenshot source:** `docs/screenshots/grafana-full.png` — full dashboard capture with real/mock data flowing, referenced from the main README.
 
 | Panel | Source field | Notes |
 |-------|--------------|-------|
 | Water Level | `level_cm` | threshold lines at 30 cm (Tier 1) and 50 cm (Tier 2) |
 | Current Level | `level_cm` | latest value, color-coded against the thresholds |
 | Rate of Change | `rate_cm_30min` | the trend used in the device's alerts |
-| WiFi Signal | `rssi` | link health (dBm) |
+| WiFi Signal (RSSI) | `rssi` | link health (dBm) |
 | System State | `state` | NORMAL / CONFIG / ERROR / EMERGENCY timeline |
 | Connectivity | `boat_availability` | online / offline from the retained LWT topic |
+| Chip Temperature (diagnostic) | `chip_temp_c` | uncalibrated, relative trend only — **not** ambient/cabin temp |
+| Uptime | `uptime_s` | device uptime (seconds) |
+| Firmware | `fw_version` | currently running firmware version |
+| Last OTA Check | `last_fw_check_s` | seconds since the last OTA update check |
+| Emergency Thresholds | `emergency_level_cm` / `urgent_emergency_level_cm` | configured Tier 1 / Tier 2 thresholds (cm) |
+| Heap Used (%) | derived from `heap_free` | memory pressure (percent, min 0) |
+
+The last six panels are operational metadata for remote diagnosis — they let
+you confirm a unit is alive, on the expected firmware, phoning home for OTA
+checks, and not leaking memory, all without physical access.
 
 ## Notes & customization
 
