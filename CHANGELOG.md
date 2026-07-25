@@ -15,7 +15,7 @@ to `Robert336/BoatReporterESP`).
 ## [1.1.8] - 2026-07-19
 
 ### Fixed
-- **Fail safe on sensor fault in EMERGENCY** — a dead sensor mid-flood no longer latches the device in EMERGENCY off a stale reading. A sustained fault (≥60 s) now transitions EMERGENCY → ERROR; a transient glitch won't bounce an active flood. The horn and ALERT pin fail safe to OFF while the reading is untrustworthy, and ERROR → CONFIG is suppressed until the sensor recovers (prevents state flapping).
+- **Fail safe on sensor fault in EMERGENCY**: a dead sensor mid-flood no longer latches the device in EMERGENCY off a stale reading. A sustained fault (≥60 s) now transitions EMERGENCY → ERROR; a transient glitch does not bounce an active flood. The horn and ALERT pin fail safe to OFF while the reading is untrustworthy, and ERROR → CONFIG is suppressed until the sensor recovers (prevents state flapping).
 - Check the largest contiguous heap block before starting an OTA download (reject early instead of failing mid-install).
 - Store WiFi credentials in fixed arrays instead of `String` (heap stability).
 - Fix the EMERGENCY-entry log and simplify the settings refresh path.
@@ -86,7 +86,7 @@ to `Robert336/BoatReporterESP`).
 ## [1.0.1] - 2026-07-10
 
 ### Added
-- `server-stack/` — self-hosted Grafana telemetry pipeline (Mosquitto → Telegraf → InfluxDB → Grafana) with WAN/TLS broker support.
+- `server-stack/`: self-hosted Grafana telemetry pipeline (Mosquitto → Telegraf → InfluxDB → Grafana) with WAN/TLS broker support.
 - Optional TLS for MQTT broker connections (certificate validated against bundled Let's Encrypt roots).
 - Structured sensor telemetry published to the MQTT `/telemetry` topic (retained).
 - Lean `GET /notifications/status` endpoint for status-pill polling.
@@ -103,7 +103,7 @@ to `Robert336/BoatReporterESP`).
 ## [1.0.0] - 2026-07-09
 
 ### Added
-- Initial release — two-tier emergency alerts (SMS/Discord), OTA firmware updates via GitHub Releases, MQTT logging, `NotificationWorker` task, I2C auto-recovery, rate-of-change tracking, task watchdog.
+- Initial release: two-tier emergency alerts (SMS/Discord), OTA firmware updates via GitHub Releases, MQTT logging, `NotificationWorker` task, I2C auto-recovery, rate-of-change tracking, task watchdog.
 
 [Unreleased]: https://github.com/Robert336/BoatReporterESP/compare/v1.1.8...HEAD
 [1.1.8]: https://github.com/Robert336/BoatReporterESP/compare/v1.1.7...v1.1.8

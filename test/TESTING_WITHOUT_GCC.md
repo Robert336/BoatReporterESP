@@ -91,4 +91,4 @@ For this use case:
 3. **Full automated testing**: Install MinGW-w64 and use `pio test -e native` (fastest)
 4. **UI testing**: Use the mock server in `dev-ui/`
 
-The ESP32 test environment (`esp32-test`) gives you the best of both worlds — automated Unity tests without needing to install GCC on Windows.
+The ESP32 test environment (`esp32-test`) gives you the best of both worlds: automated Unity tests without needing to install GCC on Windows.

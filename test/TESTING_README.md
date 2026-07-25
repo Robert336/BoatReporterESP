@@ -76,17 +76,17 @@ These mocks allow the core logic to compile and run on your development machine.
 **Option 2: ESP32 Hardware Testing (No GCC Required)**
 - PlatformIO Core or PlatformIO IDE
 - ESP32 board connected via USB
-- No GCC installation needed — uses the ESP32 toolchain
+- No GCC installation needed; uses the ESP32 toolchain
 
 **Note for Windows users**: If you prefer not to install GCC, see [`TESTING_WITHOUT_GCC.md`](TESTING_WITHOUT_GCC.md) for alternative testing approaches, or use the ESP32 hardware testing method below.
 
-### Run All Tests (Native — Fast, Requires GCC)
+### Run All Tests (Native, Fast, Requires GCC)
 
 ```bash
 pio test -e native
 ```
 
-### Run All Tests (ESP32 Hardware — No GCC Required)
+### Run All Tests (ESP32 Hardware, No GCC Required)
 
 ```bash
 pio test -e esp32-test
@@ -152,7 +152,7 @@ OK
 ### State Machine Tests (30+ tests)
 
 #### State Transitions
-- ✅ NORMAL → EMERGENCY (with 1-second timeout per `StateMachine.h` — **note:** production `main.cpp` uses 5 seconds; see divergence note below)
+- ✅ NORMAL → EMERGENCY (with 1-second timeout per `StateMachine.h`; **note:** production `main.cpp` uses 5 seconds; see divergence note below)
 - ✅ NORMAL → ERROR (sensor failure)
 - ✅ NORMAL → CONFIG (button press)
 - ✅ EMERGENCY → NORMAL (conditions cleared)

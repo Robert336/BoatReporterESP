@@ -20,17 +20,17 @@ Key facts:
 
 - **Host:** the broker container's ports `1883` (LAN) and `8883` (WAN TLS) are
   published with `docker-proxy`, which inserts an iptables DNAT. **This bypasses
-  `ufw`** — broker reachability is *not* gated by ufw rules. (ufw still protects
+  `ufw`**; broker reachability is *not* gated by ufw rules. (ufw still protects
   everything else on the host.)
 - **Edge:** exposed through the router's **basic DMZ** pointed at the host's LAN
   IP. Basic DMZ keeps the host on its private address; prefer it over "Advanced
   DMZ", which assigns the host the public IP directly and over-exposes the box.
-  Forward/expose **only 8883** — never 1883.
+  Forward/expose **only 8883**; never 1883.
 - **Public IP is dynamic** (residential ISP). It changes on ISP/lease/location
-  events — this is why DDNS is mandatory (see below). A stale A record pointing
+  events; this is why DDNS is mandatory (see below). A stale A record pointing
   at a previous IP is the most common cause of fleet-wide connect failures.
 - **DNS:** Cloudflare, zone `garageforge.ca`. The broker record **must be
-  DNS-only (grey-cloud)** — Cloudflare's proxy only handles HTTP(S) and breaks
+  DNS-only (grey-cloud)**; Cloudflare's proxy only handles HTTP(S) and breaks
   MQTT/TLS on 8883.
 - **TLS:** Let's Encrypt cert whose CN matches the broker hostname. The firmware
   validates it against the bundled ISRG roots in `include/MqttRootCA.h`. No
@@ -41,11 +41,11 @@ Key facts:
 
 The host's public IP is dynamic, so the Cloudflare A record must be kept current.
 This runs as the **`cloudflare-ddns` service in
-[docker-compose.yml](docker-compose.yml)** — a tiny container
+[docker-compose.yml](docker-compose.yml)**; a tiny container
 ([`ddns/Dockerfile`](ddns/Dockerfile)) that runs the bundled
 [`ddns/cloudflare-ddns.sh`](ddns/cloudflare-ddns.sh) every `DDNS_INTERVAL`
 seconds (default 300). Keeping it in compose makes the whole stack one source of
-truth — no host cron or systemd timer, nothing in `/etc`, and it reproduces on
+truth; no host cron or systemd timer, nothing in `/etc`, and it reproduces on
 any host with `docker compose up -d`.
 
 Required in `.env`:
@@ -64,18 +64,18 @@ docker compose up -d --build cloudflare-ddns   # build image + start
 docker compose logs -f cloudflare-ddns         # "updated ... -> <ip>" / "already <ip>"
 ```
 
-The record MUST stay **DNS-only (grey-cloud)** — the script enforces
+The record MUST stay **DNS-only (grey-cloud)**; the script enforces
 `proxied:false`, but do not flip it on in the dashboard either.
 
 ## Troubleshooting: device cannot reach the broker
 
 > **`[E][WiFiClientSecure.cpp] connect(): start_ssl_client: -1` is a TCP-connect
 > failure, NOT a TLS/cert error.** A `-1` means the socket never connected, so
-> the handshake never started — the cert, CA bundle, and clock are irrelevant.
+> the handshake never started; the cert, CA bundle, and clock are irrelevant.
 > (Real TLS/cert failures return negative mbedTLS codes like `-0x2700`, not -1.)
 > So a `-1` points at DNS / DMZ / port-forward / public-IP, not certificates.
 
-Work down this list — each step isolates one layer:
+Work down this list; each step isolates one layer:
 
 ```bash
 # 1. DNS resolves to the host's CURRENT public IP?
@@ -95,7 +95,7 @@ ss -tlnp | grep 8883                              # docker-proxy on 0.0.0.0:8883
 ```
 
 ```bash
-# 4. External reachability — MUST be run from OFF the host's network
+# 4. External reachability; MUST be run from OFF the host's network
 #    (phone on cellular, etc.). Testing from the host or a device using this
 #    network as a Tailscale exit node HAIRPINS and gives a false "unreachable".
 mosquitto_pub -h mqtt.bilgerise.garageforge.ca -p 8883 --capath /etc/ssl/certs \
@@ -146,7 +146,7 @@ journalctl -u boat-cert-renewal.service --no-pager
 The timer is self-documenting (`systemctl cat boat-cert-renewal.timer`), runs
 with the correct `$PWD`, and persists across reboots without needing a cron
 service to be enabled. If you prefer cron, run `renew-cert.sh` from a weekly
-crontab entry instead — the script is daemon-agnostic.
+crontab entry instead; the script is daemon-agnostic.
 
 ### Manual emergency renewal
 
