@@ -77,15 +77,19 @@ private:
     // === Captive Portal Assist Handlers ===
     void handlePortalStatus();              // GET /portal/status — probe state + login URL JSON
     void handlePortalAssist();              // POST /portal/assist — enter time-bounded assist mode
-    void handlePortalProxy();               // GET|POST /portal/proxy?u=... — relay portal page with ESP32's identity
+    void handlePortalRelay();               // GET|POST /portal/relay?u=... — relay portal page with ESP32's identity
+    void handlePortalDone();                // GET /portal/done — "you're online" interstitial
     bool portalAssistActive = false;
     uint32_t portalAssistStartMs = 0;
     String portalProxySeedUrl;              // login URL captured from the portal hijack
     // Allowlist check: only relay to the captured portal host (open-relay guard).
     bool isAllowedPortalTarget(const String& url);
     // Rewrite href/src/action URLs in a fetched portal page to route back
-    // through /portal/proxy so the whole flow completes with the ESP32's identity.
+    // through /portal/relay so the whole flow completes with the ESP32's identity.
     String rewritePortalHtml(const String& html, const String& pageUrl);
+    // Branded top bar injected above the relayed splash page: tells the user
+    // what they're looking at, shows live portal status, and links back.
+    String portalAssistBar();
     
     // === Sensor Calibration Handlers ===
     void handleCalibrateZero();             // POST: Set zero calibration point

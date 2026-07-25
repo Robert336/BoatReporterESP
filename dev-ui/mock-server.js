@@ -228,32 +228,40 @@ app.post('/portal/assist', (req, res) => {
     res.json({ success: true, loginUrl: mockState.portalLoginUrl });
 });
 
-// In the mock, the proxy shows a fake marina splash page; POSTing the form
+// In the mock, the relay shows a fake marina splash page; POSTing the form
 // simulates the portal accepting the sign-in and opening the network.
-app.get('/portal/proxy', (req, res) => {
+app.get('/portal/relay', (req, res) => {
     if (!mockState.portalAssistActive) {
         res.status(409).json({ error: 'Portal assist mode not active' });
         return;
     }
     res.send(`<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Marina Guest Wi-Fi (mock)</title></head>
-<body style="font-family:sans-serif;max-width:420px;margin:40px auto;padding:0 16px">
+<body style="font-family:sans-serif;margin:0">
+<div style="position:sticky;top:0;background:#1c1917;color:#fff;font-size:14px;padding:10px 14px">
+<b>BilgeRise</b> · Marina sign-in (mock bar would poll status here)</div>
+<div style="max-width:420px;margin:40px auto;padding:0 16px">
 <h2>Harbor View Marina</h2>
-<p>Mock splash page served via /portal/proxy</p>
-<form method="POST" action="/portal/proxy">
+<p>Mock splash page served via /portal/relay</p>
+<form method="POST" action="/portal/relay">
 <label><input type="checkbox" required> I accept the terms of service</label><br><br>
 <button type="submit" style="padding:10px 20px">Connect</button>
-</form></body></html>`);
+</form></div></body></html>`);
 });
 
-app.post('/portal/proxy', (req, res) => {
+app.post('/portal/relay', (req, res) => {
     mockState.portalState = 'online';
     mockState.portalAssistActive = false;
     mockState.portalLoginUrl = '';
     console.log('[PORTAL] Mock sign-in accepted - network now ONLINE');
+    res.redirect('/portal/done');
+});
+
+app.get('/portal/done', (req, res) => {
     res.send(`<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="font-family:sans-serif;max-width:420px;margin:40px auto;padding:0 16px">
-<h2>Connected!</h2><p>The portal has opened. You can close this page.</p>
+<body style="font-family:sans-serif;max-width:420px;margin:60px auto;padding:0 20px;text-align:center">
+<div style="font-size:48px">✓</div><h1>You're online</h1>
+<p style="color:#78716c">The marina network accepted the sign-in (mock).</p>
 <p><a href="/wifi-config">Back to Wi-Fi settings</a></p></body></html>`);
 });
 

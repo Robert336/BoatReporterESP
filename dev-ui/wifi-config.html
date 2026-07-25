@@ -113,10 +113,10 @@ el('portal_banner').style.display='none';
 }).catch(e=>{el('state').textContent='offline'})
 }
 function startAssist(){
-var b=el('portal_btn');b.disabled=true;b.textContent='Starting…';
+var b=el('portal_btn');b.disabled=true;b.textContent='Starting sign-in…';
 fetch('/portal/assist',{method:'POST'}).then(r=>r.json()).then(d=>{
 if(d.success){
-window.location='/portal/proxy';
+window.location='/portal/relay';
 }else{
 b.disabled=false;b.textContent='Open portal sign-in';
 el('portal_msg').textContent=d.error||'Could not start assist mode';el('portal_msg').className='msg bad';

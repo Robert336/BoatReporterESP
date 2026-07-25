@@ -145,8 +145,11 @@ void ConfigServer::startSetupMode() {
     // Captive portal assist (marina WiFi sign-in relay)
     server->on("/portal/status", HTTP_GET, [this]() { handlePortalStatus(); });
     server->on("/portal/assist", HTTP_POST, [this]() { handlePortalAssist(); });
-    server->on("/portal/proxy", HTTP_GET,  [this]() { handlePortalProxy(); });
-    server->on("/portal/proxy", HTTP_POST, [this]() { handlePortalProxy(); });
+    // "relay", not "proxy" — some browser VPN/proxy extensions intercept any
+    // URL containing "proxy" and hijack the navigation.
+    server->on("/portal/relay", HTTP_GET,  [this]() { handlePortalRelay(); });
+    server->on("/portal/relay", HTTP_POST, [this]() { handlePortalRelay(); });
+    server->on("/portal/done",  HTTP_GET,  [this]() { handlePortalDone(); });
     
     // Route: GET /notifications-page → serve notifications configuration page
     server->on("/notifications-page", HTTP_GET, [this]() { handleNotificationsPage(); });
@@ -586,9 +589,9 @@ void ConfigServer::handleWiFiRemove() {
 //
 // The ESP32 cannot render a marina's splash page, but the owner's phone can.
 // Assist mode keeps the config AP up while the STA stays associated to the
-// portal network; /portal/proxy fetches the portal page with the ESP32's own
+// portal network; /portal/relay fetches the portal page with the ESP32's own
 // IP/MAC (via the STA default route) and rewrites links/forms back through
-// the proxy, so the portal whitelists the ESP32 when the user completes the
+// the relay, so the portal whitelists the ESP32 when the user completes the
 // flow on their phone. The periodic connectivity probe in WiFiManager detects
 // the flip to ONLINE and assist mode exits automatically.
 
@@ -702,14 +705,41 @@ static String urlEncodeForProxy(const String& url) {
     return out;
 }
 
+// Slim branded bar injected above the relayed splash page. Inline JS polls
+// /portal/status and redirects to /portal/done the moment the marina portal
+// opens, so the user gets clear feedback instead of being stranded on the
+// marina's own confirmation page (which may not even load through the relay).
+String ConfigServer::portalAssistBar() {
+    return String(
+        "<div id=br_bar style='position:sticky;top:0;z-index:99999;background:#1c1917;color:#fff;"
+        "font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif;"
+        "font-size:14px;padding:10px 14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap'>"
+        "<b>BilgeRise</b><span>·</span>"
+        "<span>Marina sign-in — complete the form below</span>"
+        "<span id=br_state style='margin-left:auto;background:#44403c;border-radius:999px;"
+        "padding:3px 10px;font-size:12px'>waiting…</span>"
+        "</div>"
+        "<div style='font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif;"
+        "font-size:12px;color:#78716c;background:#fef3c7;padding:6px 14px'>"
+        "This page is relayed through your BilgeRise device so the marina network recognizes it."
+        "</div>"
+        "<script>setInterval(function(){fetch('/portal/status').then(function(r){return r.json()})"
+        ".then(function(d){var s=document.getElementById('br_state');"
+        "if(d.state==='online'){s.textContent='online';s.style.background='#65a30d';"
+        "window.location='/portal/done';}"
+        "else if(d.state==='portal'){s.textContent='waiting for sign-in';}})"
+        ".catch(function(){})},3000);</scr" "ipt>");
+}
+
 String ConfigServer::rewritePortalHtml(const String& html, const String& pageUrl) {
     String out;
-    out.reserve(html.length() + 256);
+    out.reserve(html.length() + 1024);
     // <base> makes the browser resolve any remaining relative refs against the
-    // proxy; the attribute pass below rewrites explicit links/forms.
-    out += "<base href=\"/portal/proxy?u=";
+    // relay; the attribute pass below rewrites explicit links/forms.
+    out += "<base href=\"/portal/relay?u=";
     out += urlEncodeForProxy(pageUrl);
     out += "\">";
+    out += portalAssistBar();
 
     int pos = 0;
     const char* attrs[] = {"href=\"", "src=\"", "action=\""};
@@ -731,7 +761,7 @@ String ConfigServer::rewritePortalHtml(const String& html, const String& pageUrl
             ref.startsWith("mailto:") || ref.startsWith("data:")) {
             out += ref;
         } else {
-            out += "/portal/proxy?u=";
+            out += "/portal/relay?u=";
             out += urlEncodeForProxy(resolveUrl(pageUrl, ref));
         }
         pos = valEnd;
@@ -739,8 +769,8 @@ String ConfigServer::rewritePortalHtml(const String& html, const String& pageUrl
     return out;
 }
 
-void ConfigServer::handlePortalProxy() {
-    PROFILE_REQUEST("/portal/proxy");
+void ConfigServer::handlePortalRelay() {
+    PROFILE_REQUEST("/portal/relay");
     if (!portalAssistActive) {
         JsonResponder::sendError(server, 409, "Portal assist mode not active");
         return;
@@ -806,7 +836,7 @@ void ConfigServer::handlePortalProxy() {
             serverStartTime = millis();
             return;
         }
-        server->sendHeader("Location", "/portal/proxy?u=" + urlEncodeForProxy(next));
+        server->sendHeader("Location", "/portal/relay?u=" + urlEncodeForProxy(next));
         server->sendHeader("Cache-Control", "no-store");
         server->send(302, "text/plain", "");
         serverStartTime = millis();
@@ -843,6 +873,30 @@ void ConfigServer::handlePortalProxy() {
     if (server->method() == HTTP_POST) {
         WiFiManager::getInstance().requestPortalProbe();
     }
+}
+
+void ConfigServer::handlePortalDone() {
+    // Confirmation interstitial shown once the connectivity probe flips
+    // ONLINE — the marina's own confirmation page often isn't relayable, so
+    // the assist bar redirects here instead.
+    server->sendHeader("Cache-Control", "no-store");
+    server->send(200, "text/html", String(
+        "<!DOCTYPE html><html><head><meta charset='UTF-8'>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<title>Online · BilgeRise</title></head>"
+        "<body style='margin:0;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,"
+        "Arial,sans-serif;background:#f7f5f1;color:#1c1917'>"
+        "<div style='max-width:420px;margin:60px auto;padding:0 20px;text-align:center'>"
+        "<div style='font-size:48px;line-height:1'>&#10003;</div>"
+        "<h1 style='font-size:22px;margin:12px 0 8px'>You're online</h1>"
+        "<p style='color:#78716c;font-size:14px;line-height:1.5'>The marina network accepted the "
+        "sign-in and your BilgeRise monitor is back online. Alerts and telemetry will resume "
+        "automatically.</p>"
+        "<p style='margin-top:24px'><a href='/wifi-config' style='display:inline-block;background:"
+        "#1c1917;color:#fff;text-decoration:none;padding:12px 24px;border-radius:10px;font-size:15px'>"
+        "Back to Wi-Fi settings</a></p>"
+        "</div></body></html>"));
+    serverStartTime = millis();
 }
 
 
