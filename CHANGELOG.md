@@ -13,10 +13,9 @@ to `Robert336/BoatReporterESP`).
 ## [Unreleased]
 
 ### Added
-- Captive portal (marina WiFi) support: the device probes network reachability after associating and every 2 minutes, detects hijacked connections, and shows a "sign-in needed" banner in the WiFi UI. A time-bounded assist mode relays the marina's splash page through the device (`/portal/assist`, `/portal/relay`) so the owner completes the sign-in from their phone and the marina whitelists the ESP32. Relayed pages get a branded status bar that auto-redirects to a confirmation page once the portal opens.
+- Captive portal (marina WiFi) detection: the device probes network reachability after associating and every 2 minutes, classifying the link as `online`/`portal`/`unknown` and exposing `portalState`/`portalLoginUrl` in `GET /status` and `GET /init`. When a portal is detected the Wi-Fi page shows a warning advising the owner to use an authenticated/whitelisted MAC (via the custom MAC override) rather than attempting an in-device sign-in, which captive portals vary too widely to support reliably.
 - Open (passwordless) networks can now be saved from the WiFi config page via an "Open network" checkbox.
-- `portalState` and `portalLoginUrl` fields in `GET /status` and `GET /init`.
-- Custom STA MAC address override: a new "Custom MAC address" card at the bottom of the WiFi config page lets the owner change the MAC address the ESP32 presents to access points (`GET/POST /wifi/mac`). The override is persisted to NVS and applied before each association; clearing it restores the factory MAC. Useful for bypassing per-device MAC limits at marinas.
+- Custom STA MAC address override: a new "Custom MAC address" card at the bottom of the WiFi config page lets the owner change the MAC address the ESP32 presents to access points (`GET/POST /wifi/mac`). The override is persisted to NVS and applied before each association; clearing it restores the factory MAC. Useful for bypassing per-device MAC limits at marinas or matching an already-authenticated address on a captive-portal network.
 
 ### Changed
 - Notification channels fail fast while a captive portal is confirmed instead of burning their 10 s timeouts against the hijacked connection; sends resume automatically once the portal opens.

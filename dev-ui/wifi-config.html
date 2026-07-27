@@ -55,10 +55,8 @@ label{display:block;font-size:13px;color:#78716c;margin:10px 0 6px}
     <div class="card">
       <div class="head"><h2>Current connection</h2><span class="pill" id="pill"><span class="dot" id="dot"></span><span id="state">…</span></span></div>
       <div class="banner" id="portal_banner">
-        <b>Captive portal sign-in required</b>
-        This network needs a browser sign-in (common at marinas). Press below, then complete the sign-in page. This page will show Online when the portal opens.
-        <button class="btn" id="portal_btn" onclick="startAssist()">Open portal sign-in</button>
-        <div class="msg" id="portal_msg"></div>
+        <b>Captive portal detected</b>
+        This network requires a sign-in the device cannot complete. To get online, either set a <b>Custom MAC address</b> below that is already authenticated on this network, or ask the network admin to whitelist this device&rsquo;s MAC. Telemetry and alerts will resume automatically once the portal no longer blocks traffic.
       </div>
       <div class="statgrid" id="stats">
         <div class="stat"><div class="k">Network</div><div class="v" id="s_ssid">…</div></div>
@@ -124,7 +122,7 @@ if(d.connected){
 el('s_ssid').textContent=d.ssid||'—';el('s_ip').textContent=d.ip||'—';
 el('s_rssi').textContent=(d.rssi||'—')+(d.rssi?' dBm':'');
 if(d.portalState==='portal'){
-el('dot').className='dot warn';el('state').textContent='sign-in needed';
+el('dot').className='dot warn';el('state').textContent='portal blocked';
 el('s_state').textContent='Portal';el('portal_banner').style.display='block';
 }else if(d.portalState==='online'){
 el('dot').className='dot ok';el('state').textContent='connected';
@@ -139,17 +137,6 @@ el('s_ssid').textContent='—';el('s_ip').textContent='—';el('s_rssi').textCon
 el('portal_banner').style.display='none';
 }
 }).catch(e=>{el('state').textContent='offline'})
-}
-function startAssist(){
-var b=el('portal_btn');b.disabled=true;b.textContent='Starting sign-in…';
-fetch('/portal/assist',{method:'POST'}).then(r=>r.json()).then(d=>{
-if(d.success){
-window.location='/portal/relay';
-}else{
-b.disabled=false;b.textContent='Open portal sign-in';
-el('portal_msg').textContent=d.error||'Could not start assist mode';el('portal_msg').className='msg bad';
-}
-}).catch(e=>{b.disabled=false;b.textContent='Open portal sign-in';el('portal_msg').textContent='Error: '+e.message;el('portal_msg').className='msg bad'});
 }
 function save(e){
 e.preventDefault();

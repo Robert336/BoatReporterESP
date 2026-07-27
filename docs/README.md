@@ -6,13 +6,13 @@ This folder holds the deep documentation for BoatReporterESP. The [main README](
 
 | Doc | What's inside |
 |-----|---------------|
-| [Configuration](configuration.md) | First-time setup, WiFi (including marina captive-portal sign-in), Twilio/Discord/custom-HTTP credentials, two-point sensor calibration, emergency thresholds, MQTT broker setup |
+| [Configuration](configuration.md) | First-time setup, WiFi (including captive-portal detection and custom MAC override), Twilio/Discord/custom-HTTP credentials, two-point sensor calibration, emergency thresholds, MQTT broker setup |
 | [Usage](usage.md) | LED status patterns, system states, button functions, alert behavior |
 | [MQTT & Telemetry](mqtt-telemetry.md) | Log and structured telemetry topics, the 13-field JSON payload, Home Assistant / Grafana ingestion |
 | [Troubleshooting](troubleshooting.md) | WiFi, sensor, SMS/Discord, LED, web-interface, and sensor-error fixes |
 | [Hardware & Assembly](hardware.md) | Full parts list with links, wiring, and step-by-step assembly instructions |
 | [Architecture](architecture.md) | Component layout, FreeRTOS task design, state machine, data flow |
-| [API Reference](api-reference.md) | All 42 ConfigServer REST endpoints with request/response schemas and curl examples |
+| [API Reference](api-reference.md) | All 39 ConfigServer REST endpoints with request/response schemas and curl examples |
 
 ## Related project docs (repo root)
 

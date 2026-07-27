@@ -6,15 +6,6 @@
 #include "Logger.h"
 #include "Version.h"
 #include "compressed_pages.h"
-#include <HTTPClient.h>
-#include <WiFiClientSecure.h>
-#include <esp_task_wdt.h>
-
-// Full Mozilla root CA bundle (same mechanism as OTAManager) so the portal
-// relay can verify hosted splash portals over HTTPS — e.g. Cambium cnMaestro
-// (cnmaestro.*), which is HTTPS-only. LAN portal appliances are plain HTTP
-// and never touch this path.
-extern const uint8_t rootca_crt_bundle_start[] asm("_binary_x509_crt_bundle_start");
 
 // ============================================================================
 // NETWORK STACK INSTRUMENTATION (dev build only)
@@ -153,15 +144,6 @@ void ConfigServer::startSetupMode() {
     server->on("/wifi/mac", HTTP_GET,  [this]() { handleWiFiMac(); });
     server->on("/wifi/mac", HTTP_POST, [this]() { handleWiFiMac(); });
 
-    // Captive portal assist (marina WiFi sign-in relay)
-    server->on("/portal/status", HTTP_GET, [this]() { handlePortalStatus(); });
-    server->on("/portal/assist", HTTP_POST, [this]() { handlePortalAssist(); });
-    // "relay", not "proxy" — some browser VPN/proxy extensions intercept any
-    // URL containing "proxy" and hijack the navigation.
-    server->on("/portal/relay", HTTP_GET,  [this]() { handlePortalRelay(); });
-    server->on("/portal/relay", HTTP_POST, [this]() { handlePortalRelay(); });
-    server->on("/portal/done",  HTTP_GET,  [this]() { handlePortalDone(); });
-    
     // Route: GET /notifications-page → serve notifications configuration page
     server->on("/notifications-page", HTTP_GET, [this]() { handleNotificationsPage(); });
     
@@ -256,10 +238,9 @@ void ConfigServer::startSetupMode() {
     // index page to every probe).
     server->onNotFound([this]() { handleCaptivePortalProbe(); });
     
-    // Enable reading If-None-Match for ETag-based caching, Cookie and
-    // Content-Type for the portal relay's session/body pass-through.
-    const char* headersToCollect[] = {"If-None-Match", "Cookie", "Content-Type"};
-    server->collectHeaders(headersToCollect, 3);
+    // Enable reading If-None-Match for ETag-based caching.
+    const char* headersToCollect[] = {"If-None-Match"};
+    server->collectHeaders(headersToCollect, 1);
 
     // Start the server
     server->begin();
@@ -288,7 +269,6 @@ void ConfigServer::stopSetupMode() {
     // Stop AP, keep STA mode
     WiFi.mode(WIFI_STA);
     setupModeActive = false;
-    portalAssistActive = false;
 
     LOG_INFO("\n=== Setup mode stopped, resuming normal WiFi ===");
 
@@ -335,20 +315,6 @@ void ConfigServer::handleClient() {
 #else
     server->handleClient();
 #endif
-
-    // Portal-assist mode bookkeeping: auto-exit when the connectivity probe
-    // flips ONLINE (user completed the marina sign-in through the proxy), or
-    // when the assist time budget expires.
-    if (portalAssistActive) {
-        WiFiManager& wifiMgr = WiFiManager::getInstance();
-        if (wifiMgr.getPortalState() == PortalState::ONLINE) {
-            portalAssistActive = false;
-            LOG_INFO("Portal assist: internet reachable - exiting assist mode");
-        } else if (millis() - portalAssistStartMs >= PORTAL_ASSIST_TIMEOUT_MS) {
-            portalAssistActive = false;
-            LOG_INFO("Portal assist: timed out");
-        }
-    }
 
     // Handle server timeout
     if ((millis() - serverStartTime) >= SERVER_TIMEOUT_MS) {
@@ -615,364 +581,6 @@ void ConfigServer::handleWiFiRemove() {
     JsonResponder().boolean("success", true).send(server);
     serverStartTime = millis();
 }
-
-// ============================================================================
-// CAPTIVE PORTAL ASSIST (marina WiFi sign-in relay)
-// ============================================================================
-//
-// The ESP32 cannot render a marina's splash page, but the owner's phone can.
-// Assist mode keeps the config AP up while the STA stays associated to the
-// portal network; /portal/relay fetches the portal page with the ESP32's own
-// IP/MAC (via the STA default route) and rewrites links/forms back through
-// the relay, so the portal whitelists the ESP32 when the user completes the
-// flow on their phone. The periodic connectivity probe in WiFiManager detects
-// the flip to ONLINE and assist mode exits automatically.
-
-void ConfigServer::handlePortalStatus() {
-    WiFiManager& wifiMgr = WiFiManager::getInstance();
-    PortalState ps = wifiMgr.getPortalState();
-    JsonResponder().str("state", ps == PortalState::ONLINE ? "online" :
-                                ps == PortalState::PORTAL ? "portal" : "unknown")
-                   .str("loginUrl", wifiMgr.getPortalLoginUrl())
-                   .boolean("assistActive", portalAssistActive)
-                   .str("ssid", WiFi.SSID())
-                   .send(server);
-    serverStartTime = millis();
-}
-
-void ConfigServer::handlePortalAssist() {
-    WiFiManager& wifiMgr = WiFiManager::getInstance();
-    LOG_INFO("Portal assist: requested (connected=%d, portalState=%d, free heap=%u)",
-             (int)wifiMgr.isConnected(), (int)wifiMgr.getPortalState(), (unsigned)ESP.getFreeHeap());
-    if (!wifiMgr.isConnected()) {
-        JsonResponder::sendError(server, 409, "Not associated to a network");
-        return;
-    }
-    portalAssistActive = true;
-    portalAssistStartMs = millis();
-    portalProxySeedUrl = wifiMgr.getPortalLoginUrl();
-    // Re-probe soon so we notice quickly when the user completes the flow.
-    wifiMgr.requestPortalProbe();
-    LOG_INFO("Portal assist: started (seed=%s)", portalProxySeedUrl.c_str());
-    JsonResponder().boolean("success", true)
-                   .str("loginUrl", portalProxySeedUrl)
-                   .send(server);
-    serverStartTime = millis();
-}
-
-bool ConfigServer::isAllowedPortalTarget(const String& url) {
-    // Open-relay guard: only http(s) on standard ports, and only to hosts we
-    // have seen — the captured portal host, or any private-range host (the
-    // portal itself lives on the marina LAN). Public internet hosts are
-    // rejected: if we had open internet there would be no portal to proxy.
-    if (!url.startsWith("http://") && !url.startsWith("https://")) return false;
-
-    int hostStart = url.indexOf("://") + 3;
-    int hostEnd = url.indexOf('/', hostStart);
-    if (hostEnd < 0) hostEnd = url.length();
-    String host = url.substring(hostStart, hostEnd);
-    int colon = host.indexOf(':');
-    if (colon >= 0) {
-        int port = host.substring(colon + 1).toInt();
-        if (port != 80 && port != 443) return false;
-        host = host.substring(0, colon);
-    }
-    if (host.length() == 0) return false;
-
-    // Match the captured seed host exactly (covers FQDN portals).
-    if (portalProxySeedUrl.length() > 0) {
-        int seedHostStart = portalProxySeedUrl.indexOf("://") + 3;
-        int seedHostEnd = portalProxySeedUrl.indexOf('/', seedHostStart);
-        if (seedHostEnd < 0) seedHostEnd = portalProxySeedUrl.length();
-        String seedHost = portalProxySeedUrl.substring(seedHostStart, seedHostEnd);
-        int seedColon = seedHost.indexOf(':');
-        if (seedColon >= 0) seedHost = seedHost.substring(0, seedColon);
-        if (host == seedHost) return true;
-    }
-
-    // Allow the connectivity-probe URL itself: it's the fallback seed when
-    // the portal never sent a redirect Location.
-    if (host == "connectivitycheck.gstatic.com") return true;
-
-    // Allow RFC1918 / link-local literal IPs (portal appliances on the LAN).
-    IPAddress ip;
-    if (ip.fromString(host)) {
-        uint8_t a = ip[0], b = ip[1];
-        if (a == 10 || a == 127) return true;
-        if (a == 172 && b >= 16 && b <= 31) return true;
-        if (a == 192 && b == 168) return true;
-        if (a == 169 && b == 254) return true;
-        // The subnet's own gateway is commonly the portal.
-        if (WiFi.gatewayIP() == ip) return true;
-    }
-    return false;
-}
-
-// Resolve a (possibly relative) URL from a portal page against the page's URL.
-static String resolveUrl(const String& base, const String& ref) {
-    if (ref.startsWith("http://") || ref.startsWith("https://")) return ref;
-    if (ref.startsWith("//")) {
-        return base.substring(0, base.indexOf("://") + 1) + ref; // scheme-relative
-    }
-    int hostStart = base.indexOf("://") + 3;
-    int pathStart = base.indexOf('/', hostStart);
-    if (ref.startsWith("/")) {
-        // Root-relative: scheme + authority + ref
-        return (pathStart < 0 ? base : base.substring(0, pathStart)) + ref;
-    }
-    // Relative to the page's directory
-    String dir = (pathStart < 0) ? base + "/" : base.substring(0, base.lastIndexOf('/') + 1);
-    return dir + ref;
-}
-
-// Percent-encode a URL so it survives transport as the single "u" query
-// value — a raw "&" in the portal URL would otherwise split into a second
-// query parameter and corrupt the target.
-static String urlEncodeForProxy(const String& url) {
-    String out;
-    out.reserve(url.length() + 16);
-    for (size_t i = 0; i < url.length(); i++) {
-        char c = url[i];
-        if (c == '&' || c == '%' || c == '#' || c == '"' || c == ' ' || c == '+') {
-            char buf[4];
-            snprintf(buf, sizeof(buf), "%%%02X", (uint8_t)c);
-            out += buf;
-        } else {
-            out += c;
-        }
-    }
-    return out;
-}
-
-// Slim branded bar injected above the relayed splash page. Inline JS polls
-// /portal/status and redirects to /portal/done the moment the marina portal
-// opens, so the user gets clear feedback instead of being stranded on the
-// marina's own confirmation page (which may not even load through the relay).
-String ConfigServer::portalAssistBar() {
-    return String(
-        "<div id=br_bar style='position:sticky;top:0;z-index:99999;background:#1c1917;color:#fff;"
-        "font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif;"
-        "font-size:14px;padding:10px 14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap'>"
-        "<b>BilgeRise</b><span>·</span>"
-        "<span>Marina sign-in — complete the form below</span>"
-        "<span id=br_state style='margin-left:auto;background:#44403c;border-radius:999px;"
-        "padding:3px 10px;font-size:12px'>waiting…</span>"
-        "</div>"
-        "<div style='font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif;"
-        "font-size:12px;color:#78716c;background:#fef3c7;padding:6px 14px'>"
-        "This page is relayed through your BilgeRise device so the marina network recognizes it."
-        "</div>"
-        "<script>setInterval(function(){fetch('/portal/status').then(function(r){return r.json()})"
-        ".then(function(d){var s=document.getElementById('br_state');"
-        "if(d.state==='online'){s.textContent='online';s.style.background='#65a30d';"
-        "window.location='/portal/done';}"
-        "else if(d.state==='portal'){s.textContent='waiting for sign-in';}})"
-        ".catch(function(){})},3000);</scr" "ipt>");
-}
-
-String ConfigServer::rewritePortalHtml(const String& html, const String& pageUrl) {
-    String out;
-    out.reserve(html.length() + 1024);
-    // <base> makes the browser resolve any remaining relative refs against the
-    // relay; the attribute pass below rewrites explicit links/forms.
-    out += "<base href=\"/portal/relay?u=";
-    out += urlEncodeForProxy(pageUrl);
-    out += "\">";
-    out += portalAssistBar();
-
-    int pos = 0;
-    const char* attrs[] = {"href=\"", "src=\"", "action=\""};
-    while (pos < (int)html.length()) {
-        int next = -1;
-        int attrLen = 0;
-        for (const char* a : attrs) {
-            int i = html.indexOf(a, pos);
-            if (i >= 0 && (next < 0 || i < next)) { next = i; attrLen = strlen(a); }
-        }
-        if (next < 0) { out += html.substring(pos); break; }
-        out += html.substring(pos, next + attrLen);
-        int valStart = next + attrLen;
-        int valEnd = html.indexOf('\"', valStart);
-        if (valEnd < 0) { out += html.substring(valStart); break; }
-        String ref = html.substring(valStart, valEnd);
-        // Skip anchors, javascript:, mailto:, data: — pass through untouched.
-        if (ref.startsWith("#") || ref.startsWith("javascript:") ||
-            ref.startsWith("mailto:") || ref.startsWith("data:")) {
-            out += ref;
-        } else {
-            out += "/portal/relay?u=";
-            out += urlEncodeForProxy(resolveUrl(pageUrl, ref));
-        }
-        pos = valEnd;
-    }
-    return out;
-}
-
-void ConfigServer::handlePortalRelay() {
-    PROFILE_REQUEST("/portal/relay");
-    LOG_INFO("Portal relay: request u=%.80s", server->hasArg("u") ? server->arg("u").c_str() : "(seed)");
-    if (!portalAssistActive) {
-        JsonResponder::sendError(server, 409, "Portal assist mode not active");
-        return;
-    }
-    String url = server->hasArg("u") ? server->arg("u") : portalProxySeedUrl;
-    if (url.length() == 0) {
-        // No seed captured and no explicit target: the probe never saw a
-        // redirect Location (some portals answer 200 with the page instead).
-        // Fall back to re-fetching the probe URL itself — the hijack will
-        // redirect us to the splash page, which the relay follows.
-        url = String("http://connectivitycheck.gstatic.com/generate_204");
-        LOG_INFO("Portal relay: no seed URL, re-probing through hijack");
-    }
-    if (!isAllowedPortalTarget(url)) {
-        LOG_INFO("Portal proxy: rejected target %s", url.c_str());
-        JsonResponder::sendError(server, 403, "Target not allowed");
-        return;
-    }
-
-    esp_task_wdt_reset();
-    // HTTPS targets (hosted splash portals like cnMaestro) go through
-    // WiFiClientSecure with the Mozilla root bundle; plain-HTTP LAN portals
-    // use the default client. Declared outside the if so the client outlives
-    // the request.
-    WiFiClientSecure secureClient;
-    HTTPClient http;
-    if (url.startsWith("https://")) {
-        secureClient.setCACertBundle(rootca_crt_bundle_start);
-        http.begin(secureClient, url);
-    } else {
-        http.begin(url);
-    }
-    http.setTimeout(5000);
-    // Follow redirects manually: auto-follow would hop to an unchecked host
-    // (portal -> RADIUS FQDN chains are common), bypassing the allowlist.
-    http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
-    // Forward the phone's cookies so the portal's session state tracks the
-    // user's flow across requests.
-    if (server->hasHeader("Cookie")) {
-        http.addHeader("Cookie", server->header("Cookie"));
-    }
-
-    int code;
-    uint32_t fetchStartMs = millis();
-    if (server->method() == HTTP_POST) {
-        String ctype = server->hasHeader("Content-Type") ? server->header("Content-Type") : "";
-        String body;
-        if (ctype.startsWith("application/json")) {
-            // JS-driven portals (cnMaestro's splash page) POST JSON via
-            // fetch(). WebServer gives us the raw body as arg("plain");
-            // forward it verbatim with the content type intact.
-            body = server->arg("plain");
-            http.addHeader("Content-Type", "application/json");
-            code = http.POST((uint8_t*)body.c_str(), body.length());
-        } else if (server->args() > 0) {
-            // Classic form submit: re-serialize the phone's form fields and
-            // submit as the ESP32.
-            for (int i = 0; i < server->args(); i++) {
-                if (server->argName(i) == "u") continue;
-                if (body.length()) body += "&";
-                body += urlEncodeForProxy(server->argName(i)) + "=" + urlEncodeForProxy(server->arg(i));
-            }
-            code = http.POST(body);
-        } else {
-            // No parsed form fields and not JSON — the body is raw
-            // (WebServer only parses urlencoded bodies; anything else lands
-            // in arg("plain")). Forward verbatim with the original type.
-            body = server->arg("plain");
-            if (ctype.length()) http.addHeader("Content-Type", ctype);
-            code = http.POST((uint8_t*)body.c_str(), body.length());
-        }
-    } else {
-        code = http.GET();
-    }
-    esp_task_wdt_reset();
-    LOG_INFO("Portal relay: upstream HTTP %d in %ums", code, (unsigned)(millis() - fetchStartMs));
-
-    if (code <= 0) {
-        LOG_INFO("Portal proxy: fetch failed for %s: %s", url.c_str(), http.errorToString(code).c_str());
-        http.end();
-        JsonResponder::sendError(server, 502, "Portal fetch failed");
-        serverStartTime = millis();
-        return;
-    }
-
-    // Redirect: validate the target against the allowlist, then bounce the
-    // phone to the proxied form of it — the phone re-requests and the next
-    // pass through this handler does the (allowed) fetch. This keeps every
-    // fetched URL checked even across multi-host redirect chains.
-    if (code >= 300 && code < 400) {
-        String loc = http.header("Location");
-        http.end();
-        String next = resolveUrl(url, loc);
-        if (!isAllowedPortalTarget(next)) {
-            LOG_INFO("Portal proxy: redirect to disallowed host %s", next.c_str());
-            JsonResponder::sendError(server, 403, "Portal redirect target not allowed");
-            serverStartTime = millis();
-            return;
-        }
-        server->sendHeader("Location", "/portal/relay?u=" + urlEncodeForProxy(next));
-        server->sendHeader("Cache-Control", "no-store");
-        server->send(302, "text/plain", "");
-        serverStartTime = millis();
-        return;
-    }
-
-    if (http.hasHeader("Set-Cookie")) {
-        server->sendHeader("Set-Cookie", http.header("Set-Cookie"));
-    }
-    server->sendHeader("Cache-Control", "no-store");
-    String ctype = http.header("Content-Type");
-
-    // Guard heap: the whole page is buffered for rewriting, and ESP32 free
-    // heap in AP+STA mode with the webserver up is tens of KB. Anything
-    // larger is streamed raw without rewriting.
-    static constexpr size_t MAX_REWRITE_BYTES = 16384;
-    int contentLen = http.getSize(); // -1 when chunked/unknown
-
-    if (ctype.startsWith("text/html") && contentLen >= 0 && contentLen <= (int)MAX_REWRITE_BYTES) {
-        String rewritten = rewritePortalHtml(http.getString(), url);
-        http.end();
-        server->send(200, "text/html", rewritten);
-    } else {
-        // Oversized HTML (served raw, unrewritten — relative links may break,
-        // but the accept flow on huge pages is rare) or binary assets.
-        String payload = http.getString();
-        http.end();
-        server->send(200, ctype.length() ? ctype : "application/octet-stream", payload);
-    }
-    serverStartTime = millis();
-
-    // A POST usually means the user just submitted the accept form — schedule
-    // a near-term probe so assist mode exits as soon as the portal opens.
-    if (server->method() == HTTP_POST) {
-        WiFiManager::getInstance().requestPortalProbe();
-    }
-}
-
-void ConfigServer::handlePortalDone() {
-    // Confirmation interstitial shown once the connectivity probe flips
-    // ONLINE — the marina's own confirmation page often isn't relayable, so
-    // the assist bar redirects here instead.
-    server->sendHeader("Cache-Control", "no-store");
-    server->send(200, "text/html", String(
-        "<!DOCTYPE html><html><head><meta charset='UTF-8'>"
-        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-        "<title>Online · BilgeRise</title></head>"
-        "<body style='margin:0;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,"
-        "Arial,sans-serif;background:#f7f5f1;color:#1c1917'>"
-        "<div style='max-width:420px;margin:60px auto;padding:0 20px;text-align:center'>"
-        "<div style='font-size:48px;line-height:1'>&#10003;</div>"
-        "<h1 style='font-size:22px;margin:12px 0 8px'>You're online</h1>"
-        "<p style='color:#78716c;font-size:14px;line-height:1.5'>The marina network accepted the "
-        "sign-in and your BilgeRise monitor is back online. Alerts and telemetry will resume "
-        "automatically.</p>"
-        "<p style='margin-top:24px'><a href='/wifi-config' style='display:inline-block;background:"
-        "#1c1917;color:#fff;text-decoration:none;padding:12px 24px;border-radius:10px;font-size:15px'>"
-        "Back to Wi-Fi settings</a></p>"
-        "</div></body></html>"));
-    serverStartTime = millis();
-}
-
 
 // ============================================================================
 // SENSOR CALIBRATION HANDLERS

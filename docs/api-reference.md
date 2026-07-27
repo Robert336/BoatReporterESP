@@ -166,7 +166,9 @@ WiFi connection status.
 `portalState` reflects the captive-portal probe, not just L2 association:
 `unknown` until the first probe completes (~3 s after connect), `online` when
 the connectivity check passes un-hijacked, `portal` when the network is
-intercepting HTTP (marina sign-in required).
+intercepting HTTP (a sign-in is required). When `portal`, the WiFi page warns
+the owner to use an authenticated/whitelisted MAC — see
+[Captive Portal Detection](#captive-portal-detection).
 
 ```bash
 curl http://192.168.4.1/status
@@ -250,98 +252,61 @@ curl -X POST http://192.168.4.1/wifi/remove \
 
 ---
 
-### Captive Portal Assist (Marina WiFi)
+#### `GET|POST /wifi/mac`
 
-Marina networks commonly require a browser sign-in after association. The
-device detects this automatically (see `portalState` in `GET /status`), and
-these endpoints let the owner complete the sign-in from their phone: the
-device relays the portal's pages so the marina network sees the requests
-coming from the ESP32 itself, whitelisting the device.
+Read or set the custom STA MAC address the ESP32 presents to access points.
+`GET` returns the effective MAC and any stored override; `POST` persists an
+override (or clears it when the value is empty) that is applied before the
+next association. Useful for bypassing per-device MAC limits at marinas or
+matching an address already authenticated/whitelisted on a captive-portal
+network.
 
-Assist mode is time‑bounded (**5 minutes**) and exits automatically once the
-connectivity probe reports the network is open.
+**Request parameters (form data, POST only):**
 
-#### `GET /portal/status`
+| Parameter | Type   | Required | Description                                                  |
+|-----------|--------|----------|--------------------------------------------------------------|
+| `mac`     | string | No       | `AA:BB:CC:DD:EE:FF`; empty clears the override (factory MAC) |
 
-Portal state and assist-mode status.
-
-**Response:**
-
-```json
-{
-  "state": "portal",                        // "online" | "portal" | "unknown"
-  "loginUrl": "http://10.1.0.1/login?...", // string; may be empty
-  "assistActive": true,                     // bool
-  "ssid": "MarinaGuest"                     // string
-}
-```
-
-```bash
-curl http://192.168.4.1/portal/status
-```
-
----
-
-#### `POST /portal/assist`
-
-Enter portal-assist mode. Requires the device to be associated to a network.
-
-**Response:**
+**Response (GET and POST):**
 
 ```json
 {
   "success": true,
-  "loginUrl": "http://10.1.0.1/login?..."
+  "mac": "24:6F:28:A1:B2:C3",
+  "custom": "AA:BB:CC:DD:EE:FF"
 }
 ```
 
 **Status codes:**
 
-| Code | Condition                    |
-|------|------------------------------|
-| 200  | Assist mode started          |
-| 409  | Not associated to a network  |
+| Code | Condition                              |
+|------|----------------------------------------|
+| 200  | Read or saved                          |
+| 400  | Invalid MAC format (not a unicast MAC) |
 
 ```bash
-curl -X POST http://192.168.4.1/portal/assist
+curl http://192.168.4.1/wifi/mac
+curl -X POST http://192.168.4.1/wifi/mac -d "mac=AA:BB:CC:DD:EE:FF"
 ```
 
 ---
 
-#### `GET|POST /portal/relay`
+### Captive Portal Detection
 
-Relay the marina portal's pages through the device. `GET` fetches the portal
-page (defaulting to the captured `loginUrl`); links, images, and form actions
-in the returned HTML are rewritten to route back through the relay. `POST`
-submits the portal's sign-in form as the device. Responses are `no-store`.
+Marina and guest networks commonly require a browser sign-in after
+association. The device probes a connectivity-check endpoint after
+associating (and every 2 minutes while connected) and classifies the link as
+`online`, `portal`, or `unknown`; this is surfaced as `portalState` (and the
+captured sign-in URL as `portalLoginUrl`) in `GET /status` and `GET /init`.
 
-**Request parameters:**
-
-| Parameter | Type   | Required | Description                                  |
-|-----------|--------|----------|----------------------------------------------|
-| `u`       | string | No       | URL to fetch; defaults to the captured login URL |
-
-Relay targets are restricted to the captured portal host, private-range IPs,
-and the subnet gateway, on ports 80/443 only.
-
-**Status codes:**
-
-| Code | Condition                                        |
-|------|--------------------------------------------------|
-| 200  | Relayed page                                     |
-| 302  | Portal redirect; `Location` points back at the relay |
-| 400  | No portal URL known                              |
-| 403  | Target not allowed                               |
-| 409  | Assist mode not active                           |
-| 502  | Portal fetch failed                              |
-
----
-
-#### `GET /portal/done`
-
-Confirmation page ("You're online") shown once the probe reports the portal
-has opened. The assist bar injected into relayed pages redirects here
-automatically.
+The device **does not** attempt to complete the portal sign-in itself —
+captive portals vary too widely to handle reliably. When `portalState` is
+`portal`, the WiFi page shows a warning advising the owner to either set a
+[custom MAC address](#getpost-wifimac) that is already authenticated on the
+network, or ask the network administrator to whitelist the device's MAC.
+While a portal is confirmed, outbound notification sends fail fast instead of
+burning their timeout against the hijacked connection, and resume
+automatically once the probe reports the network open.
 
 ---
 
