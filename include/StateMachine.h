@@ -261,16 +261,16 @@ inline State computeNextState(const StateMachineContext& ctx,
         case ERROR:
             if (!ctx.sensorError) {
                 return NORMAL;
-            } else if (ctx.configCommandReceived) {
-                // S2: only honor a config request once the sensor is healthy.
-                // Allowing ERROR→CONFIG while sensorError is still true makes
-                // the CONFIG case immediately bounce back to ERROR (its own
-                // sensorError guard), flapping the state and needlessly
-                // spinning the web server up and down on every button press
-                // during a sensor outage. The !ctx.sensorError branch above
-                // already returned, so reaching here means sensorError is
-                // true — suppress the transition.
-                break;
+            }
+            // A config request is always honored, even while the sensor is
+            // still faulted. Config mode is entered only via a physical button
+            // press, so the owner is on-site and triggering it deliberately —
+            // e.g. to perform OTA maintenance with the sensor disconnected. The
+            // CONFIG case below no longer bounces back to ERROR on a sensor
+            // fault; when the portal goes idle it exits to NORMAL, which the
+            // next iteration moves to ERROR (sensor still bad).
+            if (ctx.configCommandReceived) {
+                return CONFIG;
             }
             break;
 
@@ -286,14 +286,19 @@ inline State computeNextState(const StateMachineContext& ctx,
             break;
 
         case CONFIG:
-            // Safety first: never let config mode suppress emergency/error
-            // transitions. A browser tab left open on the config page polls
-            // /ota/status every 5s, which keeps configServerActive=true and
-            // would otherwise pin the device in CONFIG indefinitely — blind
-            // to flooding. CONFIG is an overlay, not a substitute for safety.
-            if (ctx.sensorError) {
-                return ERROR;
-            }
+            // Safety first: never let config mode suppress a real flood.
+            // A browser tab left open on the config page polls /ota/status
+            // every 5s, which keeps configServerActive=true and would otherwise
+            // pin the device in CONFIG indefinitely — blind to flooding. CONFIG
+            // is an overlay, not a substitute for safety.
+            //
+            // Note: a sensor fault does NOT force CONFIG → ERROR. Config mode is
+            // entered only via a physical button press, so the owner is on-site
+            // and may have intentionally disconnected the sensor (e.g. to move the
+            // unit to better WiFi for an OTA update). Bouncing back to ERROR on
+            // a fault would just tear down the portal they deliberately opened.
+            // The idle-timeout exit below still returns them to NORMAL/ERROR when
+            // the server goes unused.
             if (ctx.emergencyConditions &&
                 (currentTime - ctx.emergencyConditionsTrueTime) >= EMERGENCY_TIMEOUT_MS) {
                 return EMERGENCY;

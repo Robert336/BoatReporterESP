@@ -137,6 +137,16 @@ void ConfigServer::startSetupMode() {
     // Route: GET /wifi/networks → return stored SSID list as JSON
     server->on("/wifi/networks", HTTP_GET, [this]() { handleWiFiNetworks(); });
 
+    // Route: GET /wifi/scan → live scan of in-range networks (SSID, RSSI,
+    // channel, encryption, plus stored/connected flags) for the iOS-style
+    // "Other Networks" list on the WiFi config page. Blocking ~2-5s.
+    server->on("/wifi/scan", HTTP_GET, [this]() { handleWiFiScan(); });
+
+    // Route: POST /wifi/connect → join an already-stored network (uses saved
+    // credentials, non-blocking) so the UI can offer a one-tap "join" on saved
+    // networks without re-entering the password.
+    server->on("/wifi/connect", HTTP_POST, [this]() { handleWiFiConnect(); });
+
     // Route: POST /wifi/remove → remove a stored network by SSID
     server->on("/wifi/remove", HTTP_POST, [this]() { handleWiFiRemove(); });
 
@@ -546,6 +556,58 @@ void ConfigServer::handleWiFiNetworks() {
     }
     networksArr += "]";
     server->send(200, "application/json", networksArr);
+    serverStartTime = millis();
+}
+
+void ConfigServer::handleWiFiScan() {
+    PROFILE_REQUEST("GET /wifi/scan");
+    WiFiManager& wifiMgr = WiFiManager::getInstance();
+
+    // Gather the context the UI needs to render the iOS-style list in one
+    // response: the live scan, plus stored/connected flags per entry so the
+    // page can show a "saved" badge and a checkmark on the joined network
+    // without a second round-trip.
+    std::vector<String> stored = wifiMgr.getStoredSSIDs();
+    String connectedSsid = WiFi.SSID();
+    std::vector<ScannedNetwork> nets = wifiMgr.scanAvailableNetworks();
+
+    String arr = "[";
+    for (int i = 0; i < (int)nets.size(); i++) {
+        if (i > 0) arr += ",";
+        bool isStored = false;
+        for (const auto& s : stored) { if (s == nets[i].ssid) { isStored = true; break; } }
+        bool isConn = (nets[i].ssid.length() > 0 && nets[i].ssid == connectedSsid);
+        // Per-entry object via JsonResponder so the SSID is JSON-escaped
+        // (SSIDs can contain quotes/backslashes that break a naive concat).
+        JsonResponder e(64 + nets[i].ssid.length());
+        e.str("ssid", nets[i].ssid)
+         .num("rssi", nets[i].rssi)
+         .num("channel", nets[i].channel)
+         .boolean("open", nets[i].open)
+         .boolean("stored", isStored)
+         .boolean("connected", isConn);
+        arr += e.body();
+    }
+    arr += "]";
+    server->send(200, "application/json", arr);
+    serverStartTime = millis();
+}
+
+void ConfigServer::handleWiFiConnect() {
+    if (!server->hasArg("ssid") || server->arg("ssid").isEmpty()) {
+        JsonResponder().boolean("success", false).str("message", "Missing ssid").send(server, 400);
+        return;
+    }
+    String ssid = server->arg("ssid");
+    // Uses saved credentials only — never overwrites them. Non-blocking: the
+    // association is observed via /status polling.
+    if (WiFiManager::getInstance().connectToNetwork(ssid.c_str())) {
+        JsonResponder().boolean("success", true).send(server);
+    } else {
+        JsonResponder().boolean("success", false)
+                       .str("message", "Network is not saved on this device")
+                       .send(server, 404);
+    }
     serverStartTime = millis();
 }
 

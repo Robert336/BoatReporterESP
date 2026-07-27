@@ -99,7 +99,7 @@ stateDiagram-v2
     CONFIG --> EMERGENCY: Level ≥ Tier 1 for debounce window (overrides CONFIG)
 
     ERROR --> NORMAL: Sensor recovers
-    ERROR --> CONFIG: Button press (only after sensor recovers)
+    ERROR --> CONFIG: Button press (sensor fault no longer blocks entry)
 
     EMERGENCY --> NORMAL: Level < Tier 1 for debounce window
     EMERGENCY --> ERROR: Sustained sensor fault (overrides EMERGENCY latch)
@@ -109,7 +109,7 @@ stateDiagram-v2
 
 - **Two-tier emergency**: Tier 1 (`emergencyWaterLevel_cm`) triggers SMS/Discord/HTTP notifications at a configurable frequency. Tier 2 (`urgentEmergencyWaterLevel_cm`) additionally pulses the horn/alert output (GPIO 26) with configurable on/off durations.
 - **Debounce**: Both entering and leaving EMERGENCY require the condition to persist for `EMERGENCY_TIMEOUT_MS` (default 5 s), preventing false alarms from transient splashes.
-- **Safety-first transitions**: CONFIG is an overlay; sensor errors and flood conditions always force an exit to ERROR or EMERGENCY, even while the web portal is active.
+- **Safety-first transitions**: CONFIG is an overlay; a flood condition always forces an exit to EMERGENCY, even while the web portal is active. A sensor fault does **not** force CONFIG → ERROR — config mode is entered only via a physical button press, so the owner is on-site and may have intentionally disconnected the sensor (e.g. to perform an OTA update over better WiFi). The sustained-failure notification still fires, and the idle-timeout exit still returns the device to NORMAL/ERROR when the portal goes unused.
 - **Silence toggle**: A 5-second button hold during EMERGENCY silences notifications and the horn. A second 5-second hold re-enables them. Silence auto-clears on return to NORMAL.
 - **Sensor fault in EMERGENCY**: A sustained sensor fault during a flood degrades to ERROR rather than latching in EMERGENCY indefinitely on stale data.
 
@@ -196,7 +196,7 @@ flowchart LR
 - **Gzip-compressed pages**: HTML pages are pre-compressed at build time (`scripts/compress_html.py`) and served with `Content-Encoding: gzip`.
 - **25+ REST API endpoints**: WiFi network management, sensor calibration, notification settings (SMS, Discord, Custom), MQTT broker config, OTA settings, and debug monitoring.
 - **Auto-timeout**: `SERVER_TIMEOUT_MS` (240 s) of inactivity triggers an automatic return to NORMAL via the state machine.
-- **Safety override**: The state machine forces CONFIG → ERROR or CONFIG → EMERGENCY regardless of server activity, so an open browser tab cannot suppress flood detection.
+- **Safety override**: The state machine forces CONFIG → EMERGENCY on a flood regardless of server activity, so an open browser tab cannot suppress flood detection. A sensor fault alone does not exit CONFIG (the owner is on-site and may have disconnected the sensor deliberately, e.g. for an OTA update).
 
 #### Key Endpoints
 

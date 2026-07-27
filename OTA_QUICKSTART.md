@@ -159,7 +159,11 @@ The version-check API call (lightweight HTTPS GET) is not gated by RSSI; only th
 
 ### Flood Abort
 
-Updates only proceed in the NORMAL system state. If an emergency (flood) is detected during an update, the download is aborted.
+A firmware download is aborted if an emergency (flood) condition is detected mid-download, so the bilge sensor is never blinded for the full download window (up to 5 minutes). Auto-install is also suppressed while the device is in the EMERGENCY state.
+
+### Updating With the Sensor Disconnected
+
+To move the unit to an area with better WiFi for a firmware update, disconnect the sensor and carry the ESP32 to the new location. The device will enter the ERROR state (no valid sensor readings), but you can still press the button to enter CONFIG mode and use the OTA page to check for and install updates — the sensor fault no longer blocks entry to CONFIG or forces an exit back to ERROR. Flood detection is irrelevant here because the sensor is physically disconnected; the flood-abort check is skipped on an invalid reading, so it will not abort your download. Once the update is complete, return the unit to the sensor; the device returns to NORMAL when readings resume.
 
 ### Pre-flight Validation
 

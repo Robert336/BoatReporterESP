@@ -45,6 +45,19 @@ let mockState = {
     rssi: -45,
     storedNetworks: ['MyWiFi', 'BoatWiFi'], // mirrors WiFiManager::getStoredSSIDs()
 
+    // In-range networks for GET /wifi/scan (a mix of saved / open / secured /
+    // weak, overlapping storedNetworks so the UI's saved-badge, checkmark, and
+    // out-of-range sections all have something to render).
+    scanNets: [
+        { ssid: 'Marina-Guest', rssi: -52, channel: 6,  open: true  },
+        { ssid: 'SaltyDog',     rssi: -61, channel: 11, open: false },
+        { ssid: 'BoatWiFi',     rssi: -70, channel: 1,  open: false },
+        { ssid: 'S/V Drifter',  rssi: -82, channel: 6,  open: false },
+    ],
+    // Simulated join latency: a /config or /wifi/connect flips `connected`
+    // to true after this delay so the page's pollConnect() sees the result.
+    joinDelayMs: 2500,
+
     // Captive portal simulation: 'online' | 'portal' | 'unknown'
     // Set to 'portal' to exercise the portal-blocked warning banner.
     portalState: 'online',
@@ -180,16 +193,62 @@ app.post('/config', (req, res) => {
     console.log(`[CONFIG] WiFi credentials received: SSID=${ssid}`);
     mockState.ssid = ssid;
     mockState.password = password;
-    mockState.connected = true;
+    mockState.connected = false;
     if (!mockState.storedNetworks.includes(ssid)) {
         mockState.storedNetworks.push(ssid);
     }
+    // Simulate the firmware's non-blocking association: pollConnect() sees the
+    // connected state flip after joinDelayMs. An empty password for an open
+    // network still succeeds; a wrong password would (on real hardware) leave
+    // it disconnected — the mock always joins so the happy path is testable.
+    setTimeout(() => {
+        mockState.connected = true;
+        mockState.ip = '192.168.1.123';
+        mockState.rssi = -55;
+    }, mockState.joinDelayMs);
     res.json({ success: true });
 });
 
 // GET /wifi/networks — stored SSID list (matches WiFiManager::getStoredSSIDs())
 app.get('/wifi/networks', (req, res) => {
     res.json(mockState.storedNetworks);
+});
+
+// GET /wifi/scan — live scan of in-range networks with stored/connected flags
+// (matches ConfigServer::handleWiFiScan). Each entry: {ssid,rssi,channel,open,
+// stored,connected}. The connected SSID is included so the UI can mark it, but
+// the page renders it in the "Current connection" card, not the list.
+app.get('/wifi/scan', (req, res) => {
+    const out = mockState.scanNets.map(n => ({
+        ssid: n.ssid,
+        rssi: n.rssi,
+        channel: n.channel,
+        open: n.open,
+        stored: mockState.storedNetworks.includes(n.ssid),
+        connected: mockState.connected && n.ssid === mockState.ssid,
+    }));
+    res.json(out);
+});
+
+// POST /wifi/connect — join an already-stored network using saved credentials
+// (matches ConfigServer::handleWiFiConnect). Simulates the non-blocking
+// association: the status endpoint flips to connected after joinDelayMs.
+app.post('/wifi/connect', (req, res) => {
+    const ssid = req.body.ssid;
+    if (!ssid) { res.status(400).json({ success: false, message: 'Missing ssid' }); return; }
+    if (!mockState.storedNetworks.includes(ssid)) {
+        res.status(404).json({ success: false, message: 'Network is not saved on this device' });
+        return;
+    }
+    console.log(`[WIFI] Join stored network: ${ssid}`);
+    mockState.ssid = ssid;
+    mockState.connected = false;
+    const net = mockState.scanNets.find(n => n.ssid === ssid);
+    setTimeout(() => {
+        mockState.connected = true;
+        if (net) { mockState.rssi = net.rssi; mockState.ip = '192.168.1.123'; }
+    }, mockState.joinDelayMs);
+    res.json({ success: true });
 });
 
 // POST /wifi/remove — remove a stored network by SSID

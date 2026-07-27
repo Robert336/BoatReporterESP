@@ -127,7 +127,9 @@ The mock implements most of these; routes it does not are flagged with ⚠️ **
 **WiFi:**
 - `GET /status`: WiFi connection status
 - `GET /wifi/networks`: List stored networks
-- `POST /config`: Save WiFi credentials
+- `GET /wifi/scan`: Live scan of in-range networks (`{ssid,rssi,channel,open,stored,connected}`), powers the iOS-style "Choose a network" list
+- `POST /config`: Save WiFi credentials (adds/updates a stored network and attempts association)
+- `POST /wifi/connect`: Join an already-stored network using its saved credentials (non-blocking)
 - `POST /wifi/remove`: Remove a stored network
 
 **OTA (⚠️ not mocked, see `src/html/ota.html` and `src/ConfigServer.cpp`):**

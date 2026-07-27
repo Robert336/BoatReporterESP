@@ -36,7 +36,7 @@ The device operates in four states:
 - **NORMAL → ERROR**: Sensor reading invalid
 - **NORMAL → EMERGENCY**: Water level ≥ threshold for ≥ threshold time
 - **ERROR → NORMAL**: Sensor recovers
-- **ERROR → CONFIG**: Button press, honored only once the sensor is healthy; a press while the sensor is still faulted is ignored so the state does not flap
+- **ERROR → CONFIG**: Button press, honored even while the sensor is still faulted — config mode is entered only via a physical button press, so the owner is on-site and may have intentionally disconnected the sensor (e.g. to perform an OTA update over better WiFi)
 - **CONFIG → NORMAL**: Configuration timeout or manual restart
 - **EMERGENCY → NORMAL**: Water level drops below threshold for ≥ threshold time
 - **EMERGENCY → ERROR**: Sustained sensor fault (≥60 s); a dead sensor mid-flood degrades to ERROR instead of latching in EMERGENCY off a stale reading; a transient glitch does not bounce an active flood

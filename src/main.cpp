@@ -443,9 +443,12 @@ void loop() {
         }
 
         // Tear down the AP + web server whenever we leave CONFIG for any
-        // reason (NORMAL via idle timeout, EMERGENCY via the safety override
-        // in computeNextState, or ERROR via sensor failure). Without this,
-        // a CONFIG → EMERGENCY transition leaves WiFi in WIFI_AP_STA mode:
+        // reason (NORMAL via idle timeout or button press, EMERGENCY via the
+        // flood safety override in computeNextState). A sensor fault alone no
+        // longer forces CONFIG → ERROR — the owner opened config mode with a
+        // physical button press and may have intentionally disconnected the
+        // sensor (e.g. for an OTA update). Without this teardown, a
+        // CONFIG → EMERGENCY transition leaves WiFi in WIFI_AP_STA mode:
         // the AP keeps broadcasting, but handleClient() is no longer called
         // (the CONFIG branch in loop() is skipped), so the web server appears
         // "down" while the SSID is still visible to clients.

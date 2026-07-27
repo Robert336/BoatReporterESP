@@ -256,12 +256,13 @@ void test_error_to_normal_on_sensor_recovery() {
     TEST_ASSERT_EQUAL(NORMAL, nextState);
 }
 
-void test_error_to_config_blocked_while_sensor_failed() {
-    // S2: ERROR→CONFIG is suppressed while sensorError is still true. The
-    // CONFIG case has its own sensorError guard that bounces straight back to
-    // ERROR, so honoring the request would flap the state and spin the web
-    // server up and down on every button press during a sensor outage. The
-    // command is dropped; the device stays in ERROR until the sensor recovers.
+void test_error_to_config_allowed_while_sensor_failed() {
+    // Config mode is entered only via a physical button press, so the owner is
+    // on-site and triggering it deliberately — e.g. to perform OTA maintenance
+    // with the sensor disconnected. A config request is therefore honored even
+    // while sensorError is still true. (Previously this was suppressed to
+    // avoid CONFIG<->ERROR flapping, but that also blocked on-site OTA updates
+    // with the sensor disconnected.)
     StateMachineContext ctx = createDefaultContext();
     ctx.currentState = ERROR;
     ctx.sensorError = true;
@@ -270,7 +271,7 @@ void test_error_to_config_blocked_while_sensor_failed() {
     StateMachineSensorReading reading = createInvalidReading();
     
     State nextState = computeNextState(ctx, reading, 1000, false);
-    TEST_ASSERT_EQUAL(ERROR, nextState);
+    TEST_ASSERT_EQUAL(CONFIG, nextState);
 }
 
 void test_error_stays_error_while_sensor_failed() {
@@ -331,7 +332,13 @@ void test_config_to_emergency_on_flood_while_active() {
     TEST_ASSERT_EQUAL(EMERGENCY, nextState);
 }
 
-void test_config_to_error_on_sensor_failure_while_active() {
+void test_config_stays_config_on_sensor_failure_while_active() {
+    // A sensor fault no longer forces CONFIG -> ERROR. Config mode is entered
+    // only via a physical button press, so the owner is on-site and may have
+    // intentionally disconnected the sensor (e.g. for an OTA update). Bouncing
+    // back to ERROR would tear down the portal they deliberately opened.
+    // Flood (EMERGENCY) override and idle-timeout exit still apply; the
+    // sustained-failure notification still fires from updateStateMachine().
     StateMachineContext ctx = createDefaultContext();
     ctx.currentState = CONFIG;
     ctx.sensorError = true;
@@ -339,7 +346,7 @@ void test_config_to_error_on_sensor_failure_while_active() {
     StateMachineSensorReading reading = createInvalidReading();
 
     State nextState = computeNextState(ctx, reading, 1000, true);
-    TEST_ASSERT_EQUAL(ERROR, nextState);
+    TEST_ASSERT_EQUAL(CONFIG, nextState);
 }
 
 void test_config_exits_after_server_timeout_via_full_update() {
@@ -751,7 +758,7 @@ void runAllTests() {
     
     // ERROR state transition tests
     RUN_TEST(test_error_to_normal_on_sensor_recovery);
-    RUN_TEST(test_error_to_config_blocked_while_sensor_failed);
+    RUN_TEST(test_error_to_config_allowed_while_sensor_failed);
     RUN_TEST(test_error_stays_error_while_sensor_failed);
     
     // S1: EMERGENCY sensor-fault degradation tests
@@ -762,7 +769,7 @@ void runAllTests() {
     RUN_TEST(test_config_to_normal_when_config_ends);
     RUN_TEST(test_config_stays_config_while_active);
     RUN_TEST(test_config_to_emergency_on_flood_while_active);
-    RUN_TEST(test_config_to_error_on_sensor_failure_while_active);
+    RUN_TEST(test_config_stays_config_on_sensor_failure_while_active);
     RUN_TEST(test_config_exits_after_server_timeout_via_full_update);
     RUN_TEST(test_config_mid_session_button_press_does_not_block_timeout_exit);
     

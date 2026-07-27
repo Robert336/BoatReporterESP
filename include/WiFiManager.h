@@ -46,6 +46,17 @@ struct WiFiCredential {
     char password[PASS_MAX];
 };
 
+// A single visible AP from an on-demand scan, returned by
+// scanAvailableNetworks(). SSIDs are de-duplicated (mesh / multi-AP
+// deployments advertise several BSSIDs for one name); we keep the strongest
+// instance so the config list shows one row per network, like iOS.
+struct ScannedNetwork {
+    String ssid;
+    int32_t rssi;
+    uint8_t channel;
+    bool open;       // true for WIFI_AUTH_OPEN (no PSK)
+};
+
 // Captive-portal reachability classification. UNKNOWN until the first probe
 // after association completes; ONLINE means the connectivity probe passed
 // un-hijacked; PORTAL means HTTP traffic is being intercepted (marina login).
@@ -120,6 +131,18 @@ public:
     void requestImmediateReconnect() { _lastReconnectAttempt = 0; }
     std::vector<String> getStoredSSIDs();
     bool isConnected();
+
+    // On-demand scan of in-range networks (blocking ~2-5s). De-duplicates by
+    // SSID keeping the strongest signal, and sorts by RSSI descending so the
+    // config page's "Other Networks" list reads like iOS (strongest first).
+    // Safe in both pure-STA and AP+STA (config-portal) modes — the STA scans
+    // while the AP keeps serving the page.
+    std::vector<ScannedNetwork> scanAvailableNetworks();
+    // Associate with a specific stored network without changing its saved
+    // credentials. Non-blocking (WiFi.begin returns immediately; the result is
+    // picked up by maintainConnection()) so the config page can show live
+    // "Connecting…/Connected" feedback. Returns false if the SSID isn't saved.
+    bool connectToNetwork(const char* ssid);
 
     // Custom STA MAC. Empty string = factory MAC. Persisted to NVS ("sta_mac"
     // in the wifi namespace) and applied to the radio before the next

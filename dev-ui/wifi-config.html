@@ -3,45 +3,82 @@
 <head>
   <meta charset="UTF-8">
   <title>Wi-Fi · BilgeRise</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
   <link rel="prefetch" href="/settings">
   <style>
 *{box-sizing:border-box}
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;background:#f7f5f1;color:#1c1917;font-size:16px;line-height:1.4;-webkit-font-smoothing:antialiased}
-.app{max-width:480px;margin:0 auto;padding:16px}
+.app{max-width:480px;margin:0 auto;padding:16px 16px 64px}
 header{display:flex;align-items:center;gap:8px;padding:8px 0 14px}
-.back{color:#44403c;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;background:#fff;border:1px solid #e7e5e4;font-size:18px;line-height:1}
+.back{color:#44403c;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;background:#fff;border:1px solid #e7e5e4;font-size:18px;line-height:1;flex-shrink:0}
 .back:active{background:#f5f5f4}
 h1{font-size:20px;font-weight:600;margin:0;letter-spacing:-0.01em}
 h2{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#78716c;margin:0 0 12px}
-.card{background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:18px;margin-bottom:14px}
-.head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:8px}
+.card{background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:14px;margin-bottom:14px}
+.card.tight{padding:6px 14px}
+.head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px}
 .head h2{margin:0}
 .pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:#f5f5f4;border:1px solid #e7e5e4;font-size:12px;color:#44403c}
 .dot{width:7px;height:7px;border-radius:50%;background:#a8a29e;flex-shrink:0;display:inline-block}
 .dot.ok{background:#65a30d}
 .dot.bad{background:#dc2626}
-.statgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.dot.warn{background:#d97706}
+.statgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
 .stat{padding:10px;background:#f5f5f4;border-radius:10px}
 .stat .k{font-size:11px;color:#78716c;text-transform:uppercase;letter-spacing:.05em}
 .stat .v{font-size:15px;font-weight:600;margin-top:2px;word-break:break-all;font-variant-numeric:tabular-nums}
-label{display:block;font-size:13px;color:#78716c;margin:10px 0 6px}
+.banner{display:none;background:#fef3c7;border:1px solid #fcd34d;color:#92400e;border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.5;margin-top:10px}
+.banner b{display:block;margin-bottom:4px}
+/* connection check row (the joined network, iOS-style) */
+.connrow{display:flex;align-items:center;gap:12px}
+.connrow .nm{font-size:17px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.connrow .check{color:#2563eb;font-size:20px;flex-shrink:0}
+/* network list rows */
+.net{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid #f0eeec;cursor:pointer}
+.net:last-child{border-bottom:0}
+.net:active{background:#faf9f7}
+.net .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:16px}
+.net .badge{font-size:11px;color:#78716c;background:#f5f5f4;border:1px solid #e7e5e4;border-radius:999px;padding:2px 8px;margin-left:8px}
+.net .spin{font-size:12px;color:#78716c;margin-left:8px}
+.net .lock{width:15px;height:15px;flex-shrink:0;opacity:.5}
+.net .i{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#a8a29e;font-size:15px;font-style:italic;flex-shrink:0;text-decoration:none}
+.net .i:active{background:#f5f5f4}
+/* signal bars */
+.bars{display:inline-flex;align-items:flex-end;gap:2px;height:16px;flex-shrink:0}
+.bars i{width:3px;background:#a8a29e;border-radius:1px;display:block}
+.bars i:nth-child(1){height:5px}
+.bars i:nth-child(2){height:8px}
+.bars i:nth-child(3){height:12px}
+.bars i:nth-child(4){height:16px}
+.bars i.on{background:#1c1917}
+.muted{color:#a8a29e;font-size:14px}
+.empty{padding:18px 4px;text-align:center;color:#a8a29e;font-size:14px}
+.scanbtn{display:inline-flex;align-items:center;gap:6px;background:#f5f5f4;border:1px solid #e7e5e4;border-radius:999px;padding:6px 14px;font-size:13px;color:#44403c;cursor:pointer;font-family:inherit}
+.scanbtn:active{background:#efeeec}
+.scanbtn:disabled{opacity:.5;cursor:wait}
+.spinbtn{display:inline-block;width:13px;height:13px;border:2px solid #c7c4bf;border-top-color:#78716c;border-radius:50%;animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+/* bottom sheet */
+.sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:20;display:none}
+.sheet-bg.show{display:block}
+.sheet{position:fixed;left:0;right:0;bottom:0;background:#fff;border-radius:18px 18px 0 0;padding:8px 16px 20px;z-index:21;max-width:480px;margin:0 auto;transform:translateY(100%);transition:transform .22s ease}
+.sheet.show{transform:translateY(0)}
+.sheet h3{font-size:17px;font-weight:600;margin:10px 0 4px;text-align:center}
+.sheet .sub{text-align:center;font-size:12px;color:#78716c;margin-bottom:12px}
 .input{display:flex;align-items:stretch;background:#f5f5f4;border:1px solid #e7e5e4;border-radius:10px;overflow:hidden;transition:border-color .15s}
 .input:focus-within{border-color:#1c1917;background:#fff}
-.input input{flex:1;border:0;background:transparent;padding:10px 12px;font-size:15px;font-family:inherit;color:inherit;width:100%;min-width:0}
+.input input{flex:1;border:0;background:transparent;padding:11px 12px;font-size:16px;font-family:inherit;color:inherit;width:100%;min-width:0}
 .input input:focus{outline:0}
-.btn{display:block;width:100%;padding:13px;background:#1c1917;color:#fff;border:0;border-radius:10px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;margin-top:14px;transition:background .15s}
+.input .eye{background:transparent;border:0;padding:0 12px;color:#78716c;font-size:13px;cursor:pointer}
+.btn{display:block;width:100%;padding:13px;background:#1c1917;color:#fff;border:0;border-radius:10px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;margin-top:12px;transition:background .15s}
 .btn:active{background:#292524}
 .btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.danger{background:#dc2626}
+.btn.ghost{background:#f5f5f4;color:#44403c}
+.btn.ghost:active{background:#efeeec}
 .msg{margin-top:10px;font-size:13px;text-align:center;color:#78716c;min-height:18px}
 .msg.ok{color:#65a30d}
 .msg.bad{color:#dc2626}
-.dot.warn{background:#d97706}
-.banner{display:none;background:#fef3c7;border:1px solid #fcd34d;color:#92400e;border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.5;margin-bottom:14px}
-.banner b{display:block;margin-bottom:4px}
-.banner .btn{margin-top:10px;background:#92400e}
-.chk{display:flex;align-items:center;gap:8px;font-size:13px;color:#78716c;margin-top:10px;cursor:pointer}
-.chk input{width:16px;height:16px;accent-color:#1c1917}
 .note{font-size:12px;color:#a8a29e;line-height:1.5;margin-top:8px}
   </style>
 </head>
@@ -52,40 +89,45 @@ label{display:block;font-size:13px;color:#78716c;margin:10px 0 6px}
       <h1>Wi-Fi</h1>
     </header>
 
+    <!-- Current connection (iOS "the network you're on") -->
     <div class="card">
       <div class="head"><h2>Current connection</h2><span class="pill" id="pill"><span class="dot" id="dot"></span><span id="state">…</span></span></div>
+      <div class="connrow" id="conn_row" style="display:none">
+        <span class="check">✓</span>
+        <span class="nm" id="conn_ssid">…</span>
+        <span class="bars" id="conn_bars"></span>
+      </div>
+      <div class="empty" id="conn_empty" style="display:none">Not connected</div>
+      <div class="statgrid" id="stats" style="display:none">
+        <div class="stat"><div class="k">IP address</div><div class="v" id="s_ip">…</div></div>
+        <div class="stat"><div class="k">Signal</div><div class="v" id="s_rssi">…</div></div>
+      </div>
       <div class="banner" id="portal_banner">
         <b>Captive portal detected</b>
         This network requires a sign-in the device cannot complete. To get online, either set a <b>Custom MAC address</b> below that is already authenticated on this network, or ask the network admin to whitelist this device&rsquo;s MAC. Telemetry and alerts will resume automatically once the portal no longer blocks traffic.
       </div>
-      <div class="statgrid" id="stats">
-        <div class="stat"><div class="k">Network</div><div class="v" id="s_ssid">…</div></div>
-        <div class="stat"><div class="k">IP address</div><div class="v" id="s_ip">…</div></div>
-        <div class="stat"><div class="k">Signal</div><div class="v" id="s_rssi">…</div></div>
-        <div class="stat"><div class="k">Status</div><div class="v" id="s_state">…</div></div>
+    </div>
+
+    <!-- Pick a network (iOS "Other Networks") -->
+    <div class="card tight">
+      <div class="head" style="margin:8px 0 0">
+        <h2>Choose a network</h2>
+        <button class="scanbtn" id="scanbtn" onclick="loadScan()"><span id="scanbtn_txt">Rescan</span></button>
       </div>
+      <div id="netlist"><div class="empty">Scanning…</div></div>
     </div>
 
-    <div class="card">
-      <h2>Add or change network</h2>
-      <form id="form" onsubmit="return save(event)">
-        <label>SSID</label>
-        <div class="input"><input type="text" id="ssid" required autocomplete="off"></div>
-        <label class="chk"><input type="checkbox" id="opennet" onchange="toggleOpen()"> Open network (no password, e.g. marina guest Wi-Fi)</label>
-        <div id="pass_wrap">
-          <label>Password</label>
-          <div class="input"><input type="password" id="password" autocomplete="new-password"></div>
-        </div>
-        <button type="submit" class="btn" id="btn">Save & connect</button>
-        <div class="msg" id="msg"></div>
-      </form>
-      <div class="note">After saving, the ESP32 will try to connect. If it fails, the config portal will start automatically.</div>
+    <!-- Saved networks not currently in range -->
+    <div class="card tight" id="mycard" style="display:none">
+      <div class="head" style="margin:8px 0 4px"><h2>My networks</h2></div>
+      <div class="note" style="margin:0 0 4px">Saved on this device but not in range.</div>
+      <div id="mylist"></div>
     </div>
 
+    <!-- Custom MAC (unchanged) -->
     <div class="card">
       <h2>Custom MAC address</h2>
       <div class="stat" style="margin-bottom:10px"><div class="k">Current MAC (as seen by the network)</div><div class="v" id="s_mac">…</div></div>
-      <label>Override MAC</label>
       <div class="input"><input type="text" id="mac" placeholder="AA:BB:CC:DD:EE:FF" autocomplete="off" spellcheck="false" maxlength="17"></div>
       <div class="note">First byte must be even (unicast). Takes effect on the next connection attempt — save, then reconnect or reboot. Leave empty and save to restore the factory MAC.</div>
       <button class="btn" id="mac_btn" onclick="saveMac()">Save MAC</button>
@@ -93,11 +135,237 @@ label{display:block;font-size:13px;color:#78716c;margin:10px 0 6px}
     </div>
   </div>
 
+  <!-- Bottom sheet for joining / forgetting -->
+  <div class="sheet-bg" id="sheetbg" onclick="closeSheet()"></div>
+  <div class="sheet" id="sheet" role="dialog" aria-modal="true">
+    <h3 id="sheet_title">Join network</h3>
+    <div class="sub" id="sheet_sub"></div>
+    <div id="sheet_body"></div>
+    <div class="msg" id="sheet_msg"></div>
+  </div>
+
   <script>
 function el(id){return document.getElementById(id)}
-function toggleOpen(){
-el('pass_wrap').style.display=el('opennet').checked?'none':'';
+var scanResults=[], storedSSIDs=[], connectedSsid='', connectingSsid='';
+
+// ---- signal helpers ----
+function rssiBars(rssi){
+  if(rssi>=-55) return 4;
+  if(rssi>=-66) return 3;
+  if(rssi>=-77) return 2;
+  return 1;
 }
+function barsHtml(n){var s='<span class="bars">';for(var i=1;i<=4;i++){s+='<i class="'+(i<=n?'on':'')+'"></i>'}return s+'</span>'}
+var LOCK='<svg class="lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
+
+// ---- status (polled) ----
+function load(){
+fetch('/status').then(r=>r.json()).then(d=>{
+connectedSsid=d.connected?d.ssid:'';
+if(d.connected){
+el('conn_row').style.display='flex';
+el('conn_empty').style.display='none';
+el('stats').style.display='grid';
+el('conn_ssid').textContent=d.ssid||'—';
+el('conn_bars').innerHTML=barsHtml(rssiBars(d.rssi||-90));
+el('s_ip').textContent=d.ip||'—';
+el('s_rssi').textContent=(d.rssi!=null?d.rssi+' dBm':'—');
+if(d.portalState==='portal'){
+el('dot').className='dot warn';el('state').textContent='portal blocked';
+el('portal_banner').style.display='block';
+}else if(d.portalState==='online'){
+el('dot').className='dot ok';el('state').textContent='connected';
+el('portal_banner').style.display='none';
+}else{
+el('dot').className='dot ok';el('state').textContent='connected';
+el('portal_banner').style.display='none';
+}
+}else{
+el('conn_row').style.display='none';
+el('conn_empty').style.display='block';
+el('stats').style.display='none';
+el('dot').className='dot bad';el('state').textContent='disconnected';
+el('portal_banner').style.display='none';
+}
+renderNets(); // re-render so the connected check / connecting spinner updates
+}).catch(()=>{el('state').textContent='offline'});
+}
+
+// ---- scan ----
+function loadScan(){
+var b=el('scanbtn');b.disabled=true;el('scanbtn_txt').innerHTML='<span class="spinbtn"></span> Scanning';
+el('netlist').innerHTML='<div class="empty">Scanning for networks…</div>';
+fetch('/wifi/scan').then(r=>r.json()).then(d=>{
+scanResults=Array.isArray(d)?d:[];
+b.disabled=false;el('scanbtn_txt').textContent='Rescan';
+renderNets();loadStored();
+}).catch(e=>{b.disabled=false;el('scanbtn_txt').textContent='Rescan';
+el('netlist').innerHTML='<div class="empty">Scan failed. <a href="#" onclick="loadScan();return false">Retry</a></div>'});
+}
+
+// ---- stored list (for "My networks" out-of-range) ----
+function loadStored(){
+fetch('/wifi/networks').then(r=>r.json()).then(d=>{
+storedSSIDs=Array.isArray(d)?d:[];
+renderMine();
+}).catch(()=>{storedSSIDs=[];renderMine()});
+}
+
+// ---- render the in-range list ----
+function renderNets(){
+if(!scanResults.length){el('netlist').innerHTML='<div class="empty">No networks found. <a href="#" onclick="loadScan();return false">Rescan</a></div>';return}
+var h='';
+for(var i=0;i<scanResults.length;i++){
+var n=scanResults[i];
+if(n.connected) continue; // shown in the connection card
+var name=esc(n.ssid);
+var badge=n.stored?'<span class="badge">Saved</span>':'';
+var sp=(connectingSsid&&connectingSsid===n.ssid)?'<span class="spin">joining…</span>':'';
+var bars=barsHtml(rssiBars(n.rssi));
+var lock=n.open?'':LOCK;
+h+='<div class="net" onclick="tapNet('+i+')">'+
+'<span class="nm">'+name+badge+sp+'</span>'+lock+bars+
+'<a class="i" href="#" onclick="event.stopPropagation();infoNet('+i+');return false">i</a>'+
+'</div>';
+}
+el('netlist').innerHTML=h;
+}
+
+// ---- render saved-but-out-of-range ----
+function renderMine(){
+var inRange={};for(var i=0;i<scanResults.length;i++){inRange[scanResults[i].ssid]=true}
+var oor=storedSSIDs.filter(function(s){return !inRange[s]});
+if(!oor.length){el('mycard').style.display='none';return}
+el('mycard').style.display='block';
+var h='';
+for(var i=0;i<oor.length;i++){
+h+='<div class="net"><span class="nm">'+esc(oor[i])+'</span><span class="muted">out of range</span>'+
+'<a class="i" href="#" onclick="forget(\''+escA(oor[i])+'\');return false">i</a></div>';
+}
+el('mylist').innerHTML=h;
+}
+
+// ---- tap a network row: join ----
+function tapNet(i){
+var n=scanResults[i];if(!n)return;
+if(n.connected) return;
+if(n.stored){
+// saved credentials on file → join directly without re-entering password
+joinStored(n.ssid);
+}else if(n.open){
+openSheet(n.ssid,'open');
+}else{
+openSheet(n.ssid,'secure');
+}
+}
+
+// ---- (i) info → detail sheet (forget if saved) ----
+function infoNet(i){
+var n=scanResults[i];if(!n)return;
+var ch=n.channel?('ch '+n.channel):'';
+var sig=n.rssi+' dBm';
+var sec=n.open?'Open':'Secured';
+el('sheet_title').textContent=n.ssid;
+el('sheet_sub').textContent=[sec,ch,sig].filter(Boolean).join(' · ');
+var body='<div class="note" style="text-align:center">'+sec+' network · '+sig+(ch?' · '+ch:'')+'</div>';
+if(n.stored){
+body+='<button class="btn danger" onclick="forget(\''+escA(n.ssid)+'\')">Forget This Network</button>';
+}else if(!n.open){
+body+='<button class="btn" onclick="closeSheet();openSheet(\''+escA(n.ssid)+'\',\'secure\')">Join</button>';
+}else{
+body+='<button class="btn" onclick="closeSheet();openSheet(\''+escA(n.ssid)+'\',\'open\')">Join</button>';
+}
+body+='<button class="btn ghost" onclick="closeSheet()">Cancel</button>';
+el('sheet_body').innerHTML=body;
+el('sheet_msg').textContent='';el('sheet_msg').className='msg';
+showSheet();
+}
+
+// ---- bottom sheet ----
+function openSheet(ssid,kind){
+el('sheet_title').textContent=ssid;
+el('sheet_msg').textContent='';el('sheet_msg').className='msg';
+if(kind==='open'){
+el('sheet_sub').textContent='Open network · no password required';
+el('sheet_body').innerHTML=
+'<div class="note" style="text-align:center">This network is unsecured. Anyone in range can intercept traffic on it.</div>'+
+'<button class="btn" id="join_btn" onclick="joinOpen(\''+escA(ssid)+'\')">Join</button>'+
+'<button class="btn ghost" onclick="closeSheet()">Cancel</button>';
+}else{
+el('sheet_sub').textContent='Enter password';
+el('sheet_body').innerHTML=
+'<div class="input"><input type="password" id="pass" autocomplete="new-password" placeholder="Password" autofocus>'+
+'<button class="eye" onclick="toggleEye()">Show</button></div>'+
+'<button class="btn" id="join_btn" onclick="joinSecure(\''+escA(ssid)+'\')">Join</button>'+
+'<button class="btn ghost" onclick="closeSheet()">Cancel</button>';
+setTimeout(function(){var p=el('pass');if(p)p.focus()},50);
+}
+showSheet();
+}
+function toggleEye(){var p=el('pass'),b=document.querySelector('.eye');if(!p)return;if(p.type==='password'){p.type='text';b.textContent='Hide'}else{p.type='password';b.textContent='Show'}}
+function showSheet(){el('sheetbg').classList.add('show');el('sheet').classList.add('show')}
+function closeSheet(){el('sheetbg').classList.remove('show');el('sheet').classList.remove('show')}
+
+// ---- join actions ----
+function joinStored(ssid){
+connectingSsid=ssid;renderNets();
+fetch('/wifi/connect',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'ssid='+encodeURIComponent(ssid)})
+.then(r=>r.json().then(d=>{
+if(!r.ok||!d.success){connectingSsid='';renderNets();openInfoMsg(ssid,d.message||'Could not join this network');return}
+pollConnect(ssid);
+})).catch(e=>{connectingSsid='';renderNets();openInfoMsg(ssid,'Network error')});
+}
+function joinOpen(ssid){
+var b=el('join_btn');b.disabled=true;b.textContent='Joining…';
+fetch('/config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'ssid='+encodeURIComponent(ssid)+'&password='})
+.then(r=>{b.disabled=false;b.textContent='Join';if(r.ok){closeSheet();connectingSsid=ssid;renderNets();pollConnect(ssid)}else{el('sheet_msg').textContent='✗ Could not save';el('sheet_msg').className='msg bad'}})
+.catch(e=>{b.disabled=false;b.textContent='Join';el('sheet_msg').textContent='Error: '+e.message;el('sheet_msg').className='msg bad'});
+}
+function joinSecure(ssid){
+var p=el('pass').value;
+if(!p){el('sheet_msg').textContent='Enter a password';el('sheet_msg').className='msg bad';return}
+var b=el('join_btn');b.disabled=true;b.textContent='Joining…';
+fetch('/config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'ssid='+encodeURIComponent(ssid)+'&password='+encodeURIComponent(p)})
+.then(r=>{b.disabled=false;b.textContent='Join';if(r.ok){closeSheet();connectingSsid=ssid;renderNets();pollConnect(ssid)}else{el('sheet_msg').textContent='✗ Could not save';el('sheet_msg').className='msg bad'}})
+.catch(e=>{b.disabled=false;b.textContent='Join';el('sheet_msg').textContent='Error: '+e.message;el('sheet_msg').className='msg bad'});
+}
+// Poll /status after a join attempt to reflect success/failure in the UI.
+function pollConnect(ssid){
+var tries=0;
+(function step(){
+load(); // refresh current connection + list
+if(connectedSsid===ssid){connectingSsid='';renderNets();return}
+if(++tries>12){connectingSsid='';renderNets();openInfoMsg(ssid,"Couldn't join — check the password and try again.");return}
+setTimeout(step,1500);
+})();
+}
+
+// ---- forget ----
+function forget(ssid){
+el('sheet_title').textContent='Forget "'+ssid+'"?';
+el('sheet_sub').textContent='This removes the saved password from the device.';
+el('sheet_body').innerHTML=
+'<button class="btn danger" onclick="doForget(\''+escA(ssid)+'\')">Forget</button>'+
+'<button class="btn ghost" onclick="closeSheet()">Cancel</button>';
+el('sheet_msg').textContent='';el('sheet_msg').className='msg';
+showSheet();
+}
+function doForget(ssid){
+fetch('/wifi/remove',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'ssid='+encodeURIComponent(ssid)})
+.then(r=>r.json()).then(d=>{closeSheet();loadScan()})
+.catch(e=>{el('sheet_msg').textContent='Error: '+e.message;el('sheet_msg').className='msg bad'});
+}
+
+// open the info sheet with a plain message (used for join-failure feedback)
+function openInfoMsg(ssid,msg){
+el('sheet_title').textContent=ssid;
+el('sheet_sub').textContent='';
+el('sheet_body').innerHTML='<div class="note" style="text-align:center">'+msg+'</div><button class="btn ghost" onclick="closeSheet()">Close</button>';
+el('sheet_msg').textContent='';el('sheet_msg').className='msg';
+showSheet();
+}
+
+// ---- custom MAC (unchanged logic) ----
 function loadMac(){
 fetch('/wifi/mac').then(r=>r.json()).then(d=>{
 el('s_mac').textContent=d.mac||'—';
@@ -116,43 +384,18 @@ if(r.ok&&d.success){el('mac_msg').textContent=v?'✓ Saved — will apply on nex
 else{el('mac_msg').textContent='✗ '+(d.message||'Failed to save');el('mac_msg').className='msg bad'}}))
 .catch(err=>{b.disabled=false;el('mac_msg').textContent='Error: '+err.message;el('mac_msg').className='msg bad'});
 }
-function load(){
-fetch('/status').then(r=>r.json()).then(d=>{
-if(d.connected){
-el('s_ssid').textContent=d.ssid||'—';el('s_ip').textContent=d.ip||'—';
-el('s_rssi').textContent=(d.rssi||'—')+(d.rssi?' dBm':'');
-if(d.portalState==='portal'){
-el('dot').className='dot warn';el('state').textContent='portal blocked';
-el('s_state').textContent='Portal';el('portal_banner').style.display='block';
-}else if(d.portalState==='online'){
-el('dot').className='dot ok';el('state').textContent='connected';
-el('s_state').textContent='Online';el('portal_banner').style.display='none';
-}else{
-el('dot').className='dot ok';el('state').textContent='connected';
-el('s_state').textContent='Checking…';el('portal_banner').style.display='none';
+
+// ---- tiny escapers ----
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+// escape for use inside a single-quoted JS string in a double-quoted HTML
+// attribute (onclick="..."). JS-escape first, then HTML-attribute-escape the
+// whole result so a raw &/</> in an SSID can't break out of the attribute.
+function escA(s){
+  s=String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
-}else{
-el('dot').className='dot bad';el('state').textContent='disconnected';
-el('s_ssid').textContent='—';el('s_ip').textContent='—';el('s_rssi').textContent='—';el('s_state').textContent='Offline';
-el('portal_banner').style.display='none';
-}
-}).catch(e=>{el('state').textContent='offline'})
-}
-function save(e){
-e.preventDefault();
-var s=el('ssid').value,p=el('opennet').checked?'':el('password').value;
-if(!s||(!p&&!el('opennet').checked)){el('msg').textContent='Enter SSID and password';el('msg').className='msg bad';return false}
-var btn=el('btn');btn.disabled=true;btn.textContent='Saving…';
-el('msg').textContent='';el('msg').className='msg';
-fetch('/config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'ssid='+encodeURIComponent(s)+'&password='+encodeURIComponent(p)})
-.then(r=>{
-btn.disabled=false;btn.textContent='Save & connect';
-if(r.ok){el('msg').textContent='✓ Saved — connecting…';el('msg').className='msg ok';el('form').reset();setTimeout(load,3000)}
-else{el('msg').textContent='✗ Failed to save';el('msg').className='msg bad'}
-}).catch(err=>{btn.disabled=false;btn.textContent='Save & connect';el('msg').textContent='Error: '+err.message;el('msg').className='msg bad'});
-return false;
-}
-load();loadMac();setInterval(load,5000);
+
+load();loadMac();loadScan();setInterval(load,5000);
   </script>
 </body>
 </html>

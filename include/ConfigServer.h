@@ -68,6 +68,8 @@ private:
     void handleSubmit();                    // Process WiFi configuration submission
     void handleStatus();                    // Return WiFi connection status JSON
     void handleWiFiNetworks();              // GET /wifi/networks — stored SSID list JSON
+    void handleWiFiScan();                  // GET /wifi/scan — scan in-range networks JSON
+    void handleWiFiConnect();               // POST /wifi/connect — join a stored network
     void handleWiFiRemove();               // POST /wifi/remove — remove a stored network
     void handleWiFiMac();                  // GET/POST /wifi/mac — custom STA MAC address
     

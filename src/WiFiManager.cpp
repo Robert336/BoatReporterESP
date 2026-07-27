@@ -5,6 +5,7 @@
 #include <esp_timer.h>
 #include <esp_wifi.h>
 #include <HTTPClient.h>
+#include <algorithm>
 
 
 // Singleton instance getter
@@ -214,10 +215,18 @@ void WiFiManager::addNetwork(const char* ssid, const char* password) {
     }
 
     // Attempt an immediate connection when in STA mode and not yet connected.
-    // Skip in AP/AP_STA mode (CONFIG state) — connectToBestNetwork() will be
-    // called by stopSetupMode() when the AP tears down.
     if (!isConnected() && WiFi.getMode() == WIFI_MODE_STA) {
         connectToBestNetwork();
+    } else if (!isConnected() && WiFi.getMode() == WIFI_MODE_APSTA) {
+        // Config-portal mode (AP+STA): kick off a non-blocking association so
+        // the user gets live "Connecting…/Connected" feedback in the WiFi
+        // config page without blocking the single-threaded web server (a full
+        // connectToBestNetwork() scan+wait would freeze the portal for ~20s).
+        // WiFi.begin() returns immediately; maintainConnection() picks up the
+        // result, schedules the captive-portal probe, and resets the reconnect
+        // bookkeeping. The full scan-and-pick runs again when stopSetupMode()
+        // flips the radio back to pure STA.
+        connectToNetwork(ssid);
     }
 }
 
@@ -359,6 +368,73 @@ std::vector<String> WiFiManager::getStoredSSIDs() {
         ssids.push_back(String(cred.ssid));
     }
     return ssids;
+}
+
+std::vector<ScannedNetwork> WiFiManager::scanAvailableNetworks() {
+    std::vector<ScannedNetwork> out;
+    // The scan is a single blocking call (~2-5s on 2.4GHz). It runs on the
+    // loop task (via ConfigServer::handleWiFiScan -> handleClient), which is
+    // subscribed to the task watchdog; feed before+after so a slow/crowded
+    // band can't trip it (mirrors connectToBestNetwork). Safe in AP+STA mode:
+    // the STA scans off-channel while the AP keeps beaconing.
+    esp_task_wdt_reset();
+    int n = WiFi.scanNetworks();
+    esp_task_wdt_reset();
+
+    if (n <= 0) {
+        LOG_NETWORK("[WIFI] scanAvailableNetworks: scan returned %d", n);
+        WiFi.scanDelete();
+        return out;
+    }
+
+    // De-duplicate by SSID keeping the strongest RSSI (mesh / multi-AP
+    // deployments advertise several BSSIDs per name). SSIDs are 1-32 bytes and
+    // the result set is typically <20 rows, so a linear scan is fine.
+    for (int i = 0; i < n; i++) {
+        String ssid = WiFi.SSID(i);
+        if (ssid.length() == 0) continue; // hidden / suppressed SSIDs — no name to show or join
+        int32_t rssi = WiFi.RSSI(i);
+        bool found = false;
+        for (auto& e : out) {
+            if (e.ssid == ssid) {
+                if (rssi > e.rssi) { e.rssi = rssi; e.channel = WiFi.channel(i); }
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            ScannedNetwork e;
+            e.ssid = ssid;
+            e.rssi = rssi;
+            e.channel = WiFi.channel(i);
+            e.open = (WiFi.encryptionType(i) == WIFI_AUTH_OPEN);
+            out.push_back(e);
+        }
+    }
+    WiFi.scanDelete();
+
+    // Sort by RSSI descending (strongest first), like the iOS network list.
+    std::sort(out.begin(), out.end(), [](const ScannedNetwork& a, const ScannedNetwork& b) {
+        return a.rssi > b.rssi;
+    });
+    return out;
+}
+
+bool WiFiManager::connectToNetwork(const char* ssid) {
+    // Look up stored credentials and kick off a non-blocking association.
+    // Does not touch NVS — used by the config page's "join a saved network"
+    // action (POST /wifi/connect) and by addNetwork() in AP+STA mode. The
+    // result is observed asynchronously via maintainConnection()/WiFi.status().
+    for (auto& cred : storedNetworks) {
+        if (strcmp(cred.ssid, ssid) == 0) {
+            applyCustomMac();
+            WiFi.begin(cred.ssid, cred.password);
+            LOG_NETWORK("[WIFI] Connecting to %s (non-blocking)", cred.ssid);
+            return true;
+        }
+    }
+    LOG_NETWORK("[WIFI] connectToNetwork: %s not in stored list", ssid);
+    return false;
 }
 
 bool WiFiManager::isConnected() {

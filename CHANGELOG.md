@@ -13,13 +13,18 @@ to `Robert336/BoatReporterESP`).
 ## [Unreleased]
 
 ### Added
+- iOS-style WiFi network picker on the WiFi config page: the page now shows the currently connected network at the top (with a checkmark, live signal bars, and IP), followed by a scanned list of in-range networks (signal bars + lock icon for secured networks), and a "My networks" section listing saved networks that are out of range. Tapping a network joins it — saved networks connect with their stored password (no re-entry), open networks ask for confirmation, and secured networks open a password sheet. An (i) button on each row reveals details and a "Forget this network" action. Owners no longer need to type an SSID by hand.
+- `GET /wifi/scan`: returns in-range networks as `{ssid,rssi,channel,open,stored,connected}` (de-duplicated by SSID, strongest-first) so the config page can render the picker in one request.
+- `POST /wifi/connect`: joins an already-stored network using its saved credentials without overwriting them (non-blocking association; the result is observed via `GET /status`).
 - Captive portal (marina WiFi) detection: the device probes network reachability after associating and every 2 minutes, classifying the link as `online`/`portal`/`unknown` and exposing `portalState`/`portalLoginUrl` in `GET /status` and `GET /init`. When a portal is detected the Wi-Fi page shows a warning advising the owner to use an authenticated/whitelisted MAC (via the custom MAC override) rather than attempting an in-device sign-in, which captive portals vary too widely to support reliably.
 - Open (passwordless) networks can now be saved from the WiFi config page via an "Open network" checkbox.
 - Custom STA MAC address override: a new "Custom MAC address" card at the bottom of the WiFi config page lets the owner change the MAC address the ESP32 presents to access points (`GET/POST /wifi/mac`). The override is persisted to NVS and applied before each association; clearing it restores the factory MAC. Useful for bypassing per-device MAC limits at marinas or matching an already-authenticated address on a captive-portal network.
 
 ### Changed
+- Saving WiFi credentials during the config portal (AP+STA mode) now kicks off a non-blocking association so the page gives immediate "Connecting…/Connected" feedback instead of waiting until the portal closes. The full scan-and-connect still runs when the radio returns to pure STA mode.
 - Notification channels fail fast while a captive portal is confirmed instead of burning their 10 s timeouts against the hijacked connection; sends resume automatically once the portal opens.
 - WiFi passwords are no longer logged in plaintext when saving credentials.
+- **Allow ERROR → CONFIG and stay in CONFIG on a sensor fault**: a config-mode request (physical button press) is now honored even while the sensor is faulted, and a sensor fault no longer forces CONFIG → ERROR. Config mode is only ever entered via an on-site button press, so the fail-safe was unnecessary; it also blocked the intended workflow of disconnecting the sensor and carrying the unit to better WiFi for an OTA update. Flood (EMERGENCY) override and the idle-timeout exit still apply, and the sustained-sensor-failure notification still fires. This reverts the `S2` guard added in 1.1.8.
 
 ## [1.1.8] - 2026-07-19
 
