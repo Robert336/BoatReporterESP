@@ -2,7 +2,7 @@
 
 All configuration happens in the browser: connect to the device's setup access point and the captive portal opens automatically. The UI is mobile-first, so it works well from a phone on the dock.
 
-Parts, wiring, and GPIO map: [Hardware & Assembly](hardware.md). Owner day-to-day ops: [User Guide](../USER_GUIDE.md). Secrets posture: [SECURITY.md](../SECURITY.md).
+Parts, wiring, and GPIO map: [Hardware & Assembly](hardware.md). Owner day-to-day ops: [User Guide](../USER_GUIDE.md). Credential handling: [SECURITY.md](../SECURITY.md).
 
 ## First Time Setup
 

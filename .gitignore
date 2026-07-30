@@ -4,7 +4,7 @@
 .vscode/launch.json
 .vscode/ipch
 
-# Local secret overrides (not used by current firmware; keep ignored if present)
+# Local secrets.h overrides (if present)
 include/secrets.h
 secrets.h
 
