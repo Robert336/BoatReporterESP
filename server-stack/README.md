@@ -225,8 +225,6 @@ The provisioned dashboard (**Boat Reporter — Bilge Monitor**, uid
 `boat-reporter`) has 12 panels. Its Flux queries hardcode the InfluxDB bucket
 `boat`, and the **Device** dropdown selects a unit by its MAC-derived id.
 
-> 📸 **Screenshot source:** `docs/screenshots/grafana-full.png`: full dashboard capture with real/mock data flowing, referenced from the main README.
-
 | Panel | Source field | Notes |
 |-------|--------------|-------|
 | Water Level | `level_cm` | threshold lines at 30 cm (Tier 1) and 50 cm (Tier 2) |

@@ -81,8 +81,6 @@ flowchart LR
 
 ## Assembly
 
-Photos of a finished unit (if available) belong in [`docs/screenshots/`](screenshots/README.md). Add them there and link from this section when you have them.
-
 ### Power path
 
 1. Mount the DC-DC buck converter in the enclosure.

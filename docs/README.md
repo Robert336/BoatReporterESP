@@ -37,7 +37,7 @@ Deep documentation for BoatReporterESP. The [main README](../README.md) is the l
 
 ## Screenshots
 
-[`screenshots/`](screenshots/README.md): config-server and Grafana captures referenced from the READMEs, plus a capture checklist.
+[`screenshots/`](screenshots/README.md): config-server and Grafana image assets referenced from the READMEs.
 
 ## Version pins
 
