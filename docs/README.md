@@ -18,7 +18,7 @@ Deep documentation for BoatReporterESP. The [main README](../README.md) is the l
 |-----|---------------|
 | [Architecture](architecture.md) | Design Decisions, component layout, FreeRTOS tasks, state machine, data flow |
 | [Configuration](configuration.md) | First-time setup, WiFi (captive-portal detection and custom MAC), Twilio/Discord/HTTP credentials, two-point calibration, thresholds, MQTT |
-| [Usage](usage.md) | Technical LED patterns, system states, button functions, alert behavior |
+| [Usage](usage.md) | Technical **two-LED** patterns (status + alert), system states, button functions, alert behavior |
 | [MQTT & Telemetry](mqtt-telemetry.md) | Log and structured telemetry topics, 13-field JSON payload, Home Assistant / Grafana |
 | [Troubleshooting](troubleshooting.md) | Symptom → signal → fix triage (WiFi, portal, sensor, alerts, MQTT) |
 | [Hardware & Assembly](hardware.md) | Parts list, wiring diagram, GPIO map (`BoardPins.h`), assembly |

@@ -550,7 +550,7 @@ curl -X POST http://192.168.4.1/emergency/urgent-level \
 
 #### `POST /emergency/test-pin`
 
-Test the alert output pin. Pulses the `ALERT_PIN` HIGH for 2 seconds, then LOW.
+Test the **alert LED** pin (`ALERT_PIN`, GPIO 26). Pulses the pin HIGH for 2 seconds, then LOW — use this to verify alert-LED wiring after assembly.
 
 **Request parameters:** None.
 

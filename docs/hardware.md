@@ -1,6 +1,6 @@
 # Hardware & Assembly
 
-This guide is the single source of truth for parts, wiring, GPIO map, and assembly of a BoatReporterESP unit. For first-time firmware configuration, see [Configuration](configuration.md).
+This guide is the single source of truth for parts, wiring, GPIO map, and assembly of a BoatReporterESP unit. For first-time firmware configuration, see [Configuration](configuration.md). LED meanings: [Usage](usage.md).
 
 ## Parts List
 
@@ -15,7 +15,8 @@ This guide is the single source of truth for parts, wiring, GPIO map, and assemb
 | [Waterproof Project Enclosure](https://www.amazon.ca/Joinfworld-Electrical-Weatherproof-Waterproof-Electronics/dp/B0CHHJ49QN/) | Houses the ESP32, ADS1115, buck converter, and supporting components. Essential for marine environments. |
 | [7-Pin Waterproof Connector](https://www.amazon.ca/Connector-Waterproof-Electrical-Connectors-Industrial/dp/B09PNJYF2T/) | Runs external wiring (power in, sensor, button) through the enclosure wall while keeping it sealed. |
 | Push Button | Normally open, pull-up configured in software. Enters configuration mode / silences alerts. |
-| LED Indicator | The built-in LED works, or connect an external one on GPIO 12. Shows NORMAL/ERROR/CONFIG; never lights for EMERGENCY. |
+| Status LED | On GPIO 12 (`LIGHT_PIN`). Shows NORMAL / ERROR / CONFIG patterns; forced off in EMERGENCY. |
+| Alert LED | On GPIO 26 (`ALERT_PIN`). Solid for Tier 1 flood, pulsing for Tier 2; off otherwise. |
 
 ## GPIO / pin map
 
@@ -24,8 +25,8 @@ Canonical definitions live in [`include/BoardPins.h`](../include/BoardPins.h). D
 | Signal | GPIO | Direction | Notes |
 |--------|------|-----------|-------|
 | Status LED | 12 | Output | `LIGHT_PIN` — NORMAL/ERROR/CONFIG patterns only; forced off in EMERGENCY |
+| Alert LED | 26 | Output | `ALERT_PIN` — Tier 1 solid / Tier 2 pulse during EMERGENCY; off when silenced or on sensor-fault fail-safe |
 | Push button | 27 | Input (pull-up) | `BUTTON_PIN` — short press → CONFIG; 5 s hold in EMERGENCY → silence toggle |
-| Alert / horn | 26 | Output | `ALERT_PIN` — firmware-ready; **not connected to hardware in the current build**. Documented for custom setups. |
 | I2C SDA | 21 | Bidirectional | To ADS1115 via level shifter LV↔HV |
 | I2C SCL | 22 | Bidirectional | To ADS1115 via level shifter LV↔HV |
 
@@ -45,7 +46,7 @@ flowchart LR
         GPIO22["GPIO 22 SCL"]
         GPIO27["GPIO 27"]
         GPIO12["GPIO 12"]
-        GPIO26["GPIO 26 unused in current build"]
+        GPIO26["GPIO 26"]
     end
 
     GPIO21 <--> LV1["Level Shifter LV1 to HV1"]
@@ -55,7 +56,8 @@ flowchart LR
     A0 -.part of ADS1115, 5V via HV rail.- SDA
 
     BTN["Push Button to GND"] --> GPIO27
-    GPIO12 --> LED["Status LED"]
+    GPIO12 --> StatusLED["Status LED"]
+    GPIO26 --> AlertLED["Alert LED"]
 ```
 
 ### Signal summary
@@ -65,8 +67,8 @@ flowchart LR
 | GPIO 21 / 22 | I2C SDA / SCL | via logic level shifter LV↔HV to ADS1115 SDA/SCL |
 | 3.3V / 5V | Level shifter LV / HV rails | ADS1115 VDD is 5V (HV side) |
 | GPIO 27 | Push button → GND | internal pull-up; enters CONFIG mode |
-| GPIO 12 | Status LED | NORMAL/ERROR/CONFIG only, never EMERGENCY |
-| GPIO 26 | Alert output (optional) | Present in firmware; not wired in the current enclosure |
+| GPIO 12 | Status LED | NORMAL/ERROR/CONFIG only; off in EMERGENCY |
+| GPIO 26 | Alert LED | Tier 1 solid / Tier 2 pulse in EMERGENCY |
 | ADS1115 A0 | C-V converter output | from the 4–20 mA depth sensor |
 
 ### Level shifter rails
@@ -101,15 +103,17 @@ Photos of a finished unit (if available) belong in [`docs/screenshots/`](screens
 2. Wire ADS1115 SDA/SCL on the HV side; ESP32 GPIO 21/22 on the LV side.
 3. Power ADS1115 from 5 V (HV). Verify LV/HV and GND before first power-up.
 
-### Button and status LED
+### Button and LEDs
 
 1. Wire the push button between GPIO 27 and GND.
-2. Wire the status LED to GPIO 12 with an appropriate current-limiting resistor (or use the board's built-in LED if it maps to the same pin on your module — confirm against your board silkscreen).
-3. Leave GPIO 26 unconnected unless you are adding a custom horn/alert output.
+2. Wire the **status LED** to GPIO 12 with an appropriate current-limiting resistor.
+3. Wire the **alert LED** to GPIO 26 with an appropriate current-limiting resistor.
+4. Keep the two LEDs visually distinct in the enclosure (separate lenses or colors) so status patterns are not confused with a flood indication.
 
 ### Seal and test
 
 1. Seal cable glands / connector and close the enclosure.
-2. Power on: expect the status LED within ~2 s (slow blink on first boot / no WiFi credentials).
+2. Power on: expect the **status LED** within ~2 s (slow blink on first boot / no WiFi credentials). The alert LED should stay off.
 3. Enter CONFIG mode, confirm live millivolt readings on the Debug & Calibration page, then complete WiFi and notification setup ([Configuration](configuration.md)).
-4. Field triage if something fails: [Troubleshooting](troubleshooting.md).
+4. Optionally use **Test emergency pin** on the Notifications / debug UI to pulse GPIO 26 and confirm the alert LED wiring.
+5. Field triage if something fails: [Troubleshooting](troubleshooting.md).

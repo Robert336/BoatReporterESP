@@ -23,7 +23,7 @@
   - [6. MQTT Service](#6-mqtt-service-mqttservice)
   - [7. Settings Store](#7-settings-store-settingsstore)
   - [8. WiFi Manager](#8-wifi-manager-wifimanager)
-  - [9. LED / Light Control](#9-led--light-control-lightcode)
+  - [9. LEDs](#9-leds-lightcode--alert_pin)
 - [FreeRTOS Task Layout](#freertos-task-layout)
 - [Data Flow](#data-flow)
 - [Build Environments](#build-environments)
@@ -43,7 +43,7 @@ The firmware is organized around a single-threaded `loop()` on Core 1 that runs 
 |-------------------------|--------------------------------------|
 | Sensor read, filtering, calibration | **Twilio** — SMS delivery |
 | State machine (NORMAL / CONFIG / ERROR / EMERGENCY) | **Discord** (or any custom HTTP webhook) — chat/HTTP alerts |
-| Status LED, button, local debounce | **MQTT broker** — log/telemetry stream (often self-hosted Mosquitto on a Pi or workstation; still a separate machine) |
+| Status LED + alert LED, button, local debounce | **MQTT broker** — log/telemetry stream (often self-hosted Mosquitto on a Pi or workstation; still a separate machine) |
 | Captive-portal config UI + NVS credentials | **Telegraf / InfluxDB / Grafana** — dashboards (if you use the server stack) |
 | Watchdog recovery | **GitHub Releases** — OTA firmware checks/downloads |
 | | **NTP** — clock sync before TLS to the broker succeeds |
@@ -64,7 +64,7 @@ This constraint drove every major design decision. The device had to survive fir
 
 That local config path is separate from **runtime** dependencies: once alerts or telemetry are enabled, the device does need those other hosts to be up (Twilio/Discord/webhook endpoints, your MQTT broker, NTP for TLS, GitHub for OTA). See [On-device vs external hosts](#on-device-vs-external-hosts). Flood detection itself still runs on-device if the network is down; only outbound delivery and dashboards are affected.
 
-Since we couldn't observe the device in its environment, we built extensive **self-diagnostic capabilities**: the status LED communicates system state at a glance, the serial monitor logs every event, and all logs stream to an MQTT broker for remote inspection. The task watchdog ensures the device recovers from software hangs without human intervention. The OTA update system with automatic rollback means firmware can be fixed remotely if a bug slips through.
+Since we couldn't observe the device in its environment, we built extensive **self-diagnostic capabilities**: two LEDs communicate system health vs flood tier at a glance (status on GPIO 12, alert on GPIO 26), the serial monitor logs every event, and all logs stream to an MQTT broker for remote inspection. The task watchdog ensures the device recovers from software hangs without human intervention. The OTA update system with automatic rollback means firmware can be fixed remotely if a bug slips through.
 
 We also designed for **unknown WiFi conditions** — marina captive portals, weak signal, dynamic IPs. The device probes its connectivity every 2 minutes, detects when a portal is intercepting traffic, and defers alerts until the network is open. A custom MAC address override lets the owner match an already-authenticated device without physical access to the ESP32.
 
@@ -116,7 +116,7 @@ See also: [MQTT Service](#6-mqtt-service-mqttservice).
 
 ### Two-Tier State Machine with Safety-First Transitions
 
-The system operates in four states (NORMAL, ERROR, CONFIG, EMERGENCY) with carefully designed transition rules. CONFIG mode is an overlay — a flood condition forces an exit to EMERGENCY even while the web portal is active, so an open browser tab cannot suppress flood detection. A sensor fault mid-flood degrades to ERROR after 60 seconds instead of latching in EMERGENCY on stale data. The 5-second debounce window on both entry and exit prevents false alarms from transient wave slosh or condensation. The GPIO 12 status LED is intentionally forced off during EMERGENCY to avoid visual distraction.
+The system operates in four states (NORMAL, ERROR, CONFIG, EMERGENCY) with carefully designed transition rules. CONFIG mode is an overlay — a flood condition forces an exit to EMERGENCY even while the web portal is active, so an open browser tab cannot suppress flood detection. A sensor fault mid-flood degrades to ERROR after 60 seconds instead of latching in EMERGENCY on stale data. The 5-second debounce window on both entry and exit prevents false alarms from transient wave slosh or condensation. The **status LED** (GPIO 12) is forced off during EMERGENCY; the **alert LED** (GPIO 26) carries Tier 1 (solid) / Tier 2 (pulse) so flood indication is not mixed with WiFi/config patterns.
 
 Long-running validation of these transitions (mock soak and mixed-state campaigns) lives under [`test-logs/`](../test-logs/README.md).
 
@@ -204,10 +204,10 @@ stateDiagram-v2
 
 #### Key Behaviors
 
-- **Two-tier emergency**: Tier 1 (`emergencyWaterLevel_cm`) triggers SMS/Discord/HTTP notifications at a configurable frequency. Tier 2 (`urgentEmergencyWaterLevel_cm`) additionally pulses the horn/alert output (GPIO 26) with configurable on/off durations.
+- **Two-tier emergency**: Tier 1 (`emergencyWaterLevel_cm`) triggers SMS/Discord/HTTP notifications at a configurable frequency and drives the **alert LED** solid. Tier 2 (`urgentEmergencyWaterLevel_cm`) additionally pulses the alert LED (GPIO 26) with configurable on/off durations (legacy “horn” timing settings in NVS).
 - **Debounce**: Both entering and leaving EMERGENCY require the condition to persist for `EMERGENCY_TIMEOUT_MS` (default 5 s), preventing false alarms from transient splashes.
 - **Safety-first transitions**: CONFIG is an overlay; a flood condition always forces an exit to EMERGENCY, even while the web portal is active. A sensor fault does **not** force CONFIG → ERROR — config mode is entered only via a physical button press, so the owner is on-site and may have intentionally disconnected the sensor (e.g. to perform an OTA update over better WiFi). The sustained-failure notification still fires, and the idle-timeout exit still returns the device to NORMAL/ERROR when the portal goes unused.
-- **Silence toggle**: A 5-second button hold during EMERGENCY silences notifications and the horn. A second 5-second hold re-enables them. Silence auto-clears on return to NORMAL.
+- **Silence toggle**: A 5-second button hold during EMERGENCY silences notifications and turns the alert LED off. A second 5-second hold re-enables them. Silence auto-clears on return to NORMAL.
 - **Sensor fault in EMERGENCY**: A sustained sensor fault during a flood degrades to ERROR rather than latching in EMERGENCY indefinitely on stale data.
 
 The main entry point is `updateStateMachine()` (`StateMachine.h`, line 424), which is a pure function called once per `loop()` iteration. It returns a `StateMachineOutput` struct of side-effect flags; `loop()` reads these flags and executes the corresponding actions (GPIO writes, notification enqueues, LED pattern changes).
@@ -421,11 +421,16 @@ flowchart TB
 - **AP+STA mode during CONFIG**: The device runs both station and access point simultaneously during configuration.
 - **Connection health tracking**: Session durations logged using `esp_timer_get_time()` (microseconds, monotonic) to survive `millis()` rollover (~49.7 days).
 
-### 9. LED / Light Control (`LightCode`)
+### 9. LEDs (`LightCode` + `ALERT_PIN`)
 
-`LightCode` (`include/LightCode.h`) drives the status LED on GPIO 12 with non-blocking pattern updates.
+The hardware uses **two LEDs** on separate pins ([`BoardPins.h`](../include/BoardPins.h)):
 
-#### Patterns
+| LED | Pin | Driver | Role |
+|-----|-----|--------|------|
+| Status | GPIO 12 (`LIGHT_PIN`) | `LightCode` | NORMAL / ERROR / CONFIG patterns only |
+| Alert | GPIO 26 (`ALERT_PIN`) | `digitalWrite` each `loop()` from `computeAlertPinState()` | EMERGENCY Tier 1 solid / Tier 2 pulse |
+
+#### Status LED patterns (`LightCode`)
 
 | Pattern | Enum | Meaning |
 |---------|------|---------|
@@ -433,9 +438,17 @@ flowchart TB
 | Double blink | `PATTERN_DOUBLE_BLINK` | NORMAL state, WiFi disconnected |
 | Slow blink | `PATTERN_SLOW_BLINK` | CONFIG state |
 | Fast blink | `PATTERN_FAST_BLINK` | ERROR state |
-| Off (forced) | `PATTERN_OFF` | EMERGENCY state; intentionally dark to avoid visual distraction during a flood |
+| Off (forced) | `PATTERN_OFF` | EMERGENCY — status LED stays dark; alert LED owns flood indication |
 
-The LED is explicitly forced off in EMERGENCY to prevent a leftover pattern (e.g., WiFi-disconnected double blink) from running through the emergency.
+#### Alert LED behavior
+
+| Pattern | Condition |
+|---------|-----------|
+| Solid ON | EMERGENCY + Tier 1 (not silenced, sensor healthy) |
+| Pulsing | EMERGENCY + Tier 2 (pulse timing from `hornOnDuration_ms` / `hornOffDuration_ms`) |
+| OFF | Not EMERGENCY; silenced; or sensor-fault fail-safe |
+
+The status LED is explicitly forced off in EMERGENCY so a leftover WiFi-disconnected double blink cannot run during a flood. Owner-facing meanings: [Usage](usage.md).
 
 ## FreeRTOS Task Layout
 
@@ -479,7 +492,8 @@ flowchart TB
     → [EMERGENCY_TIMEOUT_MS debounce] → [computeNextState() → EMERGENCY]
     → [shouldSendEmergencyNotification()] → [NotificationWorker::enqueueEmergency()]
     → [Core 0 task sends SMS/Discord/HTTP]
-    → [if Tier 2: shouldHornBeOn() pulses ALERT_PIN (GPIO 26)]
+    → [if Tier 1: alert LED solid on ALERT_PIN (GPIO 26)]
+    → [if Tier 2: alert LED pulses on ALERT_PIN]
 ```
 
 ### Configuration Flow

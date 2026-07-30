@@ -6,19 +6,20 @@ Symptom → observable signal → fix. For day-to-day owner language, see the [U
 
 | What you see | Likely cause | First action |
 |--------------|--------------|--------------|
-| Status LED **off**, water OK | NORMAL, WiFi up | None |
+| Status LED **off**, alert LED **off**, water OK | NORMAL, WiFi up | None |
 | Status LED **double-blink** | WiFi disconnected | Check marina/AP signal; reopen CONFIG WiFi page |
 | Status LED **slow blink** | CONFIG mode | Connect to `ESP32-BilgeRise-Setup`; browse `http://192.168.4.1` |
 | Status LED **fast blink** | Sensor ERROR | Check ADS1115 wiring / C-V pots; see [Sensor](#sensor-readings-inaccurate-or-invalid) |
-| LED off during an active flood | Expected in EMERGENCY | Alerts should be sending; silence with 5 s button hold if needed |
+| Status LED off + alert LED **solid** | Tier 1 EMERGENCY | Expect SMS/Discord; silence with 5 s hold if on site |
+| Status LED off + alert LED **pulsing** | Tier 2 EMERGENCY | Higher severity; same silence hold if needed |
+| Alert LED off while you expected a flood | Silenced, below threshold, or sensor fail-safe | Check silence, thresholds, status LED / serial |
 | WiFi page **"portal blocked"** | Captive portal | Custom MAC or whitelist — [Configuration](configuration.md#captive-portals-marina--guest-wifi) |
 | Serial `[PORTAL] … PORTAL` | Portal detected | Same as above; alerts fail-fast until open |
 | Serial `start_ssl_client: -1` | TCP to broker failed (not cert) | [DEPLOYMENT.md](../server-stack/DEPLOYMENT.md) |
 | Serial `[EVENT] Sensor error detected!` | Invalid ADC readings | [Sensor](#sensor-readings-inaccurate-or-invalid) |
 | No SMS/Discord | Creds, portal, or no internet | [Notifications](#no-sms-or-discord-alerts) |
 
-Technical LED/state reference: [Usage](usage.md).
-
+The device has **two LEDs** (status GPIO 12, alert GPIO 26). Technical patterns: [Usage](usage.md).
 ---
 
 ## Device will not connect to WiFi
@@ -97,13 +98,16 @@ Technical LED/state reference: [Usage](usage.md).
 
 ## LED not showing the expected pattern
 
-**Symptoms:** LED pattern does not match [Usage](usage.md) / [User Guide](../USER_GUIDE.md).
+**Symptoms:** status or alert LED pattern does not match [Usage](usage.md) / [User Guide](../USER_GUIDE.md).
 
-**Signals to check:** board silkscreen for which pin the "built-in" LED uses; `LIGHT_PIN` is GPIO 12 in [`BoardPins.h`](../include/BoardPins.h).
+**Signals to check:**
+- `LIGHT_PIN` = GPIO 12 (status), `ALERT_PIN` = GPIO 26 (alert) in [`BoardPins.h`](../include/BoardPins.h)
+- During EMERGENCY the status LED is **supposed** to be off; the alert LED should be solid (Tier 1) or pulsing (Tier 2)
 
 **Fix:**
-1. Confirm you are on a board where the visible LED is actually GPIO 12, or wire an external LED to GPIO 12.
-2. Power-cycle. If the pattern is still unknown, treat as unresponsive (below).
+1. Confirm both LEDs are wired to the correct pins with current-limiting resistors — [Hardware](hardware.md).
+2. Use **Test emergency pin** in the config UI to pulse GPIO 26 and verify the alert LED.
+3. Power-cycle. If patterns are still wrong, treat as unresponsive (below).
 
 ---
 
@@ -112,7 +116,7 @@ Technical LED/state reference: [Usage](usage.md).
 **Symptoms:** cannot open `http://192.168.4.1` or the captive portal.
 
 **Signals to check:**
-- LED slow blink (CONFIG)
+- Status LED slow blink (CONFIG)
 - Phone connected to `ESP32-BilgeRise-Setup` (not marina WiFi)
 - Serial: `Starting configuration server`
 
@@ -139,7 +143,7 @@ Technical LED/state reference: [Usage](usage.md).
 
 ## Device unresponsive
 
-**Symptoms:** LED dark or nonsensical; no AP; no serial.
+**Symptoms:** LED dark or nonsensical on both indicators; no AP; no serial.
 
 **Fix:**
 1. Disconnect 12 V for 10 seconds and reconnect (watchdog should also recover software hangs within ~10 s during normal operation).

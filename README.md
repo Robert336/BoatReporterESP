@@ -101,7 +101,7 @@ How we designed for a device we never visited on-site. Short outcomes below; ful
 ## Key Features
 
 - **Real-time Water Level Monitoring** — 4–20 mA pressure sensor → current-to-voltage converter → ADS1115 16-bit ADC (I2C, 100 kHz). 10-sample median filter rejects impulse noise. 1 Hz gate allows cheap reads from the main loop. Usable range 5–100 cm.
-- **Two-Tier Emergency Alerts** — Tier 1 (configurable, default 30 cm) triggers SMS (Twilio), Discord, and custom HTTP webhook notifications. Tier 2 (default 50 cm) additionally pulses a dedicated alert output. Configurable repeat interval (default 15 minutes). Silent toggle via 5-second button hold.
+- **Two-Tier Emergency Alerts** — Tier 1 (configurable, default 30 cm) triggers SMS (Twilio), Discord, and custom HTTP webhook notifications and lights the **alert LED** solid. Tier 2 (default 50 cm) pulses the alert LED. Configurable repeat interval (default 15 minutes). Silent toggle via 5-second button hold (also turns the alert LED off).
 - **Self-Hosted Grafana Dashboard** — Docker Compose stack (Mosquitto → Telegraf → InfluxDB → Grafana) with 12 panels: live water level, rate-of-change trend, system-state timeline, RSSI history, chip temperature, uptime, firmware version, heap usage. WAN/TLS deployment with Cloudflare DDNS and Let's Encrypt certificates.
 - **Captive-Portal Web Configuration** — Multi-page mobile-first UI served as gzip-compressed HTML through the device's own WiFi access point. No companion app; credentials are stored in NVS. (Outbound alerts/telemetry still need the services you configure — [details](docs/architecture.md#on-device-vs-external-hosts).) 39 REST API endpoints for full device configuration.
 - **OTA Firmware Updates** — Automatic background checks against GitHub Releases (24-hour interval). Auto-install with flood abort, RSSI pre-flight check, and automatic rollback on boot failure. Download is aborted mid-flight if water reaches the emergency threshold.
@@ -167,7 +167,7 @@ Full documentation site: **[BoatReporterESP Docs](https://robert336.github.io/Bo
 | [Architecture](docs/architecture.md) | Engineers / recruiters | Design Decisions, FreeRTOS layout, state machine, data flow |
 | [Configuration](docs/configuration.md) | Installers | First-time setup, WiFi/portal, credentials, calibration, thresholds, MQTT |
 | [User Guide](USER_GUIDE.md) | Boat owners / installers | Day-to-day LED meanings, button, silencing, owner handout page |
-| [Usage](docs/usage.md) | Engineers | Technical LED/state/button/alert reference |
+| [Usage](docs/usage.md) | Engineers | Technical two-LED (status + alert) / state / button / alert reference |
 | [Troubleshooting](docs/troubleshooting.md) | Installers | Symptom → signal → fix triage |
 | [Hardware & Assembly](docs/hardware.md) | Installers | Parts list, wiring diagram, GPIO map, assembly |
 | [MQTT & Telemetry](docs/mqtt-telemetry.md) | Engineers | Topics, JSON payload, Home Assistant / Grafana |

@@ -33,9 +33,11 @@ Everything after that is automatic. The device runs in the background.
 
 When you connect 12 V power to the box:
 
-1. Within about 2 seconds, the blue LED comes on.
-2. If the device has never been configured, the LED begins to **blink slowly** and the box starts broadcasting a WiFi network called `ESP32-BilgeRise-Setup`.
-3. If the device has been configured before, it tries to connect to the saved WiFi. The LED goes **off** when connected, or **double-blinks** if it cannot reach the network.
+1. Within about 2 seconds, the status LED (usually blue) comes on.
+2. If the device has never been configured, the status LED begins to **blink slowly** and the box starts broadcasting a WiFi network called `ESP32-BilgeRise-Setup`.
+3. If the device has been configured before, it tries to connect to the saved WiFi. The status LED goes **off** when connected, or **double-blinks** if it cannot reach the network.
+
+The **alert LED** (flood indicator) should stay off at power-on unless the bilge is already above the warning threshold.
 
 You have about 5 minutes from power-on to connect to the setup network. If you don't, the device keeps running and the setup network stays available until you press the button.
 
@@ -94,9 +96,13 @@ You don't need to visit any of these after the first setup unless something chan
 
 ---
 
-## The status light
+## The lights (two LEDs)
 
-The blue LED in the box tells you what the device is doing.
+The box has **two LEDs**. They mean different things and never share a job.
+
+### Status LED (usually the blue one)
+
+Shows day-to-day health and setup mode. It goes **off on purpose during a flood** so the alert LED can carry that meaning.
 
 | What you see | What it means | What to do |
 |---|---|---|
@@ -104,9 +110,21 @@ The blue LED in the box tells you what the device is doing.
 | Double-blink (two quick flashes, pause, repeat) | Normal, but the device has lost the WiFi connection. Alerts cannot be sent right now. | Check that the boat's network is up. If the device is far from the access point, move it closer or use a WiFi extender. |
 | Slow blink (about once per second) | Setup mode. The device is broadcasting its WiFi network. | Connect to the network and open the setup page. |
 | Fast blink (about 3 times per second) | Sensor error. The device cannot read the water level. | Open the enclosure and check the sensor wiring. See the troubleshooting section below. |
-| Off during a flood | The device is sending alerts. The LED deliberately goes off during a flood so the alerts get your attention, not the light. | Wait for the alert. Silence it with a 5-second button hold if you need to. |
+| Off while the other LED is on or pulsing | Flood in progress — the status LED stays dark on purpose. | Look at the **alert LED** (below). |
 
-If the LED is doing something not in this list, power the device off and back on. If it still doesn't match, contact support.
+### Alert LED (flood indicator)
+
+Only used for water emergencies. Off the rest of the time.
+
+| What you see | What it means | What to do |
+|---|---|---|
+| Off | No active flood indication (or alerts were silenced). | Nothing, unless you expected a flood — then check thresholds and the status LED. |
+| Solid on | Warning flood (Tier 1). Water is above the warning threshold; texts/Discord may be going out. | Check the bilge. Silence with a 5-second button hold if you are on site and dealing with it. |
+| Pulsing on/off | Urgent flood (Tier 2). Water is above the urgent threshold. | Treat as higher severity. Same silence hold if needed. |
+
+If either LED is doing something not in these lists, power the device off and back on. If it still doesn't match, contact support.
+
+Technical pin map and patterns: [docs/usage.md](docs/usage.md).
 
 ---
 
@@ -114,7 +132,7 @@ If the LED is doing something not in this list, power the device off and back on
 
 The button is on the inside of the enclosure, near the LEDs.
 
-**Single press:** the device enters setup mode. The blue LED starts to slow-blink, and the `ESP32-BilgeRise-Setup` WiFi network becomes available. Use this whenever you need to change a setting.
+**Single press:** the device enters setup mode. The status LED starts to slow-blink, and the `ESP32-BilgeRise-Setup` WiFi network becomes available. Use this whenever you need to change a setting.
 
 The single press is also a useful first move whenever something looks wrong: it opens the setup page, where you can see the live reading, the current state, and the connection status.
 
@@ -162,6 +180,7 @@ A correctly installed device in a dry bilge should show:
 - **Water level:** 0 cm, with small variations of less than 1 cm.
 - **State:** NORMAL.
 - **Status LED:** off.
+- **Alert LED:** off.
 - **Last alert:** never (or however long ago the last test was).
 
 A bilge with a small amount of residual water — a few centimetres — is also normal. The reading should be stable. If it jumps around by more than a centimetre every few seconds, the sensor may be loose, the water may be choppy, or the calibration may be off.
@@ -172,7 +191,7 @@ A bilge with a small amount of residual water — a few centimetres — is also 
 
 Owner-oriented steps below. Installers should use the full triage tree: **[docs/troubleshooting.md](docs/troubleshooting.md)**.
 
-**The blue LED is fast-blinking (sensor error).**
+**The status LED is fast-blinking (sensor error).**
 
 1. Open the enclosure.
 2. Check that the sensor cable is firmly seated in the green terminal block on the ADS1115 board.
@@ -182,13 +201,17 @@ Owner-oriented steps below. Installers should use the full triage tree: **[docs/
 
 If the fast-blink returns within a minute, the sensor itself may be damaged and needs replacement.
 
+**The alert LED is solid or pulsing, but you are not getting texts.**
+
+The on-device flood light can be on while SMS/Discord fail (portal blocked, missing credentials, or no internet). Check the WiFi page for a **"portal blocked"** banner and the Notifications page for credentials. Installer triage: [docs/troubleshooting.md](docs/troubleshooting.md).
+
 **The dashboard shows a reading but no alerts are going out.**
 
 Check the WiFi page in the setup interface. If a **"portal blocked"** banner is showing, see the marina WiFi section above. Otherwise, check that the phone number and Discord webhook are still filled in on the Notifications page.
 
 **The setup network (`ESP32-BilgeRise-Setup`) doesn't appear.**
 
-Press the button once. Wait up to 10 seconds. The LED should begin to slow-blink and the network should appear. If it doesn't, power-cycle the device.
+Press the button once. Wait up to 10 seconds. The status LED should begin to slow-blink and the network should appear. If it doesn't, power-cycle the device.
 
 **You forgot the setup-network password.**
 
@@ -198,7 +221,7 @@ The password is unique to each device. On most installations, it's printed on a 
 
 Check that your phone is still connected to the `ESP32-BilgeRise-Setup` WiFi. Some phones switch back to the marina's network automatically when the signal is weak. Move closer to the box and try again.
 
-**The device is unresponsive — the LED is doing something not in the table above, or nothing at all.**
+**The device is unresponsive — either LED is doing something not in the tables above, or nothing at all.**
 
 Power-cycle it (disconnect 12 V for 10 seconds and reconnect). If the problem persists, contact support.
 
@@ -206,7 +229,7 @@ Power-cycle it (disconnect 12 V for 10 seconds and reconnect). If the problem pe
 
 ## Silencing an active alert
 
-If the device is in a flood state and you want to stop it from sending more texts — usually because you're testing, or because the customer has acknowledged the situation and is dealing with it — **press and hold the button for 5 seconds**. The LED will briefly flash to confirm.
+If the device is in a flood state and you want to stop it from sending more texts — usually because you're testing, or because the customer has acknowledged the situation and is dealing with it — **press and hold the button for 5 seconds**. The alert LED turns off to confirm.
 
 The device stays in flood-watch mode but stops sending alerts. When the water level returns to normal, silence is cleared automatically.
 
@@ -234,11 +257,11 @@ The device stays in flood-watch mode but stops sending alerts. When the water le
 >
 > ### When you'll hear from it
 >
-> During normal operation, the box is silent. The little blue light is off, and you don't get any messages. This is correct — it means everything is fine.
+> During normal operation, the box is silent. Both lights are off, and you don't get any messages. This is correct — it means everything is fine.
 >
-> If the water level rises above the warning level, you'll get a text at the phone number above. The first text will tell you the current water level and how fast it's rising. You'll get another text at the repeat interval until the water goes back down.
+> If the water level rises above the warning level, the **alert light** comes on solid and you'll get a text at the phone number above. The first text will tell you the current water level and how fast it's rising. You'll get another text at the repeat interval until the water goes back down.
 >
-> If the water level goes above the urgent level, you'll get the urgent message immediately.
+> If the water level goes above the urgent level, the alert light **pulses** and you'll get the urgent message immediately.
 >
 > ### The dashboard
 >
@@ -246,13 +269,14 @@ The device stays in flood-watch mode but stops sending alerts. When the water le
 >
 > ### If the device is alarming and you want to silence it
 >
-> Press and hold the small button on the side of the box for 5 seconds. The light will flash briefly to confirm. The device will stop sending alerts until the water level returns to normal. Next time there's a flood, the alerts come back automatically.
+> Press and hold the small button on the side of the box for 5 seconds. The alert light turns off to confirm. The device will stop sending alerts until the water level returns to normal. Next time there's a flood, the alerts come back automatically.
 >
 > ### If something looks wrong
 >
-> - The blue light is blinking fast: the device can't read the water level. Call the installer.
-> - The blue light is doing two quick flashes and a pause: the device has lost the WiFi connection and can't send alerts. Check the boat's network.
-> - The blue light is off, but you're not getting texts: the device is in normal mode, but its network is probably blocking alerts. Call the installer.
+> - The status (usually blue) light is blinking fast: the device can't read the water level. Call the installer.
+> - The status light is doing two quick flashes and a pause: the device has lost the WiFi connection and can't send alerts. Check the boat's network.
+> - The alert light is on or pulsing: there is (or was) a flood condition — check the bilge and your phone.
+> - Both lights are off, but you're not getting texts when you expect them: the device may think things are normal, or its network is blocking alerts. Call the installer.
 
 ---
 
