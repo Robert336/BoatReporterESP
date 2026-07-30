@@ -11,6 +11,7 @@ Internal checklist for doc/media work that should **not** appear in user-facing 
 
 **Still open:**
 
+- [ ] Add the Figma home-screen mock-up (UI inside an iPhone frame) to `docs/screenshots/` and place it near the top of the README landing page as an eye-catcher for readers
 - [ ] Add assembled-unit and wiring photos; place under `docs/screenshots/` and link from `docs/hardware.md` Assembly once they exist
 - [ ] Refresh `grafana-full.png` only if dashboard panels change
 - [ ] Refresh `web-config-pages-v2.png` only after major web UI changes (capture via `dev-ui/` mock or on-device AP; prefer 2× / phone-width)
