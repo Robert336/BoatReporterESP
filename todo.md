@@ -4,13 +4,20 @@ Internal checklist for doc/media work that should **not** appear in user-facing 
 
 ## Docs media
 
+**Already in repo (do not re-capture unless stale):**
+
+- `docs/screenshots/grafana-full.png` — used in README (dashboard showcase), `server-stack/README.md`, and `docs/mqtt-telemetry.md`
+- `docs/screenshots/web-config-pages-v2.png` — used in README and `docs/configuration.md`
+
+**Still open:**
+
 - [ ] Add assembled-unit and wiring photos; place under `docs/screenshots/` and link from `docs/hardware.md` Assembly once they exist
-- [ ] Refresh Grafana dashboard capture (`docs/screenshots/grafana-full.png`) if panels change — referenced from README and `server-stack/README.md`
-- [ ] Refresh config UI composite (`docs/screenshots/web-config-pages-v2.png`) after major web UI changes — capture via `dev-ui/` mock (`npm start` → `http://localhost:3000`) or on-device AP; Chrome/Edge full-page screenshot works well; prefer 2× / phone-width for the mobile-first UI
+- [ ] Refresh `grafana-full.png` only if dashboard panels change
+- [ ] Refresh `web-config-pages-v2.png` only after major web UI changes (capture via `dev-ui/` mock or on-device AP; prefer 2× / phone-width)
 
 ## Capture notes (when regenerating)
 
-- Grafana: flash `pio run -e mock -t upload`, let it run 15–30 minutes so rate-of-change and state-timeline panels have data, then capture the full “Boat Reporter — Bilge Monitor” dashboard; keep one theme (dark or light) consistent
+- Grafana: flash `pio run -e mock -t upload`, let it run 15–30 minutes so rate-of-change and state-timeline panels have data, then capture the full “Boat Reporter — Bilge Monitor” dashboard; keep one theme consistent
 - Config pages: DevTools → “Capture full size screenshot”, or Firefox full-page screenshot
 
 ## Docs / process leftovers to consider
