@@ -109,7 +109,7 @@ Shows day-to-day health and setup mode. It goes **off on purpose during a flood*
 | Off | Normal. Water level is OK, WiFi is connected, nothing to report. | Nothing. This is the idle state. |
 | Double-blink (two quick flashes, pause, repeat) | Normal, but the device has lost the WiFi connection. Alerts cannot be sent right now. | Check that the boat's network is up. If the device is far from the access point, move it closer or use a WiFi extender. |
 | Slow blink (about once per second) | Setup mode. The device is broadcasting its WiFi network. | Connect to the network and open the setup page. |
-| Fast blink (about 3 times per second) | Sensor error. The device cannot read the water level. | Open the enclosure and check the sensor wiring. See the troubleshooting section below. |
+| Fast blink (about 3 times per second) | Sensor error. The device cannot read the water level. | Check that the sensor is plugged into the unit and that it has power (enough voltage). See troubleshooting below. |
 | Off while the other LED is on or pulsing | Flood in progress — the status LED stays dark on purpose. | Look at the **alert LED** (below). |
 
 ### Alert LED (flood indicator)
@@ -193,13 +193,14 @@ Owner-oriented steps below. Installers should use the full triage tree: **[docs/
 
 **The status LED is fast-blinking (sensor error).**
 
-1. Open the enclosure.
-2. Check that the sensor cable is firmly seated in the green terminal block on the ADS1115 board.
-3. Check that the small current-to-voltage converter board has its two potentiometers still set (the white dabs of nail polish or paint on top of them should be intact).
-4. Check that the wires between the level shifter and the ADS1115 are in place.
-5. Power-cycle the device.
+Fast blink means a sensor failure. The usual causes are a disconnected probe or the sensor not getting enough voltage — check those first.
 
-If the fast-blink returns within a minute, the sensor itself may be damaged and needs replacement.
+1. Confirm the sensor cable is firmly connected to the unit (enclosure connector / green terminal block).
+2. Confirm the sensor has power — measure supply at the sensor terminals if you can; a loose power wire or low voltage looks the same as a dead probe.
+3. Only then open the enclosure and check the current-to-voltage converter pots (paint marks intact) and the wires between the level shifter and the ADS1115.
+4. Power-cycle the device.
+
+If the fast-blink returns within a minute after connection and power look good, the sensor itself may be damaged and needs replacement. Installer detail: [docs/troubleshooting.md](docs/troubleshooting.md#sensor-failure-fast-blink).
 
 **The alert LED is solid or pulsing, but you are not getting texts.**
 

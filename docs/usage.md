@@ -15,7 +15,7 @@ Reflects NORMAL / ERROR / CONFIG only. Forced **off** for the entire EMERGENCY s
 | **OFF** | NORMAL | Normal operation, water level OK, WiFi connected |
 | **Double Blink** | NORMAL | Normal operation, but WiFi is disconnected |
 | **Slow Blink** | CONFIG | Configuration mode active (web interface available) |
-| **Fast Blink** | ERROR | Sensor error detected (check wiring and sensor) |
+| **Fast Blink** | ERROR | Sensor failure — check sensor connection and supply voltage first ([Troubleshooting](troubleshooting.md#sensor-failure-fast-blink)) |
 | **OFF** | EMERGENCY | Intentional — look at the **alert LED** instead |
 
 Driven by `LightCode` (`include/LightCode.h`).

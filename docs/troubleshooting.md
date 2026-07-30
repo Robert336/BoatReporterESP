@@ -9,14 +9,14 @@ Symptom → observable signal → fix. For day-to-day owner language, see the [U
 | Status LED **off**, alert LED **off**, water OK | NORMAL, WiFi up | None |
 | Status LED **double-blink** | WiFi disconnected | Check marina/AP signal; reopen CONFIG WiFi page |
 | Status LED **slow blink** | CONFIG mode | Connect to `ESP32-BilgeRise-Setup`; browse `http://192.168.4.1` |
-| Status LED **fast blink** | Sensor ERROR | Check ADS1115 wiring / C-V pots; see [Sensor](#sensor-readings-inaccurate-or-invalid) |
+| Status LED **fast blink** | Sensor ERROR | Sensor power / connection first — [Sensor](#sensor-failure-fast-blink) |
 | Status LED off + alert LED **solid** | Tier 1 EMERGENCY | Expect SMS/Discord; silence with 5 s hold if on site |
 | Status LED off + alert LED **pulsing** | Tier 2 EMERGENCY | Higher severity; same silence hold if needed |
 | Alert LED off while you expected a flood | Silenced, below threshold, or sensor fail-safe | Check silence, thresholds, status LED / serial |
 | WiFi page **"portal blocked"** | Captive portal | Custom MAC or whitelist — [Configuration](configuration.md#captive-portals-marina--guest-wifi) |
 | Serial `[PORTAL] … PORTAL` | Portal detected | Same as above; alerts fail-fast until open |
 | Serial `start_ssl_client: -1` | TCP to broker failed (not cert) | [DEPLOYMENT.md](../server-stack/DEPLOYMENT.md) |
-| Serial `[EVENT] Sensor error detected!` | Invalid ADC readings | [Sensor](#sensor-readings-inaccurate-or-invalid) |
+| Serial `[EVENT] Sensor error detected!` | Invalid ADC readings | [Sensor](#sensor-failure-fast-blink) |
 | No SMS/Discord | Creds, portal, or no internet | [Notifications](#no-sms-or-discord-alerts) |
 
 The device has **two LEDs** (status GPIO 12, alert GPIO 26). Technical patterns: [Usage](usage.md).
@@ -57,21 +57,23 @@ The device has **two LEDs** (status GPIO 12, alert GPIO 26). Technical patterns:
 
 ---
 
-## Sensor readings inaccurate or invalid
+## Sensor failure (fast blink)
 
-**Symptoms:** fast-blink LED; invalid/odd level on dashboard; serial sensor-error events.
+**Symptoms:** status LED **fast blink** (ERROR); invalid/odd level on dashboard; serial `[EVENT] Sensor error detected!`.
+
+Fast blink means the firmware cannot get a valid water-level reading. The **most common causes** are under-voltage to the sensor and a disconnected sensor cable — check those before deeper electronics work.
 
 **Signals to check:**
 - Serial: `[EVENT] Sensor error detected!` and millivolt traces
-- Debug & Calibration page: live mV and level
-- Physical: ADS1115 power, level-shifter LV/HV, C-V pot paint marks intact
+- Debug & Calibration page: live mV (often stuck / out of range when failed)
+- Physical: sensor connector seated; supply voltage present at the probe
 
-**Fix:**
-1. Check wiring between ESP32 and ADS1115 (SDA/SCL on GPIO 21/22 via the level shifter) — [Hardware](hardware.md).
-2. Verify level shifter: LV → ESP32 3.3V, HV → 5V, common GND; ADS1115 VDD on 5V.
-3. Confirm sensor → C-V → ADS1115 A0.
-4. Re-run C-V pot adjustment and two-point software calibration — [Configuration — Sensor Calibration](configuration.md#sensor-calibration).
-5. Power-cycle. If fast-blink returns within a minute, the probe or ADC module may need replacement.
+**Fix (most likely first):**
+1. **Confirm the sensor is connected to the unit** — reseat the waterproof connector / cable into the enclosure and the green terminal block on the ADC side. A loose or pulled bilge cable is the usual field failure.
+2. **Confirm the sensor is getting enough voltage** — the 4–20 mA probe needs a stable supply (typically from the shared 12 V / regulated rail used for the sensor loop). Measure at the sensor terminals; a brownout, blown fuse, or open supply wire looks like a “dead sensor” to the firmware.
+3. Only then check in-box wiring: ESP32 ↔ level shifter ↔ ADS1115 (SDA/SCL on GPIO 21/22), ADS1115 VDD on 5 V, sensor → C-V → ADS1115 A0 — [Hardware](hardware.md).
+4. If power and connection are good but readings are merely inaccurate (not in ERROR), re-check C-V pots and two-point calibration — [Configuration — Sensor Calibration](configuration.md#sensor-calibration).
+5. Power-cycle. If fast-blink returns within a minute after steps 1–3, the probe or ADC module may need replacement.
 
 ---
 
