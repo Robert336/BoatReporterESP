@@ -166,7 +166,7 @@ Full documentation site: **[BoatReporterESP Docs](https://robert336.github.io/Bo
 |-------|----------|---------------|
 | [Architecture](docs/architecture.md) | Engineers / recruiters | Design Decisions, FreeRTOS layout, state machine, data flow |
 | [Configuration](docs/configuration.md) | Installers | First-time setup, WiFi/portal, credentials, calibration, thresholds, MQTT |
-| [User Guide](USER_GUIDE.md) | Boat owners / installers | Day-to-day LED meanings, button, silencing, owner handout page |
+| [User Guide](USER_GUIDE.md) | Boat owners / installers | Day-to-day two-LED meanings, button, silencing, owner handout page |
 | [Usage](docs/usage.md) | Engineers | Technical two-LED (status + alert) / state / button / alert reference |
 | [Troubleshooting](docs/troubleshooting.md) | Installers | Symptom → signal → fix triage |
 | [Hardware & Assembly](docs/hardware.md) | Installers | Parts list, wiring diagram, GPIO map, assembly |
