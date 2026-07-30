@@ -3,6 +3,7 @@
 ## Table of Contents
 
 - [Overview](#overview)
+  - [On-device vs external hosts](#on-device-vs-external-hosts)
 - [Design Decisions](#design-decisions)
   - [Remote Deployment](#remote-deployment)
   - [ESP32 ADC Noise and Non-Linearity](#esp32-adc-noise-and-non-linearity)
@@ -30,9 +31,24 @@
 
 ## Overview
 
-BoatReporterESP is an ESP32-based bilge-water monitoring system that continuously measures water level via a 4–20 mA pressure sensor, detects flood conditions through a two-tier state machine, and dispatches alerts over SMS (Twilio), Discord webhooks, and a custom HTTP endpoint. It publishes structured telemetry to an MQTT broker for time-series dashboards (Grafana/InfluxDB) and supports over-the-air firmware updates from GitHub Releases. A captive-portal web interface on the device's own Wi-Fi access point handles all configuration; no companion app is required.
+BoatReporterESP is an ESP32-based bilge-water monitoring system that continuously measures water level via a 4–20 mA pressure sensor, detects flood conditions through a two-tier state machine, and can dispatch alerts over SMS (Twilio), Discord webhooks, and a custom HTTP endpoint. It can publish structured telemetry to an MQTT broker for time-series dashboards (Grafana/InfluxDB) and supports over-the-air firmware updates from GitHub Releases. A captive-portal web interface on the device's own Wi-Fi access point handles all configuration; no companion app is required.
 
 The firmware is organized around a single-threaded `loop()` on Core 1 that runs the state machine, sensor reads, MQTT polling, and web server, while Core 0 hosts two dedicated FreeRTOS tasks: one for outbound HTTP notifications and one for background OTA version checks. All persistent configuration lives in NVS (non-volatile storage) and is accessed through a fast in-RAM cache (`SettingsStore`).
+
+### On-device vs external hosts
+
+“No cloud dependency” in this project means **configuration and core flood detection do not require a vendor cloud account or companion app**. It does **not** mean the system is fully standalone once alerts or telemetry are enabled.
+
+| Runs on the ESP32 alone | Needs another host / service to work |
+|-------------------------|--------------------------------------|
+| Sensor read, filtering, calibration | **Twilio** — SMS delivery |
+| State machine (NORMAL / CONFIG / ERROR / EMERGENCY) | **Discord** (or any custom HTTP webhook) — chat/HTTP alerts |
+| Status LED, button, local debounce | **MQTT broker** — log/telemetry stream (often self-hosted Mosquitto on a Pi or workstation; still a separate machine) |
+| Captive-portal config UI + NVS credentials | **Telegraf / InfluxDB / Grafana** — dashboards (if you use the server stack) |
+| Watchdog recovery | **GitHub Releases** — OTA firmware checks/downloads |
+| | **NTP** — clock sync before TLS to the broker succeeds |
+
+Sensing and EMERGENCY detection continue if Wi-Fi or those services are down; outbound SMS/Discord/webhooks and MQTT dashboards will not. Channels are optional and configured at runtime — enable only what you operate. The included MQTT/Grafana path is **self-hosted** (you run the broker), not a paid BoatReporter cloud, but it is still an external dependency whenever telemetry is used.
 
 Current firmware version: **1.1.8** (last tagged release; see [`CHANGELOG.md`](../CHANGELOG.md) for unreleased work).
 
@@ -44,7 +60,9 @@ These write-ups capture *why* the system looks the way it does. The [README](../
 
 We never set foot on the boat. The entire system was designed and built from verbal requirements, a handful of photos of the bilge area, and general knowledge of typical marina environments. No direct access to the WiFi network, no ability to measure the physical constraints in person, no way to debug hardware issues on-site.
 
-This constraint drove every major design decision. The device had to survive first boot and configuration without a technician present — hence the **captive-portal web interface** served by the device itself, with no app to install and no cloud dependency. All credentials (WiFi, Twilio, Discord, MQTT) are configured at runtime through the browser, stored in NVS, and survive firmware updates. If the WiFi network changes, the owner can reconfigure by pressing the button to enter setup mode.
+This constraint drove every major design decision. The device had to survive first boot and **configuration** without a technician present — hence the **captive-portal web interface** served by the device itself, with no companion app and no account on a BoatReporter cloud service. Setup is local to the device AP. Credentials for WiFi and for whichever outbound services you use (Twilio, Discord, MQTT, and so on) are entered in the browser, stored in NVS, and survive firmware updates. If the WiFi network changes, the owner can reconfigure by pressing the button to enter setup mode.
+
+That local config path is separate from **runtime** dependencies: once alerts or telemetry are enabled, the device does need those other hosts to be up (Twilio/Discord/webhook endpoints, your MQTT broker, NTP for TLS, GitHub for OTA). See [On-device vs external hosts](#on-device-vs-external-hosts). Flood detection itself still runs on-device if the network is down; only outbound delivery and dashboards are affected.
 
 Since we couldn't observe the device in its environment, we built extensive **self-diagnostic capabilities**: the status LED communicates system state at a glance, the serial monitor logs every event, and all logs stream to an MQTT broker for remote inspection. The task watchdog ensures the device recovers from software hangs without human intervention. The OTA update system with automatic rollback means firmware can be fixed remotely if a bug slips through.
 
