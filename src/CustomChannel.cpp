@@ -83,9 +83,8 @@ bool CustomChannel::send(const char* message) {
     if (!cacheLoaded) loadCache();
     if (!isConfigured()) return false;
 
-    // Pick escaping strategy based on content-type
-    // message body is bounded to 160 chars (NotifMsg.body), so worst-case
-    // escaped is 3x that = 480 chars. Use a stack buffer to avoid heap churn.
+    // Escape by content-type (json→jsonEscape, form→urlEncode, else raw).
+    // Rules: docs/configuration.md. Stack buffer sized for NotifMsg.body*3.
     char escaped[512];
     const char* ct = ctypeCache;
 

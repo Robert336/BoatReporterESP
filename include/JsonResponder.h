@@ -1,22 +1,7 @@
 #pragma once
 
-/*
-    JsonResponder.h
-
-    Small JSON response builder for ConfigServer handlers. Replaces the
-    repeated `String json = "{"; json += ...` blocks (30+ of them) and the
-    copy-pasted error/success send boilerplate in every handler.
-
-    Design notes:
-    - Builds into a single Arduino String (one heap buffer, reserved up
-      front) — the WebServer hands responses to the TCP stack as a String
-      anyway, so this avoids double copies without changing behavior.
-    - Strings are JSON-escaped on the way in (quotes, backslash, control
-      chars), which the old hand-concatenated code did NOT do — a SSID or
-      webhook URL containing a `"` would previously emit invalid JSON.
-    - Only compiled into ConfigServer.cpp (it's the only includer); guarded
-      out of unit-test builds like ConfigServer itself.
-*/
+// JSON response builder for ConfigServer handlers. Strings are JSON-escaped
+// on insert. Arduino-only — excluded from UNIT_TESTING like ConfigServer.
 
 #ifndef UNIT_TESTING
 

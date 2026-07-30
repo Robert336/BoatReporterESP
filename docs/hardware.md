@@ -17,6 +17,29 @@ This guide covers the components, wiring, and assembly of a BoatReporterESP unit
 | Push Button | Normally open, pull-up configured in software. Enters configuration mode. |
 | LED Indicator | The built-in LED works, or connect an external one. Shows NORMAL/ERROR/CONFIG; never lights for EMERGENCY. |
 
+## GPIO map
+
+Firmware pin assignments live in `include/BoardPins.h` (the single source of truth). Cross-check any change against the `UNUSED_GPIOS` allowlist in `src/main.cpp`.
+
+| GPIO | Role |
+|------|------|
+| 27 | Config / silence button (`INPUT_PULLUP`, ISR) |
+| 26 | Emergency horn / alert output |
+| 12 | Status LED (`LightCode` patterns) |
+| 21 | I2C SDA (ADS1115) |
+| 22 | I2C SCL (ADS1115) |
+
+At boot, a curated set of otherwise-unused GPIOs (`4, 13, 14, 16, 17, 18, 19, 23, 25, 33`) is driven LOW so floating inputs do not pick up noise in a wet enclosure. **Do not** expand that allowlist without checking the WROOM-32 pin map:
+
+| Pins | Why excluded |
+|------|----------------|
+| 6–11 | SPI flash — driving these crashes the chip |
+| 34 / 35 / 36 / 39 | Input-only (no output driver) |
+| 1 / 3 | UART0 TX/RX (serial console) |
+| 0 / 2 / 5 / 15 | Strapping pins — risky at/after boot |
+| 12 / 21 / 22 / 26 / 27 | Already assigned (see table above) |
+| 32 | Reserved — previously used by an analog water sensor on field boards |
+
 ## Wiring
 
 See the [main README](../README.md#hardware--wiring) for the wiring diagram and signal summary table.

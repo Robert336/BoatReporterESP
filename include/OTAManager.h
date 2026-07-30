@@ -74,17 +74,7 @@ struct VersionInfo {
 };
 
 /**
- * OTAManager - Manages Over-The-Air firmware updates
- *
- * Features:
- * - Check GitHub Releases for new firmware versions (on a dedicated Core 0 task)
- * - Download and install firmware updates via HTTPS (on the loop task — device
- *   is intentionally out-of-service during a download anyway)
- * - Automatic version checking on schedule without blocking loop()
- * - Manual update triggering via web interface
- * - Notification integration via NotificationWorker (no direct send() calls)
- * - Rollback detection and notification
- * - NVS configuration storage
+ * OTAManager — GitHub Releases firmware updates (check task on Core 0).
  */
 class OTAManager {
 private:
@@ -92,14 +82,8 @@ private:
     NotificationWorker* notifier;
     Preferences preferences;
 
-    // Concurrency model (three tasks touch this state: the Core 0 check task,
-    // the Core 1 loop task, and the web-server task via the getters):
-    //   - currentState: std::atomic — read/written lock-free from any task.
-    //   - lastError / versionInfo / lastCheckTime: String/struct fields that are
-    //     NOT safe to copy while another task mutates them, so every access goes
-    //     through stateMux. Write lastError via setError(); read via getLastError().
-    //   - versionInfo.currentVersion is set once in the constructor and then
-    //     treated as immutable, so it may be read lock-free.
+    // Cross-task state: currentState is atomic; lastError/versionInfo/lastCheckTime
+    // require stateMux. versionInfo.currentVersion is immutable after the ctor.
     std::atomic<OTAState> currentState;
     OTAConfig     config;
     VersionInfo   versionInfo;
@@ -136,13 +120,8 @@ private:
     static void checkTaskEntry(void* arg);
     void runCheckTask();
 
-    // Flood-watch: optional callback invoked inside the OTA download loop so a
-    // firmware download (which blocks the Core 0 check task for up to
-    // DOWNLOAD_TIMEOUT_MS = 5 min) can be aborted mid-stream if a Tier-1+
-    // flood condition appears. Returns true = abort. The loop task (and thus
-    // waterSensor / state machine) keeps running during a download, but this
-    // callback doubles as a belt-and-braces abort if a flood is detected.
-    // Set to nullptr (default) to disable the check.
+    // Optional flood-watch: return true from cb to abort an in-flight download
+    // (C2). Invoked on the Core 0 check task; must be non-blocking.
     typedef bool (*FloodCheckCallback)(void* ctx);
     FloodCheckCallback floodCheckCb = nullptr;
     void*              floodCheckCtx = nullptr;
@@ -175,10 +154,7 @@ public:
     void setAutoInstall(bool enabled);
     void setNotificationsEnabled(bool enabled);
 
-    // Register a flood-watch callback consulted during the OTA download loop
-    // so an in-flight firmware download aborts if a flood condition appears
-    // (C2). The callback is invoked on the Core 0 check task and must be
-    // non-blocking and reentrant-safe; ctx is passed back verbatim.
+    // C2: abort download if floodCheckCb returns true. Runs on Core 0 check task.
     void setFloodWatch(FloodCheckCallback cb, void* ctx) { floodCheckCb = cb; floodCheckCtx = ctx; }
 
     // Stack high-water mark for the background check task (for H5 diagnostics).
@@ -199,9 +175,6 @@ public:
     bool hasGitHubToken() const { return !config.githubToken.isEmpty(); }
     bool hasUpdatePassword() const { return !config.updatePassword.isEmpty(); }
     unsigned long getCheckIntervalMs() const { return config.checkIntervalMs; }
-    // Seconds since the last version check completed, based on a wall-clock
-    // epoch persisted to NVS. Returns 0 if no check has completed yet or the
-    // RTC hasn't synced. Accurate across reboots and multi-month uptime.
-    // This is the last-check time for the MQTT telemetry field.
+    // Seconds since last version check (NVS wall-clock epoch). 0 if never / no RTC.
     unsigned long getTimeSinceLastCheckS();
 };

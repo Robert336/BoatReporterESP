@@ -1,24 +1,7 @@
 #pragma once
 class MQTTService;
 
-/*
-    MQTTService.h
-
-    MQTT transport layer for the ESP32 boat monitoring system.
-
-    Immediate use: log sink (replaces Discord webhook in Logger).
-    Future use: Home Assistant integration via generic publish/subscribe API.
-
-    Features:
-    - Persistent connection to a configurable Mosquitto broker (NVS-backed).
-    - Non-blocking reconnect with exponential backoff.
-    - Internal ring-buffer queue for log messages so LOG_* macros never block
-      the main loop (critical during EMERGENCY alert-pulsing state).
-    - LWT on <baseTopic>/availability ("online"/"offline") for HA availability.
-    - Generic publish() and subscribe() for future HA sensor/command topics.
-    - Subscriber fan-out (PubSubClient supports only one global callback).
-    - Optional username/password auth; empty strings = anonymous.
-*/
+// MQTT transport: log sink + telemetry publish. See docs/mqtt-telemetry.md.
 
 #ifndef UNIT_TESTING
 

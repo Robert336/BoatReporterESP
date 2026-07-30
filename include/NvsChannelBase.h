@@ -1,21 +1,7 @@
 #pragma once
 
-/*
-    NvsChannelBase.h
-
-    Shared NVS-cache plumbing for NotificationChannel implementations.
-    Each concrete channel (SMS, Discord, Custom, …) stores its config in the
-    "notify" NVS namespace and mirrors it in fixed char[] caches so send()
-    never touches NVS. That load/save boilerplate used to be copy-pasted per
-    channel; it lives here once.
-
-    Derived classes call beginLoad()/loadStr()/finishLoad() to populate their
-    caches from their keys, and openForWrite()/putStr()/endWrite() followed by
-    loadCache() so the in-RAM cache always reflects the last successful save.
-
-    Not unit-test-buildable (Preferences is Arduino-only) — same as the
-    concrete channels, all of which are excluded from UNIT_TESTING builds.
-*/
+// Shared NVS ↔ RAM cache helpers for NotificationChannel implementations.
+// Arduino Preferences only — excluded from UNIT_TESTING.
 
 #ifndef UNIT_TESTING
 
@@ -73,10 +59,6 @@ protected:
 
     void endWrite() { prefs.end(); }
 
-    // Convenience: reload the in-RAM cache after a successful write.
-    // loadCache() is the channel's own virtual, so this stays in the
-    // derived class's updateX() — but call sites read better with a name.
-    // (Kept as a protected hook so derived updateX() stays one line.)
 };
 
 #endif // UNIT_TESTING

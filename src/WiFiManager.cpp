@@ -218,14 +218,7 @@ void WiFiManager::addNetwork(const char* ssid, const char* password) {
     if (!isConnected() && WiFi.getMode() == WIFI_MODE_STA) {
         connectToBestNetwork();
     } else if (!isConnected() && WiFi.getMode() == WIFI_MODE_APSTA) {
-        // Config-portal mode (AP+STA): kick off a non-blocking association so
-        // the user gets live "Connecting…/Connected" feedback in the WiFi
-        // config page without blocking the single-threaded web server (a full
-        // connectToBestNetwork() scan+wait would freeze the portal for ~20s).
-        // WiFi.begin() returns immediately; maintainConnection() picks up the
-        // result, schedules the captive-portal probe, and resets the reconnect
-        // bookkeeping. The full scan-and-pick runs again when stopSetupMode()
-        // flips the radio back to pure STA.
+        // AP+STA: non-blocking WiFi.begin — full scan would freeze the portal ~20s.
         connectToNetwork(ssid);
     }
 }
@@ -284,11 +277,7 @@ void WiFiManager::connectToBestNetwork() {
     }
     
     LOG_NETWORK("[WIFI] Scanning for available networks...");
-    // The scan is a single blocking call (~2-5s on 2.4GHz) and runs on the
-    // loop task, which is subscribed to the 10s task watchdog. Feed the dog
-    // before the scan so a slow/crowded-band scan can't trip it (C1). The
-    // call is a no-op if the WDT isn't armed yet (e.g. during boot, before
-    // esp_task_wdt_add() runs in setup()).
+    // Blocking scan (~2–5s) on the loop/WDT task — feed before scan (C1).
     esp_task_wdt_reset();
     int numNetworks = WiFi.scanNetworks();
     LOG_NETWORK("[WIFI] Scan found %d network(s):", numNetworks);
@@ -331,11 +320,7 @@ void WiFiManager::connectToBestNetwork() {
 
         unsigned long startTime = millis();
         while (WiFi.status() != WL_CONNECTED && (millis() - startTime) < CONNECT_TIMEOUT_MS) {
-            // Feed the task watchdog on every iteration. This connect loop
-            // can block for up to CONNECT_TIMEOUT_MS (15s) — longer than the
-            // 10s WDT — and is reachable from loop() via stopSetupMode()
-            // after the config-portal idle timeout (C1). delay() does NOT
-            // feed the ESP-IDF task watchdog, so an explicit reset is required.
+            // CONNECT_TIMEOUT_MS (15s) > WDT (10s); delay() does not feed the WDT (C1).
             esp_task_wdt_reset();
             delay(500);
         }
@@ -372,11 +357,7 @@ std::vector<String> WiFiManager::getStoredSSIDs() {
 
 std::vector<ScannedNetwork> WiFiManager::scanAvailableNetworks() {
     std::vector<ScannedNetwork> out;
-    // The scan is a single blocking call (~2-5s on 2.4GHz). It runs on the
-    // loop task (via ConfigServer::handleWiFiScan -> handleClient), which is
-    // subscribed to the task watchdog; feed before+after so a slow/crowded
-    // band can't trip it (mirrors connectToBestNetwork). Safe in AP+STA mode:
-    // the STA scans off-channel while the AP keeps beaconing.
+    // Blocking scan on loop/WDT task — feed before+after (same as connectToBestNetwork).
     esp_task_wdt_reset();
     int n = WiFi.scanNetworks();
     esp_task_wdt_reset();
@@ -514,16 +495,8 @@ void WiFiManager::maintainConnection() {
         _lastReconnectAttempt = now;
         _reconnectAttemptCount++;
 
-        // H1/H2: don't retry the same dead AP forever. WiFi.reconnect() only
-        // re-associates with the last BSSID/SSID — it never scans, so a
-        // permanently-gone AP stalls reconnection indefinitely even when another
-        // stored network is in range. After RECONNECT_FALLBACK_ATTEMPTS failed
-        // cycles, fall back to a full connectToBestNetwork() scan-and-pick.
-        //
-        // H2: for "sticky" disconnect reasons (handshake/beacon timeouts, auth
-        // fail) that are known to sometimes leave the radio in a state a plain
-        // reconnect() can't recover, escalate sooner — do a full
-        // WiFi.disconnect(true) teardown before the rescan.
+        // H1/H2: WiFi.reconnect() never scans — after N failures (sooner for sticky
+        // handshake/beacon/auth reasons), full disconnect+connectToBestNetwork().
         bool sticky = isStickyDisconnectReason(_lastDisconnectReason);
         uint32_t threshold = sticky ? RECONNECT_ESCALATION_ATTEMPTS_STICKY
                                     : RECONNECT_FALLBACK_ATTEMPTS;
@@ -594,15 +567,8 @@ bool WiFiManager::isStickyDisconnectReason(uint8_t reason) {
     }
 }
 
-// ============================================================================
-// CAPTIVE PORTAL DETECTION
-// ============================================================================
-//
-// Probes the Android/Chrome connectivity-check endpoint. An un-hijacked
-// network answers 204 with an empty body; a captive portal answers 200 with
-// its splash page or 302s to its login URL. The portal's redirect Location is
-// captured so the config UI can deep-link the user to the marina login page
-// (and seed the /portal/proxy relay).
+// Captive portal: probe generate_204 — real net returns 204; portal 200/302.
+// Location is captured for the Wi-Fi page deep-link.
 
 static const char PORTAL_PROBE_URL[] = "http://connectivitycheck.gstatic.com/generate_204";
 
@@ -663,11 +629,7 @@ void WiFiManager::runPortalProbe() {
         setPortalFlagForCurrentSsid(newState == PortalState::PORTAL);
     }
     if (loginUrl.length() > 0) {
-        // Always print the full captured portal URL, not just on state
-        // transitions — the marina can rotate session tokens between probes
-        // (cnMaestro's `s=` param), and field debugging needs the exact URL
-        // the device was handed. Serial is the only place the complete URL
-        // is visible (UI truncates nothing but nobody watches the UI).
+        // Log every new portal URL — marina session tokens rotate between probes.
         if (loginUrl != _portalLoginUrl) {
             LOG_NETWORK("[PORTAL] Login URL: %s", loginUrl.c_str());
         }

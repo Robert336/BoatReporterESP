@@ -1,23 +1,11 @@
 #pragma once
 
-/*
-    BoardPins.h
-
-    Single source of truth for the ESP32-WROOM-32 GPIO map used by this
-    firmware. Previously these were scattered: BUTTON/ALERT/SENSOR/LIGHT in
-    main.cpp and the I2C pins in WaterPressureSensor.h (with a second
-    hardcoded ALERT_PIN=26 literal inside ConfigServer.cpp). Centralizing
-    them makes pin-conflict review possible in one place — cross-check any
-    change here against the UNUSED_GPIOS allowlist in main.cpp.
-
-    Pure constants, no Arduino dependency — safe in native unit-test builds.
-
-    WROOM-32 pins deliberately NOT assigned here:
-      - 6-11        SPI flash — driving these crashes the chip instantly
-      - 34/35/36/39 input-only, no output driver
-      - 1/3         UART0 TX/RX — serial console
-      - 0/2/5/15    strapping pins — driving at/after boot is risky
-*/
+// ESP32-WROOM-32 GPIO map — single source of truth for the firmware.
+// Cross-check changes against UNUSED_GPIOS in main.cpp and docs/hardware.md.
+// Pure constants (no Arduino) so native unit-test builds can include this.
+//
+// Never assign: 6-11 (SPI flash — driving crashes the chip), 34/35/36/39
+// (input-only), 1/3 (UART0), 0/2/5/15 (strapping pins).
 
 static constexpr int BUTTON_PIN   = 27; // Silence/config button (INPUT_PULLUP, ISR)
 static constexpr int ALERT_PIN    = 26; // Emergency horn/alert output

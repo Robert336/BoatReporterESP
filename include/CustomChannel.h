@@ -1,28 +1,7 @@
 #pragma once
 
-/*
-    CustomChannel.h
-
-    User-configurable generic HTTP POST notification channel.
-    All config is stored in NVS namespace "notify" (keys below) and cached in RAM.
-
-    NVS keys (namespace "notify"):
-      custom.endpoint  — full URL to POST to
-      custom.ctype     — Content-Type header (e.g. "application/json")
-      custom.auth      — auth type: "none", "basic", or "bearer"
-      custom.user      — Basic: username; Bearer: token; none: unused
-      custom.secret    — Basic: password; bearer/none: unused
-      custom.tmpl      — body template containing {{message}} placeholder
-
-    Body substitution rules:
-      - If content-type contains "json"           → jsonEscape the message before substitution
-      - If content-type contains "form"           → urlEncode the message before substitution
-      - Otherwise                                 → substitute raw (no escaping)
-      - If {{message}} is absent from the template → template is used verbatim (no message injected)
-      - Message body is bounded to 160 chars (NotifMsg.body size)
-
-    isConfigured() = endpoint + template are both non-empty.
-*/
+// Generic HTTP POST notification channel. NVS keys and body-substitution
+// rules: docs/configuration.md ("NVS key reference" / Custom HTTP).
 
 #include "NotificationChannel.h"
 

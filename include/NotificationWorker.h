@@ -17,22 +17,8 @@ struct NotifMsg {
     uint8_t channels; // bitmask of CHAN_* flags
 };
 
-// Runs outbound HTTP (SMS, Discord, Custom, …) on Core 0 so the main-loop
-// state machine is never blocked by a 10-second provider timeout.
-//
-// Two queues, drained with strict priority (H3):
-//   - emergencyMailbox: depth-1, written with xQueueOverwrite — a newer
-//                       emergency snapshot replaces an older unsent one. This
-//                       coalesces a backlog so that when WiFi returns after an
-//                       outage the owner gets ONE current alert, not N stale
-//                       ones. ALWAYS drained before the FIFO.
-//   - fifoQueue:        one-shot event messages (silence confirm, bus error).
-//                       Each is distinct, so each is delivered.
-// The task blocks on a direct task notification (not a queue set, which makes
-// no ordering guarantee between members). Producers signal via xTaskNotifyGive
-// after posting; on wake the task polls emergency first, then FIFO, so an
-// emergency snapshot present at wake time is always delivered ahead of FIFO
-// backlog accumulated during a WiFi outage.
+// Core 0 HTTP notification worker. Emergency mailbox (depth-1 overwrite) is
+// always drained before the FIFO — see docs/architecture.md.
 class NotificationWorker {
 public:
     NotificationWorker() = default;

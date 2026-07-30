@@ -59,12 +59,7 @@ Timestamp TimeManagement::getCurrentTimestamp() {
 }
 
 void TimeManagement::sync() {
-    // H4: the original initSNTPSync() only did anything the very first time
-    // (syncStatus == SNTP_NOT_STARTED) — every subsequent call, including the
-    // intended 24h re-trigger after SYNC_EXPIRY, was a silent no-op, leaving
-    // the app entirely dependent on ESP-IDF's own internal SNTP polling with
-    // no application-level fallback if the first sync at boot failed (no WiFi
-    // yet, DNS to pool.ntp.org blocked by a captive portal, etc.).
+    // Re-init SNTP after SYNC_EXPIRY (was a silent no-op after first call — H4).
     time_t now = time(NULL);
     if (now - lastSyncTime < SYNC_EXPIRY) return; // Fresh enough — nothing to do
     // Throttle re-init so we don't restart SNTP every loop while waiting for a

@@ -1,12 +1,6 @@
 #pragma once
 
-/*
-    NotifyChannelFlags.h
-
-    Channel bitmask constants shared between NotificationWorker, channel
-    implementations, and ConfigServer.  Kept in a separate header so it can be
-    included by channel headers without dragging in FreeRTOS or the full worker.
-*/
+// CHAN_* bitmasks for NotifMsg — no FreeRTOS dependency.
 
 #include <stdint.h>
 

@@ -1,18 +1,7 @@
 #pragma once
 
-/*
-    NotificationChannel.h
-
-    Abstract interface for outbound notification channels.
-    Each concrete channel (SMS, Discord, Custom) implements this so
-    NotificationWorker's deliver() loop can iterate them uniformly.
-
-    Design notes:
-    - send() must be safe to call from the notifier task (Core 0).
-    - isConfigured() must be fast (in-RAM, no NVS I/O).
-    - loadCache() is called once at startup to prime the in-RAM state.
-    - name() and channelFlag() return compile-time constants; no allocation.
-*/
+// Abstract outbound notification channel. send() runs on Core 0 (notifier
+// task); isConfigured()/loadCache() must be in-RAM (no NVS I/O on hot path).
 
 #include <stdint.h>
 #include <stddef.h>

@@ -1,13 +1,6 @@
 #pragma once
 
-/*
-    DiscordChannel.h
-
-    Discord webhook implementation of NotificationChannel.
-    Webhook URL is stored in NVS namespace "notify", key "discord.url".
-
-    isConfigured() = webhook URL is non-empty.
-*/
+// Discord webhook NotificationChannel. NVS key discord.url — see docs/configuration.md.
 
 #include "NotificationChannel.h"
 

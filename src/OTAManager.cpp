@@ -8,12 +8,8 @@
 #include <esp_ota_ops.h>
 #include "mbedtls/sha256.h"
 
-// Full Mozilla root CA bundle, embedded in the firmware by the ESP-IDF mbedTLS
-// component (CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y in the precompiled
-// arduino-esp32 SDK). Pointing WiFiClientSecure at this bundle lets us verify the
-// TLS chain for BOTH api.github.com and the objects.githubusercontent.com
-// (Fastly) redirect target without shipping or pinning any certificate ourselves,
-// and it survives CA rotation on either host.
+// Mozilla CA bundle from ESP-IDF mbedTLS — verifies api.github.com and the
+// objects.githubusercontent.com redirect without pinning a leaf cert.
 extern const uint8_t rootca_crt_bundle_start[] asm("_binary_x509_crt_bundle_start");
 
 OTAManager::OTAManager(NotificationWorker* notif)
@@ -66,11 +62,7 @@ void OTAManager::begin() {
              config.checkIntervalMs / MS_PER_HOUR);
     LOG_INFO("[OTA] Auto-install: %s", config.autoInstallEnabled ? "enabled" : "disabled");
 
-    // Spawn the background check task on Core 0 (alongside NotificationWorker).
-    // The task blocks most of the time, waking only when checkRequested or
-    // installRequested is set, or the auto-check interval elapses. Downloads
-    // also run on this task — its 10KB stack can absorb the mbedTLS handshake,
-    // which overflows the loop task's 8KB stack.
+    // Core 0 check/install task — 10KB stack for mbedTLS (loop task is 8KB).
     BaseType_t ok = xTaskCreatePinnedToCore(
         checkTaskEntry, "ota_check", OTA_TASK_STACK,
         this, OTA_TASK_PRIORITY, &checkTaskHandle, OTA_TASK_CORE);
@@ -118,10 +110,7 @@ void OTAManager::runCheckTask() {
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(1000)); // Wake every second to check timer
 
-        // An install request owns the task until it completes (or fails).
-        // Runs here, not on the loop task: the mbedTLS TLS handshake during the
-        // firmware download needs ~10KB of stack and overflows the loop task's
-        // 8KB (observed as a stack-canary panic in ssl_cli/ECP crypto).
+        // Install on this task (10KB stack) — mbedTLS handshake overflows loop's 8KB.
         if (installRequested) {
             installRequested = false;
             executeUpdate(installPassword[0] ? installPassword : nullptr);
@@ -169,18 +158,9 @@ void OTAManager::checkFirstBoot() {
 
     preferences.end();
 
-    // The authoritative "did the OTA succeed?" signal is whether the running
-    // firmware version matches the target we recorded before rebooting. This
-    // works regardless of whether CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE is set
-    // in the IDF build config — the previous logic relied on
-    // ESP_OTA_IMG_PENDING_VERIFY, which is only populated when rollback support
-    // is enabled. On builds without it, every first boot after an OTA was
-    // wrongly reported as a rollback ("Rolled back to v1.1.3" while actually
-    // running v1.1.3).
-    //
-    // We still call esp_ota_mark_app_valid_cancel_rollback() defensively — it's
-    // a no-op when rollback support is disabled, and confirms the image when
-    // it is enabled.
+    // Success = running firmware version matches the pre-reboot target we stored.
+    // Do not rely on ESP_OTA_IMG_PENDING_VERIFY alone (absent without rollback
+    // support → false "rolled back" reports). Still mark_app_valid defensively.
     const esp_partition_t* running = esp_ota_get_running_partition();
     esp_ota_img_states_t ota_state;
     bool isPendingVerify = (esp_ota_get_state_partition(running, &ota_state) == ESP_OK
@@ -773,17 +753,10 @@ bool OTAManager::downloadAndInstall(const String& url, size_t expectedSize, cons
     unsigned long downloadStart = millis();
     unsigned long lastDataTime = millis();
 
-    // NOTE: no esp_task_wdt_reset() here. The download runs on the Core 0
-    // check task, which is intentionally NOT registered with the task watchdog
-    // (a 5-minute download would exceed the 10s WDT). The loop task on Core 1
-    // keeps running and feeding the WDT throughout, so a genuine hang is still
-    // caught by the download's own STALL_TIMEOUT_MS / DOWNLOAD_TIMEOUT_MS.
+    // No WDT reset here: check task is not on the WDT (5‑min download > 10s).
+    // Core 1 loop still feeds the WDT; this loop uses STALL/DOWNLOAD timeouts.
     while (http.connected() && written < contentLength) {
-        // C2: don't let a firmware download blind the flood sensor. The
-        // download blocks this task for up to 5 minutes; waterSensor.readLevel()
-        // and the state machine keep running on the loop task, so a real flood
-        // is still detected — abort (leaving current firmware intact) if a
-        // Tier-1+ flood condition appears mid-download.
+        // C2: abort if flood-watch fires — download must not blind flood detection.
         if (floodCheckCb && floodCheckCb(floodCheckCtx)) {
             setError("OTA aborted - flood condition detected mid-download");
             LOG_CRITICAL("[OTA] Flood condition detected mid-download - aborting to preserve flood monitoring");
@@ -917,19 +890,12 @@ bool OTAManager::checkFlashSpace(size_t requiredSize) {
     return true;
 }
 
-// Minimum LARGEST-CONTIGUOUS-block heap required to attempt a firmware
-// download. The mbedTLS handshake against GitHub (full Mozilla root bundle)
-// needs ~40-50 KB of contiguous heap; the old guard of OTA_BUFFER_SIZE*2
-// (2 KB) against TOTAL free heap passed even on a fragmented heap where the
-// handshake was guaranteed to fail mid-flash. 56 KB gives margin over the
-// observed handshake peak plus the HTTPClient/Update overhead.
+// Min contiguous heap for GitHub TLS handshake (~40–50 KB peak). Total free
+// heap is the wrong metric on a fragmented heap — use getMaxAllocHeap().
 static constexpr size_t OTA_MIN_CONTIGUOUS_HEAP = 56 * 1024;
 
 bool OTAManager::checkHeapAvailable(size_t /*unused*/) {
-    // TLS needs one large CONTIGUOUS allocation, so total free heap is the
-    // wrong metric — a heap fragmented into many small blocks passes a total-
-    // size check yet cannot satisfy the handshake. Check the largest free
-    // block instead.
+    // Contiguous block required; total free can pass while handshake still fails.
     uint32_t maxBlock = ESP.getMaxAllocHeap();
     uint32_t freeHeap = ESP.getFreeHeap();
 

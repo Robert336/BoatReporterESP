@@ -257,12 +257,7 @@ void test_error_to_normal_on_sensor_recovery() {
 }
 
 void test_error_to_config_allowed_while_sensor_failed() {
-    // Config mode is entered only via a physical button press, so the owner is
-    // on-site and triggering it deliberately — e.g. to perform OTA maintenance
-    // with the sensor disconnected. A config request is therefore honored even
-    // while sensorError is still true. (Previously this was suppressed to
-    // avoid CONFIG<->ERROR flapping, but that also blocked on-site OTA updates
-    // with the sensor disconnected.)
+    // Regression: button may enter CONFIG while sensorError is still true.
     StateMachineContext ctx = createDefaultContext();
     ctx.currentState = ERROR;
     ctx.sensorError = true;
@@ -333,12 +328,7 @@ void test_config_to_emergency_on_flood_while_active() {
 }
 
 void test_config_stays_config_on_sensor_failure_while_active() {
-    // A sensor fault no longer forces CONFIG -> ERROR. Config mode is entered
-    // only via a physical button press, so the owner is on-site and may have
-    // intentionally disconnected the sensor (e.g. for an OTA update). Bouncing
-    // back to ERROR would tear down the portal they deliberately opened.
-    // Flood (EMERGENCY) override and idle-timeout exit still apply; the
-    // sustained-failure notification still fires from updateStateMachine().
+    // Regression: sensor fault alone must not force CONFIG → ERROR.
     StateMachineContext ctx = createDefaultContext();
     ctx.currentState = CONFIG;
     ctx.sensorError = true;
@@ -350,10 +340,7 @@ void test_config_stays_config_on_sensor_failure_while_active() {
 }
 
 void test_config_exits_after_server_timeout_via_full_update() {
-    // Regression test for the infinite-config bug: user presses the button,
-    // configCommandReceived triggers NORMAL→CONFIG, but no client ever
-    // connects. The web server times out and stops. The state machine must
-    // then exit CONFIG → NORMAL instead of restarting the server forever.
+    // Regression: idle server must exit CONFIG → NORMAL (no infinite restart).
     StateMachineContext ctx = createDefaultContext();
     ctx.currentState = NORMAL;
     ctx.configCommandReceived = true; // User pressed the button
@@ -378,10 +365,7 @@ void test_config_exits_after_server_timeout_via_full_update() {
 }
 
 void test_config_mid_session_button_press_does_not_block_timeout_exit() {
-    // Regression: a button press landing mid-CONFIG sets configCommandReceived
-    // again after entry already consumed it. Without the in-CONFIG clear, that
-    // flag stays true forever and blocks the idle-timeout exit — the server
-    // restarts on every loop iteration, same infinite-config bug.
+    // Regression: mid-CONFIG button must not leave configCommandReceived set.
     StateMachineContext ctx = createDefaultContext();
     ctx.currentState = NORMAL;
     ctx.configCommandReceived = true; // Initial press to enter CONFIG
@@ -439,16 +423,12 @@ void test_emergency_notification_sent_after_interval() {
 }
 
 void test_emergency_notification_sent_immediately_after_boot() {
-    // Regression: lastEmergencyMessageTime is initialized to 0 in setup().
-    // The elapsed-time check alone would suppress the first alert until
-    // emergencyNotifFreq_ms elapses since boot — but the owner needs to know
-    // the moment a flood is detected, not 15 minutes later.
+    // Regression: lastEmergencyMessageTime==0 must send immediately (not wait freq).
     StateMachineContext ctx = createDefaultContext();
     ctx.currentState = EMERGENCY;
     ctx.lastEmergencyMessageTime = 0; // Never sent — boot condition
     ctx.emergencyNotifFreq_ms = 900000; // 15 minutes
 
-    // 1 second after boot — must send immediately, not wait 15 minutes
     bool shouldSend = shouldSendEmergencyNotification(ctx, 1000);
     TEST_ASSERT_TRUE(shouldSend);
 }

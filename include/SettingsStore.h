@@ -1,21 +1,7 @@
 #pragma once
 
-/*
-    SettingsStore.h
-
-    Plain NVS-backed settings for alarm thresholds and notification timing.
-    Decoupled from ConfigServer so the state machine can read settings
-    without going through the web server, and a future config-over-MQTT
-    path can write here directly.
-
-    Pattern mirrors MQTTService: fixed char[] / numeric members loaded once
-    at begin(), refreshed on saveSettings(). No String heap allocations
-    during normal operation.
-
-    ConfigServer is ONE writer of SettingsStore; the state machine context
-    is populated from SettingsStore in main.cpp loop() instead of calling
-    configServer->get*() directly.
-*/
+// NVS-backed alarm thresholds and notification timing. ConfigServer writes;
+// main.cpp copies into StateMachineContext each loop.
 
 #include <Arduino.h>
 #include <Preferences.h>
@@ -24,9 +10,6 @@
 // NVS namespace (same key names as the old ConfigServer emergency settings)
 constexpr const char SETTINGS_STORE_NAMESPACE[] = "emergency";
 
-// SettingsValues is the NVS-backed name for the shared AlarmSettings value
-// type — one definition, one defaults constant, used by the state machine,
-// SettingsStore, and ConfigServer alike.
 using SettingsValues = AlarmSettings;
 
 // Expressed as a constexpr function (not a constexpr variable/reference) so

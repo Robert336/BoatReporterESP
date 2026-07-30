@@ -21,11 +21,7 @@ struct StateMachineSensorReading {
     float level_cm;
 };
 
-// Alarm/notification settings the state machine operates on. This is a pure
-// value type (no Arduino/NVS dependency) so it works in native unit-test
-// builds; SettingsStore.h mirrors it 1:1 and provides the NVS-backed copy.
-// Keeping the canonical field set here means a new threshold only needs to
-// be added in ONE place, not copied field-by-field into the context.
+// Pure value type (native-testable). SettingsStore holds the NVS-backed copy.
 struct AlarmSettings {
     float emergencyWaterLevel_cm;        // Tier 1 threshold (notification)
     int   emergencyNotifFreq_ms;         // Tier 1 notification interval
@@ -72,10 +68,7 @@ struct StateMachineContext {
     float lastValidLevel_cm;
     bool  hasValidLevel;
 
-    // Configuration values (normally from SettingsStore). Stored as a block
-    // so main.cpp can refresh all of them with one assignment. The reference
-    // members below alias the same fields so existing readers — including the
-    // unit tests and the state-machine internals — keep compiling unchanged.
+    // AlarmSettings block — main.cpp refreshes with one assignment; refs alias fields.
     AlarmSettings settings;
     float& emergencyWaterLevel_cm;
     float& urgentEmergencyWaterLevel_cm;
@@ -114,11 +107,7 @@ struct StateMachineContext {
     //   smCtx.setSettings(settingsStore.get());
     void setSettings(const AlarmSettings& s) { settings = s; }
 
-    // The reference members below make the implicitly-generated copy
-    // assignment operator deleted, so define both copy ops explicitly. The
-    // references stay bound to this object's own `settings` block (they are
-    // set in the default constructor and never re-seated); copying only
-    // transfers the value members. Defined out-of-line below for readability.
+    // Refs to `settings` delete implicit copy-assign — define copy ops explicitly.
     StateMachineContext(const StateMachineContext& other);
     StateMachineContext& operator=(const StateMachineContext& other);
 };
@@ -220,10 +209,7 @@ constexpr uint32_t SENSOR_ERROR_NOTIFY_REPEAT_MS = 1800000; // 30 min reminder i
 inline void updateEmergencyConditions(StateMachineContext& ctx,
                                       const StateMachineSensorReading& reading,
                                       uint32_t currentTime) {
-    // Only evaluate thresholds against valid readings — an invalid sample's
-    // level_cm is stale/garbage and would spuriously toggle the debounce
-    // timers. Freeze the flags at their last-known-good values; sensorError
-    // handling drives the ERROR transition separately.
+    // Invalid sample: level_cm is stale — freeze flags; don't toggle debounce timers.
     if (!reading.valid) {
         return;
     }
@@ -262,13 +248,9 @@ inline State computeNextState(const StateMachineContext& ctx,
             if (!ctx.sensorError) {
                 return NORMAL;
             }
-            // A config request is always honored, even while the sensor is
-            // still faulted. Config mode is entered only via a physical button
-            // press, so the owner is on-site and triggering it deliberately —
-            // e.g. to perform OTA maintenance with the sensor disconnected. The
-            // CONFIG case below no longer bounces back to ERROR on a sensor
-            // fault; when the portal goes idle it exits to NORMAL, which the
-            // next iteration moves to ERROR (sensor still bad).
+            // Button press always enters CONFIG, even with sensor still faulted
+            // (owner is on-site; may need the portal with sensor disconnected).
+            // Idle exit returns to NORMAL, then ERROR if the sensor is still bad.
             if (ctx.configCommandReceived) {
                 return CONFIG;
             }
@@ -286,19 +268,9 @@ inline State computeNextState(const StateMachineContext& ctx,
             break;
 
         case CONFIG:
-            // Safety first: never let config mode suppress a real flood.
-            // A browser tab left open on the config page polls /ota/status
-            // every 5s, which keeps configServerActive=true and would otherwise
-            // pin the device in CONFIG indefinitely — blind to flooding. CONFIG
-            // is an overlay, not a substitute for safety.
-            //
-            // Note: a sensor fault does NOT force CONFIG → ERROR. Config mode is
-            // entered only via a physical button press, so the owner is on-site
-            // and may have intentionally disconnected the sensor (e.g. to move the
-            // unit to better WiFi for an OTA update). Bouncing back to ERROR on
-            // a fault would just tear down the portal they deliberately opened.
-            // The idle-timeout exit below still returns them to NORMAL/ERROR when
-            // the server goes unused.
+            // Flood always overrides CONFIG (open /ota/status poll must not blind us).
+            // Sensor fault alone does NOT exit CONFIG — owner may have disconnected
+            // the sensor on purpose; idle timeout still returns to NORMAL/ERROR.
             if (ctx.emergencyConditions &&
                 (currentTime - ctx.emergencyConditionsTrueTime) >= EMERGENCY_TIMEOUT_MS) {
                 return EMERGENCY;
@@ -310,14 +282,9 @@ inline State computeNextState(const StateMachineContext& ctx,
             break;
 
         case EMERGENCY:
-            // S1: a dead sensor in EMERGENCY must degrade to ERROR, not latch.
-            // updateEmergencyConditions() freezes emergencyConditions on an
-            // invalid reading, so without this exit a sensor fault mid-flood
-            // would pin the device in EMERGENCY forever — unable to leave (the
-            // water-level guard below can never re-evaluate) and masking the
-            // sensor failure behind a stale flood alarm. Require the failure to
-            // be SUSTAINED (same window as the owner notification) so a single
-            // transient glitch doesn't bounce an active flood into ERROR.
+            // S1: sustained sensor fault must leave EMERGENCY → ERROR. Flags freeze
+            // on invalid readings, so without this exit we latch forever on a stale
+            // flood. Require SENSOR_ERROR_NOTIFY_DELAY_MS so a glitch doesn't bounce.
             if (ctx.sensorError &&
                 (currentTime - ctx.sensorErrorTrueTime) >= SENSOR_ERROR_NOTIFY_DELAY_MS) {
                 return ERROR;
@@ -343,10 +310,8 @@ inline bool shouldSendEmergencyNotification(const StateMachineContext& ctx,
         return false;
     }
 
-    // First emergency after boot: lastEmergencyMessageTime is 0 (set in setup()),
-    // so the elapsed-time check below would suppress the very first alert until
-    // emergencyNotifFreq_ms elapses since boot. Send immediately instead — the
-    // owner needs to know the moment a flood is detected, not 15 minutes later.
+    // lastEmergencyMessageTime==0 at boot would suppress the first alert for a
+    // full emergencyNotifFreq_ms — send immediately instead.
     if (ctx.lastEmergencyMessageTime == 0) {
         return true;
     }
@@ -373,13 +338,7 @@ inline bool shouldHornBeOn(const StateMachineContext& ctx,
         return false;
     }
 
-    // S3: don't sound the Tier-2 flood horn off a STALE reading. On a sensor
-    // fault, updateEmergencyConditions() freezes urgentEmergencyConditions at
-    // its last value; if that happened to be true, the horn would pulse
-    // indefinitely mimicking an active flood while nothing is being measured.
-    // A sensor fault is signaled separately (sustained-failure notification +
-    // ERROR transition), so the horn fails safe to OFF while the reading is
-    // untrustworthy.
+    // S3: urgentEmergencyConditions freezes on fault — don't horn on stale data.
     if (ctx.sensorError) {
         return false;
     }
@@ -405,9 +364,7 @@ inline bool computeAlertPinState(const StateMachineContext& ctx) {
         return false;
     }
 
-    // S3: sensor fault — the level driving Tier selection is stale, so don't
-    // assert a flood indication. The fault is surfaced via the ERROR state and
-    // the sustained-failure notification instead.
+    // S3: level is stale on fault — don't assert a flood indication.
     if (ctx.sensorError) {
         return false;
     }
@@ -419,13 +376,7 @@ inline bool computeAlertPinState(const StateMachineContext& ctx) {
     return true; // Tier 1: solid on
 }
 
-// Main state machine update function.
-// Parameters:
-//   ctx           - mutable state context (updated in place)
-//   reading       - current sensor reading
-//   currentTime   - millis() snapshot for this iteration
-//   rateOfChange  - cm/30min from WaterPressureSensor::getRateOfChange_cm30min() (NaN if unavailable)
-//   configServerActive - whether ConfigServer is actively serving
+// Main state machine update. rateOfChange is cm/30min (NaN if unavailable).
 inline StateMachineOutput updateStateMachine(StateMachineContext& ctx,
                                              const StateMachineSensorReading& reading,
                                              uint32_t currentTime,
@@ -433,16 +384,8 @@ inline StateMachineOutput updateStateMachine(StateMachineContext& ctx,
                                              bool configServerActive = false) {
     StateMachineOutput output;
 
-    // While in CONFIG, consume any config-button presses BEFORE the state
-    // evaluation below. The flag's only job is to trigger the entry
-    // transition; a press that lands mid-session (after entry already
-    // consumed the original) would otherwise stay set and block the
-    // idle-timeout exit — the same infinite-config bug as before, just
-    // with a different trigger. Clearing it here (rather than after the
-    // transition logic) also prevents a one-iteration lag that would let
-    // loop() restart the server for a full extra timeout cycle before the
-    // exit could happen. Mid-CONFIG presses have no wired-up meaning
-    // (they don't reset the server's activity timer), so discard them.
+    // Mid-CONFIG button presses must clear configCommandReceived here — leaving
+    // it set blocks idle-timeout exit (infinite-config regression).
     if (ctx.currentState == CONFIG) {
         ctx.configCommandReceived = false;
     }

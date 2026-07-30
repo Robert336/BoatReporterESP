@@ -288,14 +288,8 @@ void MQTTService::readNvs() {
 }
 
 void MQTTService::applyServerConfig() {
-    // Select the transport. TLS validates the broker cert against the bundled
-    // CA (Let's Encrypt roots) — required when exposing the broker over WAN.
-    // The hostname passed to setServer() doubles as the TLS SNI / CN to verify,
-    // so always use a domain name (not a bare IP) for a TLS broker.
-    // Bound the transport-level TCP connect timeout so a blocked connect() to an
-    // unreachable broker cannot hold the loop task longer than the task WDT
-    // allows. WiFiClientSecure defaults to 30s; WiFiClient defaults to 3s but
-    // we make it explicit for both. setTimeout() argument is in seconds.
+    // TLS: hostname is SNI/CN — use a domain, not a bare IP. Cap TCP connect
+    // timeout so a blocked connect() cannot hold the loop past the task WDT.
     if (useTls) {
         secureClient.setCACert(MQTT_ROOT_CA_BUNDLE);
         secureClient.setTimeout(MQTT_CONNECT_TIMEOUT_S);
