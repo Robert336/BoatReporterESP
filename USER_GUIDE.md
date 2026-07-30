@@ -4,6 +4,8 @@ This guide is for the person who installed the device in a boat, and for the boa
 
 The installer reads the whole thing once during setup. The boat owner reads only the last page.
 
+**Related technical docs (installers):** [Configuration](docs/configuration.md) · [Usage (LED/state reference)](docs/usage.md) · [Troubleshooting triage](docs/troubleshooting.md) · [Hardware](docs/hardware.md)
+
 ---
 
 ## What you have
@@ -13,7 +15,7 @@ A small electronics box installed in the bilge. It measures how much water is do
 **What's already been done for you:**
 
 - The firmware is installed and configured.
-- The factory dlso efaults are: warning at 30 cm, urgent alert at 50 cm, alerts every 15 minutes during an active flood.
+- The factory defaults are: warning at 30 cm, urgent alert at 50 cm, alerts every 15 minutes during an active flood.
 - The sensor, wiring, and enclosure are assembled.
 
 **What you still need to do, once:**
@@ -53,8 +55,8 @@ The setup page is a small website served by the device itself. It does not need 
 From the setup page, you can:
 
 - Connect the box to the boat's WiFi.
-- Enter your phone number for SMS alerts if you are using Twillio.
-- Enter the Discord webhook URL, or setup Twillio, or a custom webhook.
+- Enter your phone number for SMS alerts if you are using Twilio.
+- Enter the Discord webhook URL, or set up Twilio, or a custom webhook.
 - Set the two alert thresholds.
 - Calibrate the water-level reading.
 - See the live water level.
@@ -62,24 +64,18 @@ From the setup page, you can:
 
 ## The marina WiFi problem (and the fix)
 
-Marina guest networks usually have a **captive portal** — a sign-in page that opens in your browser the first time you connect. The device cannot sign in to that page for you. It has no browser, no screen, and no way to type a username and password into a web form.
+Marina guest networks usually have a **captive portal** — a sign-in page that opens in your browser the first time you connect. The device cannot sign in to that page for you.
 
-When the device is connected to a captive-portal network, it will:
-
-- Associate with the WiFi and show as connected.
-- Detect that it cannot reach the internet, and **defer outbound alerts** (they would only fail anyway).
-- Show a **"portal blocked"** banner on the WiFi page in the setup interface.
-- Re-check every 2 minutes. As soon as the network lets real traffic through, the banner clears and alerts resume.
+When a portal is detected, the device still shows as WiFi-connected, shows a **"portal blocked"** banner on the WiFi page, and **defers outbound alerts** until the network is open (it re-checks every 2 minutes).
 
 **Two ways to fix this:**
 
-1. **Set a custom MAC address.** Most marinas authenticate devices by their MAC address (the unique hardware ID of the WiFi radio). If a device with a different MAC is already authenticated on the marina network — your phone or laptop, for example — enter that MAC into the **Custom MAC** field on the WiFi page. The device will then present itself as that already-trusted device.
+1. **Set a custom MAC address** on the WiFi page to one already authenticated on the marina network (phone/laptop).
+2. **Ask the marina to whitelist** the device's current MAC (shown on the same page).
 
-2. **Ask the marina to whitelist the device's MAC.** The device's current MAC is shown on the same WiFi page, near the top. Forward it to the marina's network administrator and ask them to allow it. Once the device is on the allowed list, the captive portal is bypassed.
+Option 1 is faster. Option 2 is more durable. Full installer detail: [Configuration — Captive portals](docs/configuration.md#captive-portals-marina--guest-wifi).
 
-Option 1 is faster. Option 2 is more durable.
-
-If the device can't reach the boat's WiFi at all (out of range), it has no way to send alerts. The only fix is to move the device closer to the access point, or to use a network extender.
+If the device can't reach the boat's WiFi at all (out of range), move it closer to the access point or use a network extender.
 
 ---
 
@@ -173,6 +169,8 @@ A bilge with a small amount of residual water — a few centimetres — is also 
 ---
 
 ## If something looks wrong
+
+Owner-oriented steps below. Installers should use the full triage tree: **[docs/troubleshooting.md](docs/troubleshooting.md)**.
 
 **The blue LED is fast-blinking (sensor error).**
 

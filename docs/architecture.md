@@ -3,6 +3,15 @@
 ## Table of Contents
 
 - [Overview](#overview)
+- [Design Decisions](#design-decisions)
+  - [Remote Deployment](#remote-deployment)
+  - [ESP32 ADC Noise and Non-Linearity](#esp32-adc-noise-and-non-linearity)
+  - [I2C Bus Recovery and Stuck-Line Detection](#i2c-bus-recovery-and-stuck-line-detection)
+  - [Latest-Wins Emergency Notification Queue](#latest-wins-emergency-notification-queue)
+  - [Flood-Abort OTA Updates](#flood-abort-ota-updates)
+  - [Captive Portal Detection and Alert Gating](#captive-portal-detection-and-alert-gating)
+  - [NTP and TLS Bootstrap](#ntp-and-tls-bootstrap)
+  - [Two-Tier State Machine with Safety-First Transitions](#two-tier-state-machine-with-safety-first-transitions)
 - [System Context Diagram](#system-context-diagram)
 - [Core Components](#core-components)
   - [1. State Machine](#1-state-machine-maincpp--statemachineh)
@@ -25,7 +34,75 @@ BoatReporterESP is an ESP32-based bilge-water monitoring system that continuousl
 
 The firmware is organized around a single-threaded `loop()` on Core 1 that runs the state machine, sensor reads, MQTT polling, and web server, while Core 0 hosts two dedicated FreeRTOS tasks: one for outbound HTTP notifications and one for background OTA version checks. All persistent configuration lives in NVS (non-volatile storage) and is accessed through a fast in-RAM cache (`SettingsStore`).
 
-Current firmware version: **1.1.8**.
+Current firmware version: **1.1.8** (last tagged release; see [`CHANGELOG.md`](../CHANGELOG.md) for unreleased work).
+
+## Design Decisions
+
+These write-ups capture *why* the system looks the way it does. The [README](../README.md#design-decisions) links here for a short teaser; this section is the full narrative.
+
+### Remote Deployment
+
+We never set foot on the boat. The entire system was designed and built from verbal requirements, a handful of photos of the bilge area, and general knowledge of typical marina environments. No direct access to the WiFi network, no ability to measure the physical constraints in person, no way to debug hardware issues on-site.
+
+This constraint drove every major design decision. The device had to survive first boot and configuration without a technician present — hence the **captive-portal web interface** served by the device itself, with no app to install and no cloud dependency. All credentials (WiFi, Twilio, Discord, MQTT) are configured at runtime through the browser, stored in NVS, and survive firmware updates. If the WiFi network changes, the owner can reconfigure by pressing the button to enter setup mode.
+
+Since we couldn't observe the device in its environment, we built extensive **self-diagnostic capabilities**: the status LED communicates system state at a glance, the serial monitor logs every event, and all logs stream to an MQTT broker for remote inspection. The task watchdog ensures the device recovers from software hangs without human intervention. The OTA update system with automatic rollback means firmware can be fixed remotely if a bug slips through.
+
+We also designed for **unknown WiFi conditions** — marina captive portals, weak signal, dynamic IPs. The device probes its connectivity every 2 minutes, detects when a portal is intercepting traffic, and defers alerts until the network is open. A custom MAC address override lets the owner match an already-authenticated device without physical access to the ESP32.
+
+In short: every feature that makes this system robust — the web-based config, the self-diagnostics, the captive portal detection, the OTA pipeline, the NVS persistence — was born from the constraint that we would never be able to walk up to the device and fix it in person.
+
+### ESP32 ADC Noise and Non-Linearity
+
+The first prototype used the ESP32's built-in ADC. Two problems emerged immediately. First, the ESP32's ADC2 is multiplexed with the WiFi radio — enabling WiFi introduced massive noise into the readings, making water level detection unreliable. Second, the ESP32's internal ADC has inherent non-linearity across its voltage range, so even when WiFi was off, the mapping from millivolts to water depth was inconsistent.
+
+The fix was an external **ADS1115 16-bit ADC** over I2C. This moved the analog conversion off the ESP32 entirely (no WiFi interference), gave us true 16-bit precision (vs. the ESP32's effective ~9 bits), and uses a stable external voltage reference. The noise problem was solved.
+
+But the non-linearity persisted. The ADS1115 is linear — the problem was upstream. We built a data collection rig: dunked the pressure probe into a graduated cylinder and recorded millivolts, actual water depth, calculated depth, and current draw at 5 cm intervals across the full 0–100 cm range. Plotting the data revealed that the **current-to-voltage converter module** was introducing non-linearity at low voltages (below ~800 mV), compressing the response curve near the zero point.
+
+We solved this by biasing the C-V converter's operating point: cranked the offset potentiometer to its maximum (~560 mV at 0 cm water level) and adjusted the span to cover as much of the 0–3.3 V range as possible. This pushed the readings out of the module's non-linear region and into its linear operating range. The trade-off is that we lose the top ~30 cm of the sensor's 1 m range — the voltage clips at about 70 cm. For a bilge application where thresholds are typically set at 5–20 cm, this is well within the usable range.
+
+The result: a stable, repeatable water level reading across the 5–70 cm band, with less than ±0.5 cm error after two-point software calibration. Empirical fill/drain validation of the real sensor path is recorded in the [drip-test analysis](../test-logs/drip-test-20260502-analysis.md).
+
+See also: [Sensor Subsystem](#2-sensor-subsystem-waterpressuresensor).
+
+### I2C Bus Recovery and Stuck-Line Detection
+
+The ADS1115 ADC communicates over I2C at 100 kHz. On a boat, voltage dips from bilge pump startup can corrupt the bus, leaving the ADC in a hung state. The firmware implements automatic bus recovery with up to 10 retry cycles, including a bus reset sequence. If the line remains stuck (180 consecutive byte-identical samples ≈ 3 minutes), the reading is invalidated and a one-shot owner notification is sent — the device degrades gracefully rather than reporting a false stable reading.
+
+See also: [Sensor Subsystem](#2-sensor-subsystem-waterpressuresensor).
+
+### Latest-Wins Emergency Notification Queue
+
+Notifications are sent over HTTP (Twilio, Discord, webhook), which can block for up to 10 seconds per call. The NotificationWorker runs on a dedicated FreeRTOS task with a **depth-1 overwrite queue** for emergency alerts. During a WiFi outage, repeated emergency messages coalesce — when connectivity returns, the owner receives only the most recent water level snapshot, not a backlog of stale readings. A separate 8-slot FIFO handles one-shot events (silence confirmations, sensor recovery) with strict priority: the emergency mailbox is always drained first.
+
+See also: [Notification System](#3-notification-system-notificationworker--channels).
+
+### Flood-Abort OTA Updates
+
+Firmware downloads take up to 5 minutes over WiFi. If water reaches the emergency threshold mid-download, the download is aborted immediately. This ensures the bilge sensor is never blinded for the full download window. A callback checks water level inside the download loop, and auto-install is suppressed entirely while the device is in EMERGENCY state. The OTA system also performs a signal-strength pre-flight check (refuses download below −70 dBm RSSI) and supports automatic rollback if the new firmware fails to boot three times consecutively.
+
+See also: [OTA Update System](#5-ota-update-system-otamanager).
+
+### Captive Portal Detection and Alert Gating
+
+Marina and guest WiFi networks commonly intercept HTTP with a sign-in page. The device probes a connectivity-check endpoint after associating (and every 2 minutes while connected). A hijacked response (redirect or served page) marks the link as `PORTAL` and captures the sign-in URL. While a portal is detected, outbound notification sends **fail fast** instead of burning their 10-second timeout against the hijacked connection. Alerts resume automatically once the probe reports the network open. A custom MAC address override lets the owner present an already-authenticated MAC to the network.
+
+See also: [WiFi Manager](#8-wifi-manager-wifimanager) and [Configuration — Captive portals](configuration.md#captive-portals-marina--guest-wifi).
+
+### NTP and TLS Bootstrap
+
+The ESP32's real-time clock starts at Unix epoch 0 (January 1, 1970) on every cold boot. TLS certificate validation against the MQTT broker's Let's Encrypt cert fails immediately — the cert is "not yet valid" from the device's perspective. The firmware handles this with exponential backoff retry: MQTT connections are silently dropped for the first 1–3 minutes after boot until NTP syncs the clock. Telemetry is buffered locally and published once the connection establishes. The broker certificate is validated against bundled ISRG Root X1/X2 CA roots compiled into the firmware.
+
+See also: [MQTT Service](#6-mqtt-service-mqttservice).
+
+### Two-Tier State Machine with Safety-First Transitions
+
+The system operates in four states (NORMAL, ERROR, CONFIG, EMERGENCY) with carefully designed transition rules. CONFIG mode is an overlay — a flood condition forces an exit to EMERGENCY even while the web portal is active, so an open browser tab cannot suppress flood detection. A sensor fault mid-flood degrades to ERROR after 60 seconds instead of latching in EMERGENCY on stale data. The 5-second debounce window on both entry and exit prevents false alarms from transient wave slosh or condensation. The GPIO 12 status LED is intentionally forced off during EMERGENCY to avoid visual distraction.
+
+Long-running validation of these transitions (mock soak and mixed-state campaigns) lives under [`test-logs/`](../test-logs/README.md).
+
+See also: [State Machine](#1-state-machine-maincpp--statemachineh).
 
 ## System Context Diagram
 
@@ -72,6 +149,8 @@ flowchart TB
 
 ### 1. State Machine (`main.cpp` + `StateMachine.h`)
 
+> Design background: [Safety-first transitions](#two-tier-state-machine-with-safety-first-transitions). Campaign evidence: [`test-logs/`](../test-logs/README.md).
+
 The state machine is the central decision engine. It evaluates sensor readings against configurable thresholds and drives all outputs: alert GPIO, LED pattern, notification dispatch, and horn pulsing.
 
 #### States
@@ -117,6 +196,8 @@ The main entry point is `updateStateMachine()` (`StateMachine.h`, line 424), whi
 
 ### 2. Sensor Subsystem (`WaterPressureSensor`)
 
+> Design background: [ADC noise and non-linearity](#esp32-adc-noise-and-non-linearity), [I2C recovery](#i2c-bus-recovery-and-stuck-line-detection). Empirical fill/drain: [drip-test analysis](../test-logs/drip-test-20260502-analysis.md).
+
 The `WaterPressureSensor` class (`include/WaterPressureSensor.h`) wraps an ADS1115 16-bit ADC over I2C and provides filtered, calibrated water-level readings.
 
 #### Signal Chain
@@ -136,6 +217,8 @@ The `WaterPressureSensor` class (`include/WaterPressureSensor.h`) wraps an ADS11
 - **Overrange rejection**: Readings above `WATER_LEVEL_RANGE_MAX_CM + READING_OVERRANGE_MARGIN_CM` (110 cm) are treated as electrical faults.
 
 ### 3. Notification System (`NotificationWorker` + channels)
+
+> Design background: [Latest-wins emergency notification queue](#latest-wins-emergency-notification-queue).
 
 Outbound HTTP notifications run on a dedicated FreeRTOS task to avoid blocking the main loop during provider timeouts (up to 10 seconds per send).
 
@@ -225,6 +308,8 @@ flowchart LR
 
 ### 5. OTA Update System (`OTAManager`)
 
+> Design background: [Flood-abort OTA updates](#flood-abort-ota-updates).
+
 `OTAManager` (`include/OTAManager.h`) handles over-the-air firmware updates from GitHub Releases.
 
 #### Architecture
@@ -302,6 +387,8 @@ flowchart TB
 | `hornOffDuration_ms` | 4000 | 100 – 10000 |
 
 ### 8. WiFi Manager (`WiFiManager`)
+
+> Design background: [Captive portal detection and alert gating](#captive-portal-detection-and-alert-gating).
 
 `WiFiManager` (`include/WiFiManager.h`) manages WiFi station-mode connectivity with multi-network support.
 

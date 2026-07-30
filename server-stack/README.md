@@ -9,6 +9,7 @@ ESP32 ──MQTT──▶ Mosquitto ──▶ Telegraf ──▶ InfluxDB ──
   telemetry)                    JSON)        series)
 ```
 
+Do not commit `.env` secrets. WAN exposure guidance (TLS 8883 only): [SECURITY.md](../SECURITY.md) and the live [DEPLOYMENT.md](DEPLOYMENT.md) runbook.
 | Service | Image | Port | Role |
 |---------|-------|------|------|
 | Mosquitto | `eclipse-mosquitto:2` | 1883 | MQTT broker the device connects to |

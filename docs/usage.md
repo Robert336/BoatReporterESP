@@ -1,5 +1,7 @@
 # Usage
 
+Technical reference for LED patterns, states, button behavior, and alerts. For owner-facing language, see the [User Guide](../USER_GUIDE.md). Field triage: [Troubleshooting](troubleshooting.md).
+
 ## LED Status Indicators
 
 Two independent outputs, on separate pins, cover status and emergencies; nothing is shared between them.

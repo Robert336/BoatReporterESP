@@ -27,3 +27,4 @@ Flash the `mock` firmware (`pio run -e mock -t upload`) and let it run 15–30 m
 - Capture at 2× (retina) and let GitHub downscale; crisper on all displays.
 - The config UI is mobile-first (`max-width: 480px`), so phone-sized captures look intentional. Use a narrow browser window or phone.
 - Pick one Grafana theme (dark or light) and keep it consistent across all Grafana shots.
+- Assembled-unit / wiring photos (when available) can live here too; link them from [`docs/hardware.md`](../hardware.md).
