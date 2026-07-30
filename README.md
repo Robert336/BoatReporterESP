@@ -143,14 +143,13 @@ Catalog of logs, plots, and the MQTT parser: **[test-logs/README.md](test-logs/R
 ## Quick Start
 
 1. **Clone** this repository.
-2. **No compile-time secrets are required.** All credentials are configured at runtime through the web UI and stored in NVS. See [SECURITY.md](SECURITY.md).
-3. **Build & upload** to your ESP32:
+2. **Build & upload** to your ESP32:
    ```bash
    pio run -e prod --target upload    # production build
    pio run -e dev  --target upload    # development build (all logs)
    pio run -e mock --target upload    # no hardware needed
    ```
-4. **Configure in the browser**: on first boot, connect to the `ESP32-BilgeRise-Setup` WiFi access point (password printed to serial at 115200 baud), browse to `http://192.168.4.1`, and enter your WiFi and alert credentials.
+3. **Configure in the browser**: on first boot, connect to the `ESP32-BilgeRise-Setup` WiFi access point (password printed to serial at 115200 baud), browse to `http://192.168.4.1`, and enter your WiFi and alert credentials.
 
 > **Build pipeline note:** `scripts/compress_html.py` automatically gzips the web UI into `src/compressed_pages.h` on every build — no manual HTML embedding required.
 

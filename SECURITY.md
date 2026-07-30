@@ -13,10 +13,10 @@ Do not paste live tokens, passwords, phone numbers, or webhook URLs into public 
 
 ## Firmware credentials (NVS)
 
-- **No compile-time secrets are required.** Twilio, Discord, custom HTTP, MQTT, and WiFi credentials are entered at runtime in the captive-portal web UI and stored in NVS.
-- `include/secrets.h.example` is an empty template only; do not commit real secrets.
+- Twilio, Discord, custom HTTP, MQTT, and WiFi credentials are entered in the captive-portal web UI and stored in NVS.
 - Notification credential fields in the UI are write-only once saved (the device will not echo them back).
 - NVS survives OTA updates; wiping credentials requires clearing NVS or overwriting values through the UI.
+- Do not commit live tokens, passwords, or webhook URLs. Keep local overrides (for example `server-stack/.env`) out of git — see `.gitignore`.
 
 ## Config access point (plain HTTP)
 

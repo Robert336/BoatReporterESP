@@ -18,8 +18,7 @@ scripts/             Build scripts: compress_html.py gzips the web UI into src/c
 ## Setting up a build
 
 1. Install [PlatformIO](https://platformio.org/) (VS Code extension or CLI).
-2. Clone the repo. **No `secrets.h` is required**: all credentials (Twilio, Discord, custom-HTTP, MQTT) are entered at runtime in the web UI and stored in NVS. `include/secrets.h.example` is an empty template. See [`SECURITY.md`](SECURITY.md).
-3. Build the environment appropriate to your task:
+2. Clone the repo and build the environment appropriate to your task:
 
    ```bash
    pio run -e prod --target upload    # production build (on the boat)
@@ -28,6 +27,7 @@ scripts/             Build scripts: compress_html.py gzips the web UI into src/c
    pio run -e native                  # host-side unit tests
    ```
 
+   WiFi and notification credentials are entered in the device web UI after flash (see [`docs/configuration.md`](docs/configuration.md)).
 ## Web UI changes
 
 Edit the HTML in `dev-ui/*.html` (or `src/html/ota.html`). You can iterate against the mock server without flashing:
