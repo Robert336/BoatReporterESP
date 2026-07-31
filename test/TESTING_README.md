@@ -378,6 +378,18 @@ To run tests in a CI/CD pipeline:
     pio test -e native
 ```
 
+## Hardware and soak validation
+
+Unit tests above cover pure logic on the host. Complementary **long-running and hardware** campaigns (with log analysis write-ups) live under [`test-logs/`](../test-logs/README.md):
+
+| Campaign | Write-up |
+|----------|----------|
+| 24 h mock soak (heap / state machine) | [soak-test-20260321-summary.md](../test-logs/soak-test-20260321-summary.md) |
+| Real sensor cylinder drip test + MQTT plots | [drip-test-20260502-analysis.md](../test-logs/drip-test-20260502-analysis.md) |
+| ~62 h random-state soak | [random-state-test-20260523-analysis.md](../test-logs/random-state-test-20260523-analysis.md) |
+
+The README [Testing](../README.md#testing) section summarizes headline results; full write-ups are linked below.
+
 ## Further Resources
 
 - [PlatformIO Unit Testing](https://docs.platformio.org/en/latest/advanced/unit-testing/index.html)
@@ -392,3 +404,4 @@ If you encounter issues with tests or want to add test coverage:
 2. Review existing test files for examples
 3. Ensure mocks are properly configured
 4. Verify the test environment is set up correctly in `platformio.ini`
+

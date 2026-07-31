@@ -3,6 +3,16 @@
 ## Table of Contents
 
 - [Overview](#overview)
+  - [On-device vs external hosts](#on-device-vs-external-hosts)
+- [Design Decisions](#design-decisions)
+  - [Remote Deployment](#remote-deployment)
+  - [ESP32 ADC Noise and Non-Linearity](#esp32-adc-noise-and-non-linearity)
+  - [I2C Bus Recovery and Stuck-Line Detection](#i2c-bus-recovery-and-stuck-line-detection)
+  - [Latest-Wins Emergency Notification Queue](#latest-wins-emergency-notification-queue)
+  - [Flood-Abort OTA Updates](#flood-abort-ota-updates)
+  - [Captive Portal Detection and Alert Gating](#captive-portal-detection-and-alert-gating)
+  - [NTP and TLS Bootstrap](#ntp-and-tls-bootstrap)
+  - [Two-Tier State Machine with Safety-First Transitions](#two-tier-state-machine-with-safety-first-transitions)
 - [System Context Diagram](#system-context-diagram)
 - [Core Components](#core-components)
   - [1. State Machine](#1-state-machine-maincpp--statemachineh)
@@ -13,7 +23,7 @@
   - [6. MQTT Service](#6-mqtt-service-mqttservice)
   - [7. Settings Store](#7-settings-store-settingsstore)
   - [8. WiFi Manager](#8-wifi-manager-wifimanager)
-  - [9. LED / Light Control](#9-led--light-control-lightcode)
+  - [9. LEDs](#9-leds-lightcode--alert_pin)
 - [FreeRTOS Task Layout](#freertos-task-layout)
 - [Data Flow](#data-flow)
 - [Build Environments](#build-environments)
@@ -21,11 +31,96 @@
 
 ## Overview
 
-BoatReporterESP is an ESP32-based bilge-water monitoring system that continuously measures water level via a 4–20 mA pressure sensor, detects flood conditions through a two-tier state machine, and dispatches alerts over SMS (Twilio), Discord webhooks, and a custom HTTP endpoint. It publishes structured telemetry to an MQTT broker for time-series dashboards (Grafana/InfluxDB) and supports over-the-air firmware updates from GitHub Releases. A captive-portal web interface on the device's own Wi-Fi access point handles all configuration; no companion app is required.
+BoatReporterESP is an ESP32-based bilge-water monitoring system that continuously measures water level via a 4–20 mA pressure sensor, detects flood conditions through a two-tier state machine, and can dispatch alerts over SMS (Twilio), Discord webhooks, and a custom HTTP endpoint. It can publish structured telemetry to an MQTT broker for time-series dashboards (Grafana/InfluxDB) and supports over-the-air firmware updates from GitHub Releases. A captive-portal web interface on the device's own Wi-Fi access point handles all configuration; no companion app is required.
 
 The firmware is organized around a single-threaded `loop()` on Core 1 that runs the state machine, sensor reads, MQTT polling, and web server, while Core 0 hosts two dedicated FreeRTOS tasks: one for outbound HTTP notifications and one for background OTA version checks. All persistent configuration lives in NVS (non-volatile storage) and is accessed through a fast in-RAM cache (`SettingsStore`).
 
-Current firmware version: **1.1.8**.
+### On-device vs external hosts
+
+“No cloud dependency” in this project means **configuration and core flood detection do not require a vendor cloud account or companion app**. It does **not** mean the system is fully standalone once alerts or telemetry are enabled.
+
+| Runs on the ESP32 alone | Needs another host / service to work |
+|-------------------------|--------------------------------------|
+| Sensor read, filtering, calibration | **Twilio** — SMS delivery |
+| State machine (NORMAL / CONFIG / ERROR / EMERGENCY) | **Discord** (or any custom HTTP webhook) — chat/HTTP alerts |
+| Status LED + alert LED, button, local debounce | **MQTT broker** — log/telemetry stream (often self-hosted Mosquitto on a Pi or workstation; still a separate machine) |
+| Captive-portal config UI + NVS credentials | **Telegraf / InfluxDB / Grafana** — dashboards (if you use the server stack) |
+| Watchdog recovery | **GitHub Releases** — OTA firmware checks/downloads |
+| | **NTP** — clock sync before TLS to the broker succeeds |
+
+Sensing and EMERGENCY detection continue if Wi-Fi or those services are down; outbound SMS/Discord/webhooks and MQTT dashboards will not. Channels are optional and configured at runtime — enable only what you operate. The included MQTT/Grafana path is **self-hosted** (you run the broker), not a paid BoatReporter cloud, but it is still an external dependency whenever telemetry is used.
+
+Current firmware version: **1.1.8** (last tagged release; see [`CHANGELOG.md`](../CHANGELOG.md) for unreleased work).
+
+## Design Decisions
+
+These write-ups capture *why* the system looks the way it does. The [README](../README.md#design-decisions) summarizes the outcomes; this section is the full narrative.
+
+### Remote Deployment
+
+We never set foot on the boat. The entire system was designed and built from verbal requirements, a handful of photos of the bilge area, and general knowledge of typical marina environments. No direct access to the WiFi network, no ability to measure the physical constraints in person, no way to debug hardware issues on-site.
+
+This constraint drove every major design decision. The device had to survive first boot and **configuration** without a technician present — hence the **captive-portal web interface** served by the device itself, with no companion app and no account on a BoatReporter cloud service. Setup is local to the device AP. Credentials for WiFi and for whichever outbound services you use (Twilio, Discord, MQTT, and so on) are entered in the browser, stored in NVS, and survive firmware updates. If the WiFi network changes, the owner can reconfigure by pressing the button to enter setup mode.
+
+That local config path is separate from **runtime** dependencies: once alerts or telemetry are enabled, the device does need those other hosts to be up (Twilio/Discord/webhook endpoints, your MQTT broker, NTP for TLS, GitHub for OTA). See [On-device vs external hosts](#on-device-vs-external-hosts). Flood detection itself still runs on-device if the network is down; only outbound delivery and dashboards are affected.
+
+Since we couldn't observe the device in its environment, we built extensive **self-diagnostic capabilities**: two LEDs communicate system health vs flood tier at a glance (status on GPIO 12, alert on GPIO 26), the serial monitor logs every event, and all logs stream to an MQTT broker for remote inspection. The task watchdog ensures the device recovers from software hangs without human intervention. The OTA update system with automatic rollback means firmware can be fixed remotely if a bug slips through.
+
+We also designed for **unknown WiFi conditions** — marina captive portals, weak signal, dynamic IPs. The device probes its connectivity every 2 minutes, detects when a portal is intercepting traffic, and defers alerts until the network is open. A custom MAC address override lets the owner match an already-authenticated device without physical access to the ESP32.
+
+In short: every feature that makes this system robust — the web-based config, the self-diagnostics, the captive portal detection, the OTA pipeline, the NVS persistence — was born from the constraint that we would never be able to walk up to the device and fix it in person.
+
+### ESP32 ADC Noise and Non-Linearity
+
+The first prototype used the ESP32's built-in ADC. Two problems emerged immediately. First, the ESP32's ADC2 is multiplexed with the WiFi radio — enabling WiFi introduced massive noise into the readings, making water level detection unreliable. Second, the ESP32's internal ADC has inherent non-linearity across its voltage range, so even when WiFi was off, the mapping from millivolts to water depth was inconsistent.
+
+The fix was an external **ADS1115 16-bit ADC** over I2C. This moved the analog conversion off the ESP32 entirely (no WiFi interference), gave us true 16-bit precision (vs. the ESP32's effective ~9 bits), and uses a stable external voltage reference. The noise problem was solved.
+
+But the non-linearity persisted. The ADS1115 is linear — the problem was upstream. We built a data collection rig: dunked the pressure probe into a graduated cylinder and recorded millivolts, actual water depth, calculated depth, and current draw at 5 cm intervals across the full 0–100 cm range. Plotting the data revealed that the **current-to-voltage converter module** was introducing non-linearity at low voltages (below ~800 mV), compressing the response curve near the zero point.
+
+We solved this by biasing the C-V converter's operating point: cranked the offset potentiometer to its maximum (~560 mV at 0 cm water level) and adjusted the span to cover as much of the 0–3.3 V range as possible. This pushed the readings out of the module's non-linear region and into its linear operating range. The trade-off is that we lose the top ~30 cm of the sensor's 1 m range — the voltage clips at about 70 cm. For a bilge application where thresholds are typically set at 5–20 cm, this is well within the usable range.
+
+The result: a stable, repeatable water level reading across the 5–70 cm band, with less than ±0.5 cm error after two-point software calibration. Empirical fill/drain validation of the real sensor path is recorded in the [drip-test analysis](../test-logs/drip-test-20260502-analysis.md).
+
+See also: [Sensor Subsystem](#2-sensor-subsystem-waterpressuresensor).
+
+### I2C Bus Recovery and Stuck-Line Detection
+
+The ADS1115 ADC communicates over I2C at 100 kHz. On a boat, voltage dips from bilge pump startup can corrupt the bus, leaving the ADC in a hung state. The firmware implements automatic bus recovery with up to 10 retry cycles, including a bus reset sequence. If the line remains stuck (180 consecutive byte-identical samples ≈ 3 minutes), the reading is invalidated and a one-shot owner notification is sent — the device degrades gracefully rather than reporting a false stable reading.
+
+See also: [Sensor Subsystem](#2-sensor-subsystem-waterpressuresensor).
+
+### Latest-Wins Emergency Notification Queue
+
+Notifications are sent over HTTP (Twilio, Discord, webhook), which can block for up to 10 seconds per call. The NotificationWorker runs on a dedicated FreeRTOS task with a **depth-1 overwrite queue** for emergency alerts. During a WiFi outage, repeated emergency messages coalesce — when connectivity returns, the owner receives only the most recent water level snapshot, not a backlog of stale readings. A separate 8-slot FIFO handles one-shot events (silence confirmations, sensor recovery) with strict priority: the emergency mailbox is always drained first.
+
+See also: [Notification System](#3-notification-system-notificationworker--channels).
+
+### Flood-Abort OTA Updates
+
+Firmware downloads take up to 5 minutes over WiFi. If water reaches the emergency threshold mid-download, the download is aborted immediately. This ensures the bilge sensor is never blinded for the full download window. A callback checks water level inside the download loop, and auto-install is suppressed entirely while the device is in EMERGENCY state. The OTA system also performs a signal-strength pre-flight check (refuses download below −70 dBm RSSI) and supports automatic rollback if the new firmware fails to boot three times consecutively.
+
+See also: [OTA Update System](#5-ota-update-system-otamanager).
+
+### Captive Portal Detection and Alert Gating
+
+Marina and guest WiFi networks commonly intercept HTTP with a sign-in page. The device probes a connectivity-check endpoint after associating (and every 2 minutes while connected). A hijacked response (redirect or served page) marks the link as `PORTAL` and captures the sign-in URL. While a portal is detected, outbound notification sends **fail fast** instead of burning their 10-second timeout against the hijacked connection. Alerts resume automatically once the probe reports the network open. A custom MAC address override lets the owner present an already-authenticated MAC to the network.
+
+See also: [WiFi Manager](#8-wifi-manager-wifimanager) and [Configuration — Captive portals](configuration.md#captive-portals-marina--guest-wifi).
+
+### NTP and TLS Bootstrap
+
+The ESP32's real-time clock starts at Unix epoch 0 (January 1, 1970) on every cold boot. TLS certificate validation against the MQTT broker's Let's Encrypt cert fails immediately — the cert is "not yet valid" from the device's perspective. The firmware handles this with exponential backoff retry: MQTT connections are silently dropped for the first 1–3 minutes after boot until NTP syncs the clock. Telemetry is buffered locally and published once the connection establishes. The broker certificate is validated against bundled ISRG Root X1/X2 CA roots compiled into the firmware.
+
+See also: [MQTT Service](#6-mqtt-service-mqttservice).
+
+### Two-Tier State Machine with Safety-First Transitions
+
+The system operates in four states (NORMAL, ERROR, CONFIG, EMERGENCY) with carefully designed transition rules. CONFIG mode is an overlay — a flood condition forces an exit to EMERGENCY even while the web portal is active, so an open browser tab cannot suppress flood detection. A sensor fault mid-flood degrades to ERROR after 60 seconds instead of latching in EMERGENCY on stale data. The 5-second debounce window on both entry and exit prevents false alarms from transient wave slosh or condensation. The **status LED** (GPIO 12) is forced off during EMERGENCY; the **alert LED** (GPIO 26) carries Tier 1 (solid) / Tier 2 (pulse) so flood indication is not mixed with WiFi/config patterns.
+
+Long-running validation of these transitions (mock soak and mixed-state campaigns) lives under [`test-logs/`](../test-logs/README.md).
+
+See also: [State Machine](#1-state-machine-maincpp--statemachineh).
 
 ## System Context Diagram
 
@@ -72,6 +167,8 @@ flowchart TB
 
 ### 1. State Machine (`main.cpp` + `StateMachine.h`)
 
+> Design background: [Safety-first transitions](#two-tier-state-machine-with-safety-first-transitions). Campaign evidence: [`test-logs/`](../test-logs/README.md).
+
 The state machine is the central decision engine. It evaluates sensor readings against configurable thresholds and drives all outputs: alert GPIO, LED pattern, notification dispatch, and horn pulsing.
 
 #### States
@@ -107,15 +204,17 @@ stateDiagram-v2
 
 #### Key Behaviors
 
-- **Two-tier emergency**: Tier 1 (`emergencyWaterLevel_cm`) triggers SMS/Discord/HTTP notifications at a configurable frequency. Tier 2 (`urgentEmergencyWaterLevel_cm`) additionally pulses the horn/alert output (GPIO 26) with configurable on/off durations.
+- **Two-tier emergency**: Tier 1 (`emergencyWaterLevel_cm`) triggers SMS/Discord/HTTP notifications at a configurable frequency and drives the **alert LED** solid. Tier 2 (`urgentEmergencyWaterLevel_cm`) additionally pulses the alert LED (GPIO 26) with configurable on/off durations (legacy “horn” timing settings in NVS).
 - **Debounce**: Both entering and leaving EMERGENCY require the condition to persist for `EMERGENCY_TIMEOUT_MS` (default 5 s), preventing false alarms from transient splashes.
 - **Safety-first transitions**: CONFIG is an overlay; a flood condition always forces an exit to EMERGENCY, even while the web portal is active. A sensor fault does **not** force CONFIG → ERROR — config mode is entered only via a physical button press, so the owner is on-site and may have intentionally disconnected the sensor (e.g. to perform an OTA update over better WiFi). The sustained-failure notification still fires, and the idle-timeout exit still returns the device to NORMAL/ERROR when the portal goes unused.
-- **Silence toggle**: A 5-second button hold during EMERGENCY silences notifications and the horn. A second 5-second hold re-enables them. Silence auto-clears on return to NORMAL.
+- **Silence toggle**: A 5-second button hold during EMERGENCY silences notifications and turns the alert LED off. A second 5-second hold re-enables them. Silence auto-clears on return to NORMAL.
 - **Sensor fault in EMERGENCY**: A sustained sensor fault during a flood degrades to ERROR rather than latching in EMERGENCY indefinitely on stale data.
 
 The main entry point is `updateStateMachine()` (`StateMachine.h`, line 424), which is a pure function called once per `loop()` iteration. It returns a `StateMachineOutput` struct of side-effect flags; `loop()` reads these flags and executes the corresponding actions (GPIO writes, notification enqueues, LED pattern changes).
 
 ### 2. Sensor Subsystem (`WaterPressureSensor`)
+
+> Design background: [ADC noise and non-linearity](#esp32-adc-noise-and-non-linearity), [I2C recovery](#i2c-bus-recovery-and-stuck-line-detection). Empirical fill/drain: [drip-test analysis](../test-logs/drip-test-20260502-analysis.md).
 
 The `WaterPressureSensor` class (`include/WaterPressureSensor.h`) wraps an ADS1115 16-bit ADC over I2C and provides filtered, calibrated water-level readings.
 
@@ -136,6 +235,8 @@ The `WaterPressureSensor` class (`include/WaterPressureSensor.h`) wraps an ADS11
 - **Overrange rejection**: Readings above `WATER_LEVEL_RANGE_MAX_CM + READING_OVERRANGE_MARGIN_CM` (110 cm) are treated as electrical faults.
 
 ### 3. Notification System (`NotificationWorker` + channels)
+
+> Design background: [Latest-wins emergency notification queue](#latest-wins-emergency-notification-queue).
 
 Outbound HTTP notifications run on a dedicated FreeRTOS task to avoid blocking the main loop during provider timeouts (up to 10 seconds per send).
 
@@ -225,6 +326,8 @@ flowchart LR
 
 ### 5. OTA Update System (`OTAManager`)
 
+> Design background: [Flood-abort OTA updates](#flood-abort-ota-updates).
+
 `OTAManager` (`include/OTAManager.h`) handles over-the-air firmware updates from GitHub Releases.
 
 #### Architecture
@@ -303,6 +406,8 @@ flowchart TB
 
 ### 8. WiFi Manager (`WiFiManager`)
 
+> Design background: [Captive portal detection and alert gating](#captive-portal-detection-and-alert-gating).
+
 `WiFiManager` (`include/WiFiManager.h`) manages WiFi station-mode connectivity with multi-network support.
 
 #### Features
@@ -316,11 +421,16 @@ flowchart TB
 - **AP+STA mode during CONFIG**: The device runs both station and access point simultaneously during configuration.
 - **Connection health tracking**: Session durations logged using `esp_timer_get_time()` (microseconds, monotonic) to survive `millis()` rollover (~49.7 days).
 
-### 9. LED / Light Control (`LightCode`)
+### 9. LEDs (`LightCode` + `ALERT_PIN`)
 
-`LightCode` (`include/LightCode.h`) drives the status LED on GPIO 12 with non-blocking pattern updates.
+The hardware uses **two LEDs** on separate pins ([`BoardPins.h`](../include/BoardPins.h)):
 
-#### Patterns
+| LED | Pin | Driver | Role |
+|-----|-----|--------|------|
+| Status | GPIO 12 (`LIGHT_PIN`) | `LightCode` | NORMAL / ERROR / CONFIG patterns only |
+| Alert | GPIO 26 (`ALERT_PIN`) | `digitalWrite` each `loop()` from `computeAlertPinState()` | EMERGENCY Tier 1 solid / Tier 2 pulse |
+
+#### Status LED patterns (`LightCode`)
 
 | Pattern | Enum | Meaning |
 |---------|------|---------|
@@ -328,9 +438,17 @@ flowchart TB
 | Double blink | `PATTERN_DOUBLE_BLINK` | NORMAL state, WiFi disconnected |
 | Slow blink | `PATTERN_SLOW_BLINK` | CONFIG state |
 | Fast blink | `PATTERN_FAST_BLINK` | ERROR state |
-| Off (forced) | `PATTERN_OFF` | EMERGENCY state; intentionally dark to avoid visual distraction during a flood |
+| Off (forced) | `PATTERN_OFF` | EMERGENCY — status LED stays dark; alert LED owns flood indication |
 
-The LED is explicitly forced off in EMERGENCY to prevent a leftover pattern (e.g., WiFi-disconnected double blink) from running through the emergency.
+#### Alert LED behavior
+
+| Pattern | Condition |
+|---------|-----------|
+| Solid ON | EMERGENCY + Tier 1 (not silenced, sensor healthy) |
+| Pulsing | EMERGENCY + Tier 2 (pulse timing from `hornOnDuration_ms` / `hornOffDuration_ms`) |
+| OFF | Not EMERGENCY; silenced; or sensor-fault fail-safe |
+
+The status LED is explicitly forced off in EMERGENCY so a leftover WiFi-disconnected double blink cannot run during a flood. Owner-facing meanings: [Usage](usage.md).
 
 ## FreeRTOS Task Layout
 
@@ -374,7 +492,8 @@ flowchart TB
     → [EMERGENCY_TIMEOUT_MS debounce] → [computeNextState() → EMERGENCY]
     → [shouldSendEmergencyNotification()] → [NotificationWorker::enqueueEmergency()]
     → [Core 0 task sends SMS/Discord/HTTP]
-    → [if Tier 2: shouldHornBeOn() pulses ALERT_PIN (GPIO 26)]
+    → [if Tier 1: alert LED solid on ALERT_PIN (GPIO 26)]
+    → [if Tier 2: alert LED pulses on ALERT_PIN]
 ```
 
 ### Configuration Flow

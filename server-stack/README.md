@@ -9,6 +9,7 @@ ESP32 ──MQTT──▶ Mosquitto ──▶ Telegraf ──▶ InfluxDB ──
   telemetry)                    JSON)        series)
 ```
 
+Do not commit `.env` secrets. WAN exposure guidance (TLS 8883 only): [SECURITY.md](../SECURITY.md) and the live [DEPLOYMENT.md](DEPLOYMENT.md) runbook.
 | Service | Image | Port | Role |
 |---------|-------|------|------|
 | Mosquitto | `eclipse-mosquitto:2` | 1883 | MQTT broker the device connects to |
@@ -223,8 +224,6 @@ Telegraf config change:
 The provisioned dashboard (**Boat Reporter — Bilge Monitor**, uid
 `boat-reporter`) has 12 panels. Its Flux queries hardcode the InfluxDB bucket
 `boat`, and the **Device** dropdown selects a unit by its MAC-derived id.
-
-> 📸 **Screenshot source:** `docs/screenshots/grafana-full.png`: full dashboard capture with real/mock data flowing, referenced from the main README.
 
 | Panel | Source field | Notes |
 |-------|--------------|-------|

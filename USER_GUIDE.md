@@ -4,6 +4,8 @@ This guide is for the person who installed the device in a boat, and for the boa
 
 The installer reads the whole thing once during setup. The boat owner reads only the last page.
 
+**Related technical docs (installers):** [Configuration](docs/configuration.md) · [Usage (LED/state reference)](docs/usage.md) · [Troubleshooting triage](docs/troubleshooting.md) · [Hardware](docs/hardware.md)
+
 ---
 
 ## What you have
@@ -13,7 +15,7 @@ A small electronics box installed in the bilge. It measures how much water is do
 **What's already been done for you:**
 
 - The firmware is installed and configured.
-- The factory dlso efaults are: warning at 30 cm, urgent alert at 50 cm, alerts every 15 minutes during an active flood.
+- The factory defaults are: warning at 30 cm, urgent alert at 50 cm, alerts every 15 minutes during an active flood.
 - The sensor, wiring, and enclosure are assembled.
 
 **What you still need to do, once:**
@@ -31,9 +33,11 @@ Everything after that is automatic. The device runs in the background.
 
 When you connect 12 V power to the box:
 
-1. Within about 2 seconds, the blue LED comes on.
-2. If the device has never been configured, the LED begins to **blink slowly** and the box starts broadcasting a WiFi network called `ESP32-BilgeRise-Setup`.
-3. If the device has been configured before, it tries to connect to the saved WiFi. The LED goes **off** when connected, or **double-blinks** if it cannot reach the network.
+1. Within about 2 seconds, the status LED (usually blue) comes on.
+2. If the device has never been configured, the status LED begins to **blink slowly** and the box starts broadcasting a WiFi network called `ESP32-BilgeRise-Setup`.
+3. If the device has been configured before, it tries to connect to the saved WiFi. The status LED goes **off** when connected, or **double-blinks** if it cannot reach the network.
+
+The **alert LED** (flood indicator) should stay off at power-on unless the bilge is already above the warning threshold.
 
 You have about 5 minutes from power-on to connect to the setup network. If you don't, the device keeps running and the setup network stays available until you press the button.
 
@@ -53,8 +57,8 @@ The setup page is a small website served by the device itself. It does not need 
 From the setup page, you can:
 
 - Connect the box to the boat's WiFi.
-- Enter your phone number for SMS alerts if you are using Twillio.
-- Enter the Discord webhook URL, or setup Twillio, or a custom webhook.
+- Enter your phone number for SMS alerts if you are using Twilio.
+- Enter the Discord webhook URL, or set up Twilio, or a custom webhook.
 - Set the two alert thresholds.
 - Calibrate the water-level reading.
 - See the live water level.
@@ -62,24 +66,18 @@ From the setup page, you can:
 
 ## The marina WiFi problem (and the fix)
 
-Marina guest networks usually have a **captive portal** — a sign-in page that opens in your browser the first time you connect. The device cannot sign in to that page for you. It has no browser, no screen, and no way to type a username and password into a web form.
+Marina guest networks usually have a **captive portal** — a sign-in page that opens in your browser the first time you connect. The device cannot sign in to that page for you.
 
-When the device is connected to a captive-portal network, it will:
-
-- Associate with the WiFi and show as connected.
-- Detect that it cannot reach the internet, and **defer outbound alerts** (they would only fail anyway).
-- Show a **"portal blocked"** banner on the WiFi page in the setup interface.
-- Re-check every 2 minutes. As soon as the network lets real traffic through, the banner clears and alerts resume.
+When a portal is detected, the device still shows as WiFi-connected, shows a **"portal blocked"** banner on the WiFi page, and **defers outbound alerts** until the network is open (it re-checks every 2 minutes).
 
 **Two ways to fix this:**
 
-1. **Set a custom MAC address.** Most marinas authenticate devices by their MAC address (the unique hardware ID of the WiFi radio). If a device with a different MAC is already authenticated on the marina network — your phone or laptop, for example — enter that MAC into the **Custom MAC** field on the WiFi page. The device will then present itself as that already-trusted device.
+1. **Set a custom MAC address** on the WiFi page to one already authenticated on the marina network (phone/laptop).
+2. **Ask the marina to whitelist** the device's current MAC (shown on the same page).
 
-2. **Ask the marina to whitelist the device's MAC.** The device's current MAC is shown on the same WiFi page, near the top. Forward it to the marina's network administrator and ask them to allow it. Once the device is on the allowed list, the captive portal is bypassed.
+Option 1 is faster. Option 2 is more durable. Full installer detail: [Configuration — Captive portals](docs/configuration.md#captive-portals-marina--guest-wifi).
 
-Option 1 is faster. Option 2 is more durable.
-
-If the device can't reach the boat's WiFi at all (out of range), it has no way to send alerts. The only fix is to move the device closer to the access point, or to use a network extender.
+If the device can't reach the boat's WiFi at all (out of range), move it closer to the access point or use a network extender.
 
 ---
 
@@ -98,19 +96,35 @@ You don't need to visit any of these after the first setup unless something chan
 
 ---
 
-## The status light
+## The lights (two LEDs)
 
-The blue LED in the box tells you what the device is doing.
+The box has **two LEDs**. They mean different things and never share a job.
+
+### Status LED (usually the blue one)
+
+Shows day-to-day health and setup mode. It goes **off on purpose during a flood** so the alert LED can carry that meaning.
 
 | What you see | What it means | What to do |
 |---|---|---|
 | Off | Normal. Water level is OK, WiFi is connected, nothing to report. | Nothing. This is the idle state. |
 | Double-blink (two quick flashes, pause, repeat) | Normal, but the device has lost the WiFi connection. Alerts cannot be sent right now. | Check that the boat's network is up. If the device is far from the access point, move it closer or use a WiFi extender. |
 | Slow blink (about once per second) | Setup mode. The device is broadcasting its WiFi network. | Connect to the network and open the setup page. |
-| Fast blink (about 3 times per second) | Sensor error. The device cannot read the water level. | Open the enclosure and check the sensor wiring. See the troubleshooting section below. |
-| Off during a flood | The device is sending alerts. The LED deliberately goes off during a flood so the alerts get your attention, not the light. | Wait for the alert. Silence it with a 5-second button hold if you need to. |
+| Fast blink (about 3 times per second) | Sensor error. The device cannot read the water level. | Check that the sensor is plugged into the unit and that it has power (enough voltage). See troubleshooting below. |
+| Off while the other LED is on or pulsing | Flood in progress — the status LED stays dark on purpose. | Look at the **alert LED** (below). |
 
-If the LED is doing something not in this list, power the device off and back on. If it still doesn't match, contact support.
+### Alert LED (flood indicator)
+
+Only used for water emergencies. Off the rest of the time.
+
+| What you see | What it means | What to do |
+|---|---|---|
+| Off | No active flood indication (or alerts were silenced). | Nothing, unless you expected a flood — then check thresholds and the status LED. |
+| Solid on | Warning flood (Tier 1). Water is above the warning threshold; texts/Discord may be going out. | Check the bilge. Silence with a 5-second button hold if you are on site and dealing with it. |
+| Pulsing on/off | Urgent flood (Tier 2). Water is above the urgent threshold. | Treat as higher severity. Same silence hold if needed. |
+
+If either LED is doing something not in these lists, power the device off and back on. If it still doesn't match, contact support.
+
+Technical pin map and patterns: [docs/usage.md](docs/usage.md).
 
 ---
 
@@ -118,7 +132,7 @@ If the LED is doing something not in this list, power the device off and back on
 
 The button is on the inside of the enclosure, near the LEDs.
 
-**Single press:** the device enters setup mode. The blue LED starts to slow-blink, and the `ESP32-BilgeRise-Setup` WiFi network becomes available. Use this whenever you need to change a setting.
+**Single press:** the device enters setup mode. The status LED starts to slow-blink, and the `ESP32-BilgeRise-Setup` WiFi network becomes available. Use this whenever you need to change a setting.
 
 The single press is also a useful first move whenever something looks wrong: it opens the setup page, where you can see the live reading, the current state, and the connection status.
 
@@ -166,6 +180,7 @@ A correctly installed device in a dry bilge should show:
 - **Water level:** 0 cm, with small variations of less than 1 cm.
 - **State:** NORMAL.
 - **Status LED:** off.
+- **Alert LED:** off.
 - **Last alert:** never (or however long ago the last test was).
 
 A bilge with a small amount of residual water — a few centimetres — is also normal. The reading should be stable. If it jumps around by more than a centimetre every few seconds, the sensor may be loose, the water may be choppy, or the calibration may be off.
@@ -174,15 +189,22 @@ A bilge with a small amount of residual water — a few centimetres — is also 
 
 ## If something looks wrong
 
-**The blue LED is fast-blinking (sensor error).**
+Owner-oriented steps below. Installers should use the full triage tree: **[docs/troubleshooting.md](docs/troubleshooting.md)**.
 
-1. Open the enclosure.
-2. Check that the sensor cable is firmly seated in the green terminal block on the ADS1115 board.
-3. Check that the small current-to-voltage converter board has its two potentiometers still set (the white dabs of nail polish or paint on top of them should be intact).
-4. Check that the wires between the level shifter and the ADS1115 are in place.
-5. Power-cycle the device.
+**The status LED is fast-blinking (sensor error).**
 
-If the fast-blink returns within a minute, the sensor itself may be damaged and needs replacement.
+Fast blink means a sensor failure. The usual causes are a disconnected probe or the sensor not getting enough voltage — check those first.
+
+1. Confirm the sensor cable is firmly connected to the unit (enclosure connector / green terminal block).
+2. Confirm the sensor has power — measure supply at the sensor terminals if you can; a loose power wire or low voltage looks the same as a dead probe.
+3. Only then open the enclosure and check the current-to-voltage converter pots (paint marks intact) and the wires between the level shifter and the ADS1115.
+4. Power-cycle the device.
+
+If the fast-blink returns within a minute after connection and power look good, the sensor itself may be damaged and needs replacement. Installer detail: [docs/troubleshooting.md](docs/troubleshooting.md#sensor-failure-fast-blink).
+
+**The alert LED is solid or pulsing, but you are not getting texts.**
+
+The on-device flood light can be on while SMS/Discord fail (portal blocked, missing credentials, or no internet). Check the WiFi page for a **"portal blocked"** banner and the Notifications page for credentials. Installer triage: [docs/troubleshooting.md](docs/troubleshooting.md).
 
 **The dashboard shows a reading but no alerts are going out.**
 
@@ -190,7 +212,7 @@ Check the WiFi page in the setup interface. If a **"portal blocked"** banner is 
 
 **The setup network (`ESP32-BilgeRise-Setup`) doesn't appear.**
 
-Press the button once. Wait up to 10 seconds. The LED should begin to slow-blink and the network should appear. If it doesn't, power-cycle the device.
+Press the button once. Wait up to 10 seconds. The status LED should begin to slow-blink and the network should appear. If it doesn't, power-cycle the device.
 
 **You forgot the setup-network password.**
 
@@ -200,7 +222,7 @@ The password is unique to each device. On most installations, it's printed on a 
 
 Check that your phone is still connected to the `ESP32-BilgeRise-Setup` WiFi. Some phones switch back to the marina's network automatically when the signal is weak. Move closer to the box and try again.
 
-**The device is unresponsive — the LED is doing something not in the table above, or nothing at all.**
+**The device is unresponsive — either LED is doing something not in the tables above, or nothing at all.**
 
 Power-cycle it (disconnect 12 V for 10 seconds and reconnect). If the problem persists, contact support.
 
@@ -208,7 +230,7 @@ Power-cycle it (disconnect 12 V for 10 seconds and reconnect). If the problem pe
 
 ## Silencing an active alert
 
-If the device is in a flood state and you want to stop it from sending more texts — usually because you're testing, or because the customer has acknowledged the situation and is dealing with it — **press and hold the button for 5 seconds**. The LED will briefly flash to confirm.
+If the device is in a flood state and you want to stop it from sending more texts — usually because you're testing, or because the customer has acknowledged the situation and is dealing with it — **press and hold the button for 5 seconds**. The alert LED turns off to confirm.
 
 The device stays in flood-watch mode but stops sending alerts. When the water level returns to normal, silence is cleared automatically.
 
@@ -236,11 +258,11 @@ The device stays in flood-watch mode but stops sending alerts. When the water le
 >
 > ### When you'll hear from it
 >
-> During normal operation, the box is silent. The little blue light is off, and you don't get any messages. This is correct — it means everything is fine.
+> During normal operation, the box is silent. Both lights are off, and you don't get any messages. This is correct — it means everything is fine.
 >
-> If the water level rises above the warning level, you'll get a text at the phone number above. The first text will tell you the current water level and how fast it's rising. You'll get another text at the repeat interval until the water goes back down.
+> If the water level rises above the warning level, the **alert light** comes on solid and you'll get a text at the phone number above. The first text will tell you the current water level and how fast it's rising. You'll get another text at the repeat interval until the water goes back down.
 >
-> If the water level goes above the urgent level, you'll get the urgent message immediately.
+> If the water level goes above the urgent level, the alert light **pulses** and you'll get the urgent message immediately.
 >
 > ### The dashboard
 >
@@ -248,13 +270,14 @@ The device stays in flood-watch mode but stops sending alerts. When the water le
 >
 > ### If the device is alarming and you want to silence it
 >
-> Press and hold the small button on the side of the box for 5 seconds. The light will flash briefly to confirm. The device will stop sending alerts until the water level returns to normal. Next time there's a flood, the alerts come back automatically.
+> Press and hold the small button on the side of the box for 5 seconds. The alert light turns off to confirm. The device will stop sending alerts until the water level returns to normal. Next time there's a flood, the alerts come back automatically.
 >
 > ### If something looks wrong
 >
-> - The blue light is blinking fast: the device can't read the water level. Call the installer.
-> - The blue light is doing two quick flashes and a pause: the device has lost the WiFi connection and can't send alerts. Check the boat's network.
-> - The blue light is off, but you're not getting texts: the device is in normal mode, but its network is probably blocking alerts. Call the installer.
+> - The status (usually blue) light is blinking fast: the device can't read the water level. Call the installer.
+> - The status light is doing two quick flashes and a pause: the device has lost the WiFi connection and can't send alerts. Check the boat's network.
+> - The alert light is on or pulsing: there is (or was) a flood condition — check the bilge and your phone.
+> - Both lights are off, but you're not getting texts when you expect them: the device may think things are normal, or its network is blocking alerts. Call the installer.
 
 ---
 

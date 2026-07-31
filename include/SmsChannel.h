@@ -5,8 +5,7 @@
 
     Twilio SMS implementation of NotificationChannel.
     All credentials (account SID, auth token, messaging service SID) and the
-    destination phone number are read from NVS namespace "notify" at runtime —
-    nothing provider-specific lives in secrets.h anymore.
+    destination phone number are read from NVS namespace "notify" at runtime.
 
     NVS keys (namespace "notify"):
       sms.phone   — destination phone number

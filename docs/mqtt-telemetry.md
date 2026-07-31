@@ -38,6 +38,8 @@ In addition to the plaintext log, the device publishes a numeric, structured rea
 
 Telegraf ingests every field automatically (json_v2 object parse), so all of these flow into InfluxDB and are available to the Grafana dashboard. See [`server-stack/README.md`](../server-stack/README.md) for the full monitoring-stack setup and the 12-panel dashboard reference.
 
+![Grafana monitoring dashboard: live water level, system state, and device health](screenshots/grafana-full.png)
+
 Subscribe with the MAC-derived base topic, or use a wildcard to capture every device on the broker:
 
 ```bash
