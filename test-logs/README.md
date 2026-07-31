@@ -1,6 +1,6 @@
 # Validation campaigns (`test-logs/`)
 
-Long-running soak and hardware validation write-ups. These complement the host-side unit suite in [`test/TESTING_README.md`](../test/TESTING_README.md). The [README Testing section](../README.md#testing) links here for a short showcase.
+Long-running soak and hardware validation write-ups. These complement the host-side unit suite in [`test/TESTING_README.md`](../test/TESTING_README.md). The [README Testing section](../README.md#testing) links here for a summary.
 
 ## Analyses
 

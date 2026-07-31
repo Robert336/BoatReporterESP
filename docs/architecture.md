@@ -54,7 +54,7 @@ Current firmware version: **1.1.8** (last tagged release; see [`CHANGELOG.md`](.
 
 ## Design Decisions
 
-These write-ups capture *why* the system looks the way it does. The [README](../README.md#design-decisions) links here for a short teaser; this section is the full narrative.
+These write-ups capture *why* the system looks the way it does. The [README](../README.md#design-decisions) summarizes the outcomes; this section is the full narrative.
 
 ### Remote Deployment
 

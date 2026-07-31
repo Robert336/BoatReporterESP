@@ -1,12 +1,12 @@
 # BoatReporterESP Documentation
 
-Deep documentation for BoatReporterESP. The [main README](../README.md) is the landing page (pitch, design-decision teaser, testing showcase, quick start). Everything beyond that lives here or in the related root docs below.
+Deep documentation for BoatReporterESP. The [main README](../README.md) is the landing page with an overview, design decisions, testing summary, and quick start. Everything beyond that lives here or in the related root docs below.
 
 ## Who should read what
 
 | If you are… | Start here |
 |-------------|------------|
-| Scanning the project (recruiters / hiring) | [README](../README.md) → [Architecture — Design Decisions](architecture.md#design-decisions) → [Validation campaigns](../test-logs/README.md) |
+| New to the project | [README](../README.md) → [Architecture — Design Decisions](architecture.md#design-decisions) → [Validation campaigns](../test-logs/README.md) |
 | Installing / configuring a device | [Configuration](configuration.md), [Hardware](hardware.md), [User Guide](../USER_GUIDE.md) |
 | Debugging in the field | [Troubleshooting](troubleshooting.md) |
 | Changing firmware | [Architecture](architecture.md), [API Reference](api-reference.md), [CONTRIBUTING](../CONTRIBUTING.md) |

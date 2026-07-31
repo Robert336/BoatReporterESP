@@ -388,7 +388,7 @@ Unit tests above cover pure logic on the host. Complementary **long-running and 
 | Real sensor cylinder drip test + MQTT plots | [drip-test-20260502-analysis.md](../test-logs/drip-test-20260502-analysis.md) |
 | ~62 h random-state soak | [random-state-test-20260523-analysis.md](../test-logs/random-state-test-20260523-analysis.md) |
 
-The README [Testing](../README.md#testing) section summarizes headline results for reviewers and recruiters.
+The README [Testing](../README.md#testing) section summarizes headline results; full write-ups are linked below.
 
 ## Further Resources
 

@@ -161,7 +161,7 @@ Full documentation site: **[BoatReporterESP Docs](https://robert336.github.io/Bo
 
 | Guide | Audience | What's inside |
 |-------|----------|---------------|
-| [Architecture](docs/architecture.md) | Engineers / recruiters | Design Decisions, FreeRTOS layout, state machine, data flow |
+| [Architecture](docs/architecture.md) | Engineers | Design Decisions, FreeRTOS layout, state machine, data flow |
 | [Configuration](docs/configuration.md) | Installers | First-time setup, WiFi/portal, credentials, calibration, thresholds, MQTT |
 | [User Guide](USER_GUIDE.md) | Boat owners / installers | Day-to-day two-LED meanings, button, silencing, owner handout page |
 | [Usage](docs/usage.md) | Engineers | Technical two-LED (status + alert) / state / button / alert reference |
@@ -172,7 +172,7 @@ Full documentation site: **[BoatReporterESP Docs](https://robert336.github.io/Bo
 | [OTA Updates](OTA_QUICKSTART.md) | Contributors | Release creation, auto-install, rollback |
 | [Server Stack](server-stack/README.md) | Operators | Docker Compose + Grafana; see also [DEPLOYMENT.md](server-stack/DEPLOYMENT.md) |
 | [Security](SECURITY.md) | Everyone | Secrets posture, config AP, broker exposure, reporting |
-| [Validation campaigns](test-logs/README.md) | Engineers / recruiters | Soak and hardware log analyses |
+| [Validation campaigns](test-logs/README.md) | Engineers | Soak and hardware log analyses |
 
 ---
 
