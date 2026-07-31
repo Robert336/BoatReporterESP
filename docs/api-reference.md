@@ -9,7 +9,9 @@ password derived from the chip's MAC address). All endpoints are plain HTTP.
 A captive‑portal DNS server intercepts every DNS query and redirects the client
 to the config server, so users can simply open any website to reach the dashboard.
 
-**Firmware version:** 1.1.8
+**Firmware version:** 1.1.8 (last tagged release)
+
+All endpoints are plain HTTP by design on the device AP — see [SECURITY.md](../SECURITY.md).
 
 ## Common Patterns
 
@@ -548,7 +550,7 @@ curl -X POST http://192.168.4.1/emergency/urgent-level \
 
 #### `POST /emergency/test-pin`
 
-Test the alert output pin. Pulses the `ALERT_PIN` HIGH for 2 seconds, then LOW.
+Test the **alert LED** pin (`ALERT_PIN`, GPIO 26). Pulses the pin HIGH for 2 seconds, then LOW — use this to verify alert-LED wiring after assembly.
 
 **Request parameters:** None.
 

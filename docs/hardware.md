@@ -1,6 +1,6 @@
 # Hardware & Assembly
 
-This guide covers the components, wiring, and assembly of a BoatReporterESP unit. For the firmware side, see [Configuration](configuration.md).
+This guide is the single source of truth for parts, wiring, GPIO map, and assembly of a BoatReporterESP unit. For first-time firmware configuration, see [Configuration](configuration.md). LED meanings: [Usage](usage.md).
 
 ## Parts List
 
@@ -14,20 +14,21 @@ This guide covers the components, wiring, and assembly of a BoatReporterESP unit
 | [4-Channel Logic Level Converter](https://www.amazon.ca/CANADUINO%C2%AE-Converter-4-Channel-3-3V-5V-Bi-Directional/dp/B07GD6GN83) | 3.3V ↔ 5V bi-directional level shifter bridging the ESP32's I2C lines and the 5V-powered ADS1115. Only two channels are needed (SDA and SCL). |
 | [Waterproof Project Enclosure](https://www.amazon.ca/Joinfworld-Electrical-Weatherproof-Waterproof-Electronics/dp/B0CHHJ49QN/) | Houses the ESP32, ADS1115, buck converter, and supporting components. Essential for marine environments. |
 | [7-Pin Waterproof Connector](https://www.amazon.ca/Connector-Waterproof-Electrical-Connectors-Industrial/dp/B09PNJYF2T/) | Runs external wiring (power in, sensor, button) through the enclosure wall while keeping it sealed. |
-| Push Button | Normally open, pull-up configured in software. Enters configuration mode. |
-| LED Indicator | The built-in LED works, or connect an external one. Shows NORMAL/ERROR/CONFIG; never lights for EMERGENCY. |
+| Push Button | Normally open, pull-up configured in software. Enters configuration mode / silences alerts. |
+| Status LED | On GPIO 12 (`LIGHT_PIN`). Shows NORMAL / ERROR / CONFIG patterns; forced off in EMERGENCY. |
+| Alert LED | On GPIO 26 (`ALERT_PIN`). Solid for Tier 1 flood, pulsing for Tier 2; off otherwise. |
 
-## GPIO map
+## GPIO / pin map
 
-Firmware pin assignments live in `include/BoardPins.h` (the single source of truth). Cross-check any change against the `UNUSED_GPIOS` allowlist in `src/main.cpp`.
+Canonical definitions live in [`include/BoardPins.h`](../include/BoardPins.h). Cross-check any change against the `UNUSED_GPIOS` allowlist in `src/main.cpp`. Do not invent pin numbers elsewhere.
 
-| GPIO | Role |
-|------|------|
-| 27 | Config / silence button (`INPUT_PULLUP`, ISR) |
-| 26 | Emergency horn / alert output |
-| 12 | Status LED (`LightCode` patterns) |
-| 21 | I2C SDA (ADS1115) |
-| 22 | I2C SCL (ADS1115) |
+| Signal | GPIO | Direction | Notes |
+|--------|------|-----------|-------|
+| Status LED | 12 | Output | `LIGHT_PIN` — NORMAL/ERROR/CONFIG patterns only; forced off in EMERGENCY |
+| Alert LED | 26 | Output | `ALERT_PIN` — Tier 1 solid / Tier 2 pulse during EMERGENCY; off when silenced or on sensor-fault fail-safe |
+| Push button | 27 | Input (pull-up) | `BUTTON_PIN` — short press → CONFIG; 5 s hold in EMERGENCY → silence toggle |
+| I2C SDA | 21 | Bidirectional | To ADS1115 via level shifter LV↔HV |
+| I2C SCL | 22 | Bidirectional | To ADS1115 via level shifter LV↔HV |
 
 At boot, a curated set of otherwise-unused GPIOs (`4, 13, 14, 16, 17, 18, 19, 23, 25, 33`) is driven LOW so floating inputs do not pick up noise in a wet enclosure. **Do not** expand that allowlist without checking the WROOM-32 pin map:
 
@@ -40,11 +41,46 @@ At boot, a curated set of otherwise-unused GPIOs (`4, 13, 14, 16, 17, 18, 19, 23
 | 12 / 21 / 22 / 26 / 27 | Already assigned (see table above) |
 | 32 | Reserved — previously used by an analog water sensor on field boards |
 
-## Wiring
+## Wiring diagram
 
-See the [main README](../README.md#hardware--wiring) for the wiring diagram and signal summary table.
+```mermaid
+flowchart LR
+    BUCK["DC-DC Buck<br/>12V battery to 5V"] -->|5V| ESP
+    SENSOR["4-20 mA depth sensor"] --> CVC["Current-to-Voltage<br/>Converter"]
+    CVC -->|voltage proportional to depth| A0["ADS1115 A0"]
 
-### Level Shifter Rails
+    subgraph ESP["ESP32-WROOM-32"]
+        direction TB
+        GPIO21["GPIO 21 SDA"]
+        GPIO22["GPIO 22 SCL"]
+        GPIO27["GPIO 27"]
+        GPIO12["GPIO 12"]
+        GPIO26["GPIO 26"]
+    end
+
+    GPIO21 <--> LV1["Level Shifter LV1 to HV1"]
+    GPIO22 <--> LV2["Level Shifter LV2 to HV2"]
+    LV1 <--> SDA["ADS1115 SDA"]
+    LV2 <--> SCL["ADS1115 SCL"]
+    A0 -.part of ADS1115, 5V via HV rail.- SDA
+
+    BTN["Push Button to GND"] --> GPIO27
+    GPIO12 --> StatusLED["Status LED"]
+    GPIO26 --> AlertLED["Alert LED"]
+```
+
+### Signal summary
+
+| ESP32 | Connection | Notes |
+|-------|-----------|-------|
+| GPIO 21 / 22 | I2C SDA / SCL | via logic level shifter LV↔HV to ADS1115 SDA/SCL |
+| 3.3V / 5V | Level shifter LV / HV rails | ADS1115 VDD is 5V (HV side) |
+| GPIO 27 | Push button → GND | internal pull-up; enters CONFIG mode |
+| GPIO 12 | Status LED | NORMAL/ERROR/CONFIG only; off in EMERGENCY |
+| GPIO 26 | Alert LED | Tier 1 solid / Tier 2 pulse in EMERGENCY |
+| ADS1115 A0 | C-V converter output | from the 4–20 mA depth sensor |
+
+### Level shifter rails
 
 - ESP32 3.3V → LV side
 - 5V → HV side
@@ -54,13 +90,37 @@ See the [main README](../README.md#hardware--wiring) for the wiring diagram and 
 
 ## Assembly
 
-> 📸 **Photo placeholder:** add a photo of the assembled unit and wiring here once available.
+### Power path
 
-1. Mount the ESP32, ADS1115, buck converter, and level shifter inside the waterproof enclosure.
-2. Drill a hole for the 7-pin waterproof connector and mount it through the enclosure wall.
-3. Wire the 12V input through the buck converter to 5V, then to the ESP32's 5V pin.
-4. Wire the sensor through the C-V converter to ADS1115 A0.
-5. Wire the ADS1115 SDA/SCL through the level shifter to ESP32 GPIO 21/22.
-6. Wire the push button between GPIO 27 and GND.
-7. Wire the status LED to GPIO 12 (with appropriate current-limiting resistor).
-8. Seal the enclosure and test before deploying to the bilge.
+1. Mount the DC-DC buck converter in the enclosure.
+2. Route 12 V boat power through the waterproof connector to the buck input.
+3. Set the buck output to 5 V and connect it to the ESP32 5V pin (and the HV rail of the level shifter / ADS1115 supply).
+4. Confirm common ground across ESP32, level shifter, ADS1115, and C-V converter.
+
+### Sensor path
+
+1. Mount the pressure probe for the bilge (or test cylinder) and run its cable through the waterproof connector.
+2. Wire the 4–20 mA loop through the current-to-voltage converter.
+3. Feed the C-V converter analog output into ADS1115 A0.
+4. After assembly, adjust C-V offset/span and run software two-point calibration — see [Configuration → Sensor Calibration](configuration.md#sensor-calibration).
+
+### I2C path
+
+1. Mount the ADS1115 and 4-channel level shifter.
+2. Wire ADS1115 SDA/SCL on the HV side; ESP32 GPIO 21/22 on the LV side.
+3. Power ADS1115 from 5 V (HV). Verify LV/HV and GND before first power-up.
+
+### Button and LEDs
+
+1. Wire the push button between GPIO 27 and GND.
+2. Wire the **status LED** to GPIO 12 with an appropriate current-limiting resistor.
+3. Wire the **alert LED** to GPIO 26 with an appropriate current-limiting resistor.
+4. Keep the two LEDs visually distinct in the enclosure (separate lenses or colors) so status patterns are not confused with a flood indication.
+
+### Seal and test
+
+1. Seal cable glands / connector and close the enclosure.
+2. Power on: expect the **status LED** within ~2 s (slow blink on first boot / no WiFi credentials). The alert LED should stay off.
+3. Enter CONFIG mode, confirm live millivolt readings on the Debug & Calibration page, then complete WiFi and notification setup ([Configuration](configuration.md)).
+4. Optionally use **Test emergency pin** on the Notifications / debug UI to pulse GPIO 26 and confirm the alert LED wiring.
+5. Field triage if something fails: [Troubleshooting](troubleshooting.md).

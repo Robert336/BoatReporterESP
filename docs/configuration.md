@@ -2,11 +2,13 @@
 
 All configuration happens in the browser: connect to the device's setup access point and the captive portal opens automatically. The UI is mobile-first, so it works well from a phone on the dock.
 
+Parts, wiring, and GPIO map: [Hardware & Assembly](hardware.md). Owner day-to-day ops: [User Guide](../USER_GUIDE.md). Credential handling: [SECURITY.md](../SECURITY.md).
+
 ## First Time Setup
 
 On first boot (or when no WiFi credentials are saved), the device automatically enters CONFIG mode:
 
-1. The built-in LED will **slow blink** indicating CONFIG mode
+1. The **status LED** (GPIO 12) will **slow blink** indicating CONFIG mode
 2. Connect to the WiFi access point: `ESP32-BilgeRise-Setup`
    - The AP password is **unique per device**, derived from the chip ID. It is printed to the serial monitor on boot (115200 baud) at startup inside a labelled banner.
 3. Open a web browser and navigate to `http://192.168.4.1` or any `http://...` domain (`https://...` will not work since the site does not use SSL); the captive portal should automatically open `http://192.168.4.1`.

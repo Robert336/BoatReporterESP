@@ -1,27 +1,45 @@
 # BoatReporterESP Documentation
 
-This folder holds the deep documentation for BoatReporterESP. The [main README](../README.md) is a short landing page; everything beyond the quick start lives here.
+Deep documentation for BoatReporterESP. The [main README](../README.md) is the landing page with an overview, design decisions, testing summary, and quick start. Everything beyond that lives here or in the related root docs below.
+
+## Who should read what
+
+| If you are… | Start here |
+|-------------|------------|
+| New to the project | [README](../README.md) → [Architecture — Design Decisions](architecture.md#design-decisions) → [Validation campaigns](../test-logs/README.md) |
+| Installing / configuring a device | [Configuration](configuration.md), [Hardware](hardware.md), [User Guide](../USER_GUIDE.md) |
+| Debugging in the field | [Troubleshooting](troubleshooting.md) |
+| Changing firmware | [Architecture](architecture.md), [API Reference](api-reference.md), [CONTRIBUTING](../CONTRIBUTING.md) |
+| Running the broker / Grafana | [server-stack/README.md](../server-stack/README.md), [DEPLOYMENT.md](../server-stack/DEPLOYMENT.md) |
 
 ## Guides
 
 | Doc | What's inside |
 |-----|---------------|
-| [Configuration](configuration.md) | First-time setup, WiFi (including captive-portal detection and custom MAC override), Twilio/Discord/custom-HTTP credentials, two-point sensor calibration, emergency thresholds, MQTT broker setup |
-| [Usage](usage.md) | LED status patterns, system states, button functions, alert behavior |
-| [MQTT & Telemetry](mqtt-telemetry.md) | Log and structured telemetry topics, the 13-field JSON payload, Home Assistant / Grafana ingestion |
-| [Troubleshooting](troubleshooting.md) | WiFi, sensor, SMS/Discord, LED, web-interface, and sensor-error fixes |
-| [Hardware & Assembly](hardware.md) | Full parts list with links, wiring, and step-by-step assembly instructions |
-| [Architecture](architecture.md) | Component layout, FreeRTOS task design, state machine, data flow |
-| [API Reference](api-reference.md) | All 39 ConfigServer REST endpoints with request/response schemas and curl examples |
+| [Architecture](architecture.md) | Design Decisions, component layout, FreeRTOS tasks, state machine, data flow |
+| [Configuration](configuration.md) | First-time setup, WiFi (captive-portal detection and custom MAC), Twilio/Discord/HTTP credentials, two-point calibration, thresholds, MQTT |
+| [Usage](usage.md) | Technical **two-LED** patterns (status + alert), system states, button functions, alert behavior |
+| [MQTT & Telemetry](mqtt-telemetry.md) | Log and structured telemetry topics, 13-field JSON payload, Home Assistant / Grafana |
+| [Troubleshooting](troubleshooting.md) | Symptom → signal → fix triage (WiFi, portal, sensor, alerts, MQTT) |
+| [Hardware & Assembly](hardware.md) | Parts list, wiring diagram, GPIO map (`BoardPins.h`), assembly |
+| [API Reference](api-reference.md) | All 39 ConfigServer REST endpoints with schemas and curl examples |
 
 ## Related project docs (repo root)
 
-- [`server-stack/README.md`](../server-stack/README.md): the self-hosted Grafana monitoring stack (Mosquitto → Telegraf → InfluxDB → Grafana), including WAN/TLS deployment
-- [`server-stack/DEPLOYMENT.md`](../server-stack/DEPLOYMENT.md): live runbook for the broker (DDNS, certs, ACLs, debugging connect failures)
-- [`dev-ui/README.md`](../dev-ui/README.md): the standalone mock server for developing the web UI without flashing the ESP32
+- [`AGENTS.md`](../AGENTS.md): coding-agent guide — repo map, safety invariants, hardware constraints for code changes, build/test playbooks (points here for deep docs; does not replace them)
+- [`USER_GUIDE.md`](../USER_GUIDE.md): owner / installer day-to-day operation and owner handout page
+- [`SECURITY.md`](../SECURITY.md): secrets posture, config AP, broker exposure, vulnerability reporting
+- [`server-stack/README.md`](../server-stack/README.md): self-hosted Grafana stack (Mosquitto → Telegraf → InfluxDB → Grafana)
+- [`server-stack/DEPLOYMENT.md`](../server-stack/DEPLOYMENT.md): live broker runbook (DDNS, certs, ACLs, connect failures)
+- [`dev-ui/README.md`](../dev-ui/README.md): mock server for web UI without flashing
 - [`OTA_QUICKSTART.md`](../OTA_QUICKSTART.md): remote firmware update walkthrough
-- [`test/TESTING_README.md`](../test/TESTING_README.md): the unit-test suite
+- [`test/TESTING_README.md`](../test/TESTING_README.md): unit-test suite how-to
+- [`test-logs/README.md`](../test-logs/README.md): soak / hardware validation analyses
 
 ## Screenshots
 
-[`screenshots/`](screenshots/README.md): where to place the config-server and Grafana captures referenced from the READMEs, plus a capture checklist.
+[`screenshots/`](screenshots/README.md): config-server and Grafana image assets referenced from the READMEs.
+
+## Version pins
+
+Docs that mention a firmware version pin the **last tagged release** (currently **1.1.8**). Behavior already described under `[Unreleased]` in [`CHANGELOG.md`](../CHANGELOG.md) is not back-dated into those footers until it ships.

@@ -8,7 +8,7 @@
 // (input-only), 1/3 (UART0), 0/2/5/15 (strapping pins).
 
 static constexpr int BUTTON_PIN   = 27; // Silence/config button (INPUT_PULLUP, ISR)
-static constexpr int ALERT_PIN    = 26; // Emergency horn/alert output
-static constexpr int LIGHT_PIN    = 12; // Status LED (LightCode patterns)
+static constexpr int ALERT_PIN    = 26; // Alert LED — Tier 1 solid / Tier 2 pulse in EMERGENCY
+static constexpr int LIGHT_PIN    = 12; // Status LED (LightCode patterns; off in EMERGENCY)
 static constexpr int I2C_SDA_PIN  = 21; // ADS1115 water-level sensor
 static constexpr int I2C_SCL_PIN  = 22; // ADS1115 water-level sensor
