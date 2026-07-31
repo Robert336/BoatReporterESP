@@ -2,6 +2,8 @@
 
 Thanks for your interest in contributing. BoatReporterESP is an ESP32-based bilge-water monitor. This guide covers the basics of getting a change landed.
 
+Coding agents (and humans making firmware changes) should also read [`AGENTS.md`](AGENTS.md) — invariants, where to edit, and build/test playbooks without duplicating the user docs.
+
 ## Project layout
 
 ```
