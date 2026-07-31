@@ -1,15 +1,6 @@
 #pragma once
 
-/*
-    TextEscape.h
-
-    Shared text-encoding utilities for notification senders.
-    Lifted verbatim from SendSMS (urlEncode) and SendDiscord (jsonEscape) so
-    both channels share a single implementation, and the upcoming CustomChannel
-    can use them without duplicating code.
-
-    All functions write into caller-supplied fixed buffers — no heap allocation.
-*/
+// urlEncode / jsonEscape for notification senders. Fixed output buffers only.
 
 #include <stddef.h>
 

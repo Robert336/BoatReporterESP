@@ -7,16 +7,8 @@
 #include "Version.h"
 #include "compressed_pages.h"
 
-// ============================================================================
-// NETWORK STACK INSTRUMENTATION (dev build only)
-//
-// Logs per-request wall-clock time and free-heap delta for the hot-path
-// handlers (static pages + polled JSON endpoints) so the WebServer/AP-mode
-// network stack can be profiled without a debugger attached. Compiled out
-// entirely under PRODUCTION_BUILD — not just silenced via LOG_DEBUG — since
-// micros()/ESP.getFreeHeap() run on every request and PRODUCTION_BUILD
-// firmware shouldn't pay for that on a path this hot.
-// ============================================================================
+// Dev-only per-request timing/heap delta. Compiled out of PRODUCTION_BUILD
+// (not just silenced) — micros()/getFreeHeap on every request is too hot.
 #ifndef PRODUCTION_BUILD
 class ScopedRequestProfiler {
 public:
@@ -241,11 +233,7 @@ void ConfigServer::startSetupMode() {
     // Route: POST /ota/settings → configure OTA settings
     server->on("/ota/settings", HTTP_POST, [this]() { handleOTASettings(); });
     
-    // Handle 404 and captive portal detection.
-    // Captive portal probes (Apple/Android/Windows/ChromeOS) all hit unknown paths to
-    // decide if a portal exists. Returning a tiny 302 here triggers the OS portal
-    // popup AND frees the single-connection slot fast (vs. serving the full ~5 KB
-    // index page to every probe).
+    // Tiny 302 for OS captive-portal probes (avoid serving full index each time).
     server->onNotFound([this]() { handleCaptivePortalProbe(); });
     
     // Enable reading If-None-Match for ETag-based caching.
@@ -282,18 +270,8 @@ void ConfigServer::stopSetupMode() {
 
     LOG_INFO("\n=== Setup mode stopped, resuming normal WiFi ===");
 
-    // Ask WiFiManager to reconnect on the next maintainConnection() call
-    // (which runs at the top of the next loop() iteration). We intentionally
-    // do NOT call connectToBestNetwork() synchronously here because:
-    //   - WiFi.mode(WIFI_STA) just tore down the AP and switched radio mode,
-    //     which takes 1-2s of the 10s task-watchdog budget.
-    //   - connectToBestNetwork() then calls WiFi.scanNetworks(), a blocking
-    //     call that can take 5-10s+ on a crowded 2.4GHz band.
-    //   - The combined blocking exceeds WDT_TIMEOUT_S (10s) and triggers a
-    //     panic reboot mid-scan.
-    // requestImmediateReconnect() resets the throttle so maintainConnection()
-    // attempts a reconnect immediately on the next loop tick, with the radio
-    // already settled in STA mode.
+    // Defer reconnect to next maintainConnection() — sync scan here exceeds
+    // the 10s task WDT (mode switch 1–2s + WiFi.scanNetworks 5–10s+).
     WiFiManager::getInstance().requestImmediateReconnect();
 }
 

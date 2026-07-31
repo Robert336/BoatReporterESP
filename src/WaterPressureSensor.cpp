@@ -1,11 +1,6 @@
-// LOAD-BEARING GUARD: this whole TU is excluded from native builds because it
-// hard-includes <Arduino.h>/<Wire.h>, which have no native shim. With
-// test_build_src=yes, native compiles all of src/ for EVERY test suite, so
-// removing this guard breaks the native build for ALL suites (test_notifications,
-// test_state_machine, ...) with a misleading "<Arduino.h> not found", not just
-// test_sensor. The trade-off: test_sensor cannot link the real implementation
-// natively (see the mock note in WaterPressureSensor.h). To re-enable native
-// test_sensor, add an Arduino.h/Wire.h native shim instead of dropping this guard.
+// Excluded from native builds: hard-includes Arduino.h/Wire.h (no shim).
+// With test_build_src=yes, dropping this breaks ALL native suites — not just
+// test_sensor. Add a native Arduino shim before removing this guard.
 #ifndef UNIT_TESTING
 #include "WaterPressureSensor.h"
 #include "Logger.h"
@@ -181,11 +176,8 @@ SensorReading WaterPressureSensor::readLevel() {
         // on the same raw value (P6 fix).
         float computedVolts = ads.computeVolts(rawADC);
         reading.millivolts = computedVolts * 1000.0f;
-        // C3: a successful I2C transaction means the bus is healthy right now,
-        // so reset the lifetime recovery-attempt counter. Without this, 10
-        // transient glitches spread across the device's entire service life
-        // would permanently disable flood detection (busUnrecoverable, only
-        // cleared by reboot) even though every glitch recovered cleanly.
+        // C3: reset lifetime recovery counter on success — else 10 glitches over
+        // the device's life permanently disable flood detection until reboot.
         busRecoveryAttempts = 0;
         uint32_t now = millis();
         if (now - lastLogTime >= 1000) {

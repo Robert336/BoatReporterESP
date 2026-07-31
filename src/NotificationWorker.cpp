@@ -18,10 +18,7 @@ void NotificationWorker::begin(NotificationChannel** channels, size_t count, boo
         return;
     }
 
-    // H3: a queue set makes no ordering guarantee between members, so an
-    // emergency snapshot could be deferred behind FIFO backlog accumulated
-    // during a WiFi outage. Block on a direct task notification instead and
-    // poll emergency-then-FIFO on wake for strict priority.
+    // H3: use task notify + poll emergency-then-FIFO (queue sets lose priority).
     BaseType_t ok = xTaskCreatePinnedToCore(taskEntry, "notifier", TASK_STACK,
                                             this, TASK_PRIORITY, &taskHandle, TASK_CORE);
     if (ok != pdPASS) {
@@ -132,11 +129,7 @@ void NotificationWorker::deliver(NotifMsg& msg) {
 void NotificationWorker::run() {
     NotifMsg msg;
     for (;;) {
-        // H3: strict priority. Drain the emergency mailbox completely before
-        // touching the FIFO, so an emergency snapshot present at wake time is
-        // always delivered ahead of one-shot events accumulated during a WiFi
-        // outage. Both queues are polled non-blocking; if both are empty the
-        // task blocks on a direct notification from a producer.
+        // H3: drain emergency mailbox fully before FIFO (strict priority).
         if (xQueueReceive(emergencyMailbox, &msg, 0) == pdTRUE) {
             deliver(msg);
             continue;

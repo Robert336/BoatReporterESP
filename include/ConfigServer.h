@@ -13,19 +13,7 @@
 #include "MQTTService.h"
 #include "SettingsStore.h"
 
-/**
- * ConfigServer - Web-based configuration server for ESP32 boat monitoring system
- * 
- * This class manages a comprehensive web server that provides HTTP endpoints for:
- * - WiFi network configuration (SSID/password management)
- * - Water sensor calibration (2-point calibration with NVS persistence)
- * - Notification settings (SMS via Twilio, Discord webhooks)
- * - System debugging and real-time monitoring
- * - Test functionality for notifications
- * 
- * The server runs in AP mode (Access Point) on 192.168.4.1 and provides
- * a user-friendly web interface for all system configuration needs.
- */
+// Captive-portal config web server (AP + DNS). Runs only in CONFIG state.
 constexpr const char SENSOR_CALIBRATION_NAMESPACE[] = "sensor_cal";
 constexpr const char AP_SSID[] = "ESP32-BilgeRise-Setup";
 constexpr unsigned long SERVER_TIMEOUT_MS = 240000;

@@ -49,19 +49,10 @@ static constexpr bool USE_MOCK = true;
 static constexpr bool USE_MOCK = false;
 #endif
 
-// Genuinely-unused GPIOs driven LOW at boot for a defined idle state (avoids
-// floating high-impedance inputs picking up noise in a wet/electrically-busy
-// boat enclosure). This is a CURATED ALLOWLIST, not a loop over all GPIOs —
-// driving the wrong pin on an ESP32-WROOM-32 crashes or bricks the device.
-//
-// DO NOT add pins to this list without checking the WROOM-32 pin map. Excluded:
-//   - 6-11        SPI flash — driving these crashes the chip instantly
-//   - 34/35/36/39 input-only, no output driver — pinMode(OUTPUT) is illegal
-//   - 1/3         UART0 TX/RX — serial console
-//   - 0/2/5/15    strapping pins — driving at/after boot is risky and pointless
-//   - 12,21,22,26,27  already used by LED/I2C/alert/button (see BoardPins.h)
-//   - 32          previously used by an analog water sensor; reserved to avoid
-//                 repurposing it while boards with that wiring are in the field
+// Unused GPIOs driven LOW at boot (noise rejection). CURATED ALLOWLIST — do not
+// expand without checking the WROOM-32 map (see BoardPins.h / docs/hardware.md).
+// Excluded: 6-11 flash, 34/35/36/39 input-only, 1/3 UART0, 0/2/5/15 strapping,
+// assigned pins, and 32 (reserved — prior analog sensor on field boards).
 static constexpr int UNUSED_GPIOS[] = {4, 13, 14, 16, 17, 18, 19, 23, 25, 33};
 
 // Task watchdog: tightened now that checkForUpdates() runs off-loop on an OTA task.
@@ -90,12 +81,8 @@ DiscordChannel discordChannel;
 CustomChannel  customChannel;
 
 
-// C2: flood-watch callback for OTAManager. Consulted inside the OTA download
-// loop so a firmware download (which owns the loop task for up to 5 minutes)
-// aborts if a Tier-1+ flood condition appears mid-download, instead of
-// blinding the flood sensor for the whole download. readLevel() is internally
-// gated to a 1-second sample rate, so calling it from the tight download loop
-// is cheap and returns a fresh-enough reading.
+// C2: OTA flood-watch — abort download if Tier-1+ appears mid-flash.
+// readLevel() is 1 Hz gated, so calling from the download loop is cheap.
 bool otaFloodCheckCallback(void* ctx) {
     WaterPressureSensor* sensor = static_cast<WaterPressureSensor*>(ctx);
     SensorReading r = sensor->readLevel();
@@ -442,16 +429,8 @@ void loop() {
             LOG_STATE("[STATE] Config mode ended - returning to NORMAL");
         }
 
-        // Tear down the AP + web server whenever we leave CONFIG for any
-        // reason (NORMAL via idle timeout or button press, EMERGENCY via the
-        // flood safety override in computeNextState). A sensor fault alone no
-        // longer forces CONFIG → ERROR — the owner opened config mode with a
-        // physical button press and may have intentionally disconnected the
-        // sensor (e.g. for an OTA update). Without this teardown, a
-        // CONFIG → EMERGENCY transition leaves WiFi in WIFI_AP_STA mode:
-        // the AP keeps broadcasting, but handleClient() is no longer called
-        // (the CONFIG branch in loop() is skipped), so the web server appears
-        // "down" while the SSID is still visible to clients.
+        // Tear down AP+server on any CONFIG exit. Without this, CONFIG→EMERGENCY
+        // leaves WIFI_AP_STA with handleClient() no longer called (SSID up, UI dead).
         if (previousState == CONFIG && smCtx.currentState != CONFIG) {
             if (configServer->isSetupModeActive()) {
                 LOG_STATE("[STATE] Tearing down config server after CONFIG exit");
@@ -473,20 +452,14 @@ void loop() {
                       ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
         LOG_STATUS("[NOTIFIER] Pending=%u, Dropped=%u",
                       notifier.getPendingCount(), notifier.getDropCount());
-        // H5: monitor TLS-task stack headroom empirically. The notifier and
-        // OTA-check tasks both perform mbedTLS handshakes (WiFiClientSecure);
-        // log free-stack high-water marks so a future soak test can confirm
-        // the bumped stack sizes (8KB / 10KB) leave real margin.
+        // H5: TLS-task stack high-water (notifier / OTA-check mbedTLS headroom).
         LOG_STATUS("[STACK] notifier HW=%u, ota_check HW=%u",
                       notifier.getStackHighWaterMark(),
                       otaManager ? otaManager->getCheckTaskStackHighWaterMark() : 0);
         lastStatusLogTime = millis();
     }
 
-    // Periodic structured telemetry — numeric JSON for time-series consumers
-    // (Grafana via Telegraf/InfluxDB, Home Assistant). Retained so a freshly
-    // connected consumer immediately sees the last reading. publishTelemetry()
-    // is a no-op when MQTT is disconnected, so this never blocks the loop.
+    // Retained numeric JSON telemetry for Grafana/HA (no-op if MQTT down).
     if (millis() - lastTelemetryTime >= TELEMETRY_INTERVAL_MS) {
         // ArduinoJson builder — NaN-proof by construction (item A3).
         // ArduinoJson v6 serializes float NaN as "null" when assigned nullptr;
@@ -507,11 +480,7 @@ void loop() {
         doc["sensor_error"] = smCtx.sensorError;
         doc["valid"]        = currentReading.valid;
         doc["rssi"]         = wifiMgr.getRSSI();
-        // ESP32-WROOM-32 internal die temperature. UNCALIBRATED and inaccurate
-        // for absolute temperature (self-heats with CPU/WiFi load, varies part to
-        // part) — useful only as a RELATIVE diagnostic trend of the chip itself,
-        // NOT ambient/cabin temperature. temperatureRead() is declared by the
-        // Arduino-ESP32 core (via Arduino.h).
+        // chip_temp_c: uncalibrated die temp (self-heats) — relative trend only, not ambient.
         doc["chip_temp_c"]  = (float)((int)(temperatureRead() * 100 + 0.5f)) / 100.0f;
 
         // Operational metadata for remote diagnostics

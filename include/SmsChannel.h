@@ -1,20 +1,6 @@
 #pragma once
 
-/*
-    SmsChannel.h
-
-    Twilio SMS implementation of NotificationChannel.
-    All credentials (account SID, auth token, messaging service SID) and the
-    destination phone number are read from NVS namespace "notify" at runtime.
-
-    NVS keys (namespace "notify"):
-      sms.phone   — destination phone number
-      sms.sid     — Twilio account SID
-      sms.token   — Twilio auth token
-      sms.svcsid  — Twilio messaging service SID
-
-    isConfigured() = phone + sid + token are all non-empty.
-*/
+// Twilio SMS NotificationChannel. NVS keys: docs/configuration.md.
 
 #include "NotificationChannel.h"
 

@@ -176,7 +176,7 @@ The state machine is the central decision engine. It evaluates sensor readings a
 | State | Meaning |
 |-------|---------|
 | `NORMAL` | Water level below Tier 1 threshold. Sensor healthy. |
-| `CONFIG` | Web configuration portal active. Safety transitions to ERROR/EMERGENCY still honored. |
+| `CONFIG` | Web configuration portal active. Flood (EMERGENCY) always overrides; sensor fault alone does not exit CONFIG. |
 | `ERROR` | Sensor fault detected (invalid readings). Flood detection is offline. |
 | `EMERGENCY` | Water level exceeds Tier 1 threshold for the debounce window. Notifications fire; horn pulses at Tier 2. |
 
@@ -192,7 +192,6 @@ stateDiagram-v2
     NORMAL --> EMERGENCY: Level ≥ Tier 1 for debounce window
 
     CONFIG --> NORMAL: Idle timeout (240 s) or button press
-    CONFIG --> ERROR: Sensor fault (overrides CONFIG)
     CONFIG --> EMERGENCY: Level ≥ Tier 1 for debounce window (overrides CONFIG)
 
     ERROR --> NORMAL: Sensor recovers

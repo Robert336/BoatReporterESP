@@ -73,7 +73,17 @@ A Twilio trial account should be more than sufficient.
 
 ### Custom HTTP Webhook (optional)
 
-For any other service (Telegram, Pushover, a home-automation endpoint, etc.), use the **Custom HTTP** channel on the Notifications page. Provide an endpoint URL, a content-type, optional auth (none / Basic / Bearer token), and a body template. Place `{{message}}` where the alert text should appear; it is substituted (and JSON-escaped when the content-type is JSON) at send time.
+For any other service (Telegram, Pushover, a home-automation endpoint, etc.), use the **Custom HTTP** channel on the Notifications page. Provide an endpoint URL, a content-type, optional auth (none / Basic / Bearer token), and a body template. Place `{{message}}` where the alert text should appear; it is substituted at send time.
+
+**Body substitution rules** (implemented in `CustomChannel::send`):
+
+| Content-Type contains | Message escaping |
+|-----------------------|------------------|
+| `json` | `jsonEscape` before substitution |
+| `form` / `urlencoded` | `urlEncode` before substitution |
+| otherwise | raw (no escaping) |
+
+If `{{message}}` is absent from the template, the template is sent verbatim (no message injected). Message bodies are bounded to 160 characters (`NotifMsg.body`).
 
 ## Sensor Calibration
 
@@ -155,6 +165,26 @@ The system uses two independently configurable thresholds, both set via the web 
 > **Best practice:** Set the threshold above the typical bilge water level, but below the point where water could damage equipment or overflow.
 >
 > Regularly test your setup and adjust the threshold as needed to balance prompt alerts against avoiding nuisance triggers.
+
+## NVS key reference (`notify` namespace)
+
+Notification channel credentials and endpoints are stored in the `"notify"` NVS namespace (15-character key limit — longer keys fail silently). Keys are loaded into in-RAM caches at boot; `send()` never reads NVS on the hot path.
+
+| Key | Channel | Meaning |
+|-----|---------|---------|
+| `sms.phone` | SMS | Destination phone number |
+| `sms.sid` | SMS | Twilio account SID |
+| `sms.token` | SMS | Twilio auth token |
+| `sms.svcsid` | SMS | Twilio messaging service SID |
+| `discord.url` | Discord | Webhook URL |
+| `custom.endpoint` | Custom | Full URL to POST to |
+| `custom.ctype` | Custom | Content-Type header |
+| `custom.auth` | Custom | `none` / `basic` / `bearer` |
+| `custom.user` | Custom | Basic username, or Bearer token |
+| `custom.secret` | Custom | Basic password (unused for bearer/none) |
+| `custom.tmpl` | Custom | Body template (`{{message}}` placeholder) |
+
+`isConfigured()` rules: SMS needs phone + sid + token; Discord needs a non-empty webhook URL; Custom needs endpoint + template.
 
 ## MQTT Broker Configuration
 

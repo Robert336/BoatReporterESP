@@ -20,7 +20,7 @@ This guide is the single source of truth for parts, wiring, GPIO map, and assemb
 
 ## GPIO / pin map
 
-Canonical definitions live in [`include/BoardPins.h`](../include/BoardPins.h). Do not invent pin numbers elsewhere.
+Canonical definitions live in [`include/BoardPins.h`](../include/BoardPins.h). Cross-check any change against the `UNUSED_GPIOS` allowlist in `src/main.cpp`. Do not invent pin numbers elsewhere.
 
 | Signal | GPIO | Direction | Notes |
 |--------|------|-----------|-------|
@@ -30,7 +30,16 @@ Canonical definitions live in [`include/BoardPins.h`](../include/BoardPins.h). D
 | I2C SDA | 21 | Bidirectional | To ADS1115 via level shifter LV↔HV |
 | I2C SCL | 22 | Bidirectional | To ADS1115 via level shifter LV↔HV |
 
-Pins deliberately unused (flash, strapping, UART0, input-only): see the comment block in `BoardPins.h`.
+At boot, a curated set of otherwise-unused GPIOs (`4, 13, 14, 16, 17, 18, 19, 23, 25, 33`) is driven LOW so floating inputs do not pick up noise in a wet enclosure. **Do not** expand that allowlist without checking the WROOM-32 pin map:
+
+| Pins | Why excluded |
+|------|----------------|
+| 6–11 | SPI flash — driving these crashes the chip |
+| 34 / 35 / 36 / 39 | Input-only (no output driver) |
+| 1 / 3 | UART0 TX/RX (serial console) |
+| 0 / 2 / 5 / 15 | Strapping pins — risky at/after boot |
+| 12 / 21 / 22 / 26 / 27 | Already assigned (see table above) |
+| 32 | Reserved — previously used by an analog water sensor on field boards |
 
 ## Wiring diagram
 
