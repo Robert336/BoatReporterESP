@@ -8,10 +8,17 @@
 
 <img width="500" alt="BilgeRise: high-water SMS alert with hardware and the problem it solves" src="https://github.com/user-attachments/assets/67ef94db-ea68-4508-ad74-67d70f768ae9" />
 
+
+
 **A complete embedded system for boat bilge monitoring** — ESP32 firmware, hardware design, and a self-hosted monitoring stack. Measures water level via a 4–20 mA pressure sensor, dispatches two-tier SMS/Discord/webhook alerts during floods, and streams live telemetry to a Grafana dashboard. Configuration is local (captive-portal UI on the device — no companion app). Alerts and telemetry still depend on the external services you enable (Twilio, Discord/webhooks, your MQTT broker, etc.); see [Architecture — On-device vs external hosts](docs/architecture.md#on-device-vs-external-hosts).
 
 <img width="280" alt="BilgeRise captive-portal home screen in an iPhone mock-up" src="docs/screenshots/main-config-screen-mockup.png" />
 
+<details>
+<summary><strong>Real-life Installation Photos</strong> — install location, final implementation, real life conditions
+</summary>
+<img width="100%" src="docs/screenshots/actual-install-photos.png" />
+</details>
 <details>
 <summary><strong>Grafana dashboard</strong> — live water level, system state, and device health</summary>
 
