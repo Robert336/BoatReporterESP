@@ -16,6 +16,7 @@ This folder holds the deep documentation for BoatReporterESP. The [main README](
 
 ## Related project docs (repo root)
 
+- [`AGENTS.md`](../AGENTS.md): coding-agent guide — repo map, safety invariants, hardware constraints for code changes, build/test playbooks (points here for deep docs; does not replace them)
 - [`server-stack/README.md`](../server-stack/README.md): the self-hosted Grafana monitoring stack (Mosquitto → Telegraf → InfluxDB → Grafana), including WAN/TLS deployment
 - [`server-stack/DEPLOYMENT.md`](../server-stack/DEPLOYMENT.md): live runbook for the broker (DDNS, certs, ACLs, debugging connect failures)
 - [`dev-ui/README.md`](../dev-ui/README.md): the standalone mock server for developing the web UI without flashing the ESP32
