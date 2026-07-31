@@ -26,18 +26,12 @@ Deep documentation for BoatReporterESP. The [main README](../README.md) is the l
 
 ## Related project docs (repo root)
 
-<<<<<<< HEAD
+- [`AGENTS.md`](../AGENTS.md): coding-agent guide — repo map, safety invariants, hardware constraints for code changes, build/test playbooks (points here for deep docs; does not replace them)
 - [`USER_GUIDE.md`](../USER_GUIDE.md): owner / installer day-to-day operation and owner handout page
 - [`SECURITY.md`](../SECURITY.md): secrets posture, config AP, broker exposure, vulnerability reporting
 - [`server-stack/README.md`](../server-stack/README.md): self-hosted Grafana stack (Mosquitto → Telegraf → InfluxDB → Grafana)
 - [`server-stack/DEPLOYMENT.md`](../server-stack/DEPLOYMENT.md): live broker runbook (DDNS, certs, ACLs, connect failures)
 - [`dev-ui/README.md`](../dev-ui/README.md): mock server for web UI without flashing
-=======
-- [`AGENTS.md`](../AGENTS.md): coding-agent guide — repo map, safety invariants, hardware constraints for code changes, build/test playbooks (points here for deep docs; does not replace them)
-- [`server-stack/README.md`](../server-stack/README.md): the self-hosted Grafana monitoring stack (Mosquitto → Telegraf → InfluxDB → Grafana), including WAN/TLS deployment
-- [`server-stack/DEPLOYMENT.md`](../server-stack/DEPLOYMENT.md): live runbook for the broker (DDNS, certs, ACLs, debugging connect failures)
-- [`dev-ui/README.md`](../dev-ui/README.md): the standalone mock server for developing the web UI without flashing the ESP32
->>>>>>> origin/main
 - [`OTA_QUICKSTART.md`](../OTA_QUICKSTART.md): remote firmware update walkthrough
 - [`test/TESTING_README.md`](../test/TESTING_README.md): unit-test suite how-to
 - [`test-logs/README.md`](../test-logs/README.md): soak / hardware validation analyses
