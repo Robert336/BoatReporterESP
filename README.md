@@ -6,13 +6,18 @@
 [![Framework](https://img.shields.io/badge/framework-Arduino-00979D)](https://www.arduino.cc/)
 [![C++](https://img.shields.io/badge/C%2B%2B-17-00599C)](https://en.cppreference.com/)
 
-<img width="280" alt="BilgeRise home screen in an iPhone mock-up" src="docs/screenshots/main-config-screen-mockup.png" />
+<img width="500" alt="BilgeRise: high-water SMS alert with hardware and the problem it solves" src="https://github.com/user-attachments/assets/67ef94db-ea68-4508-ad74-67d70f768ae9" />
 
 **A complete embedded system for boat bilge monitoring** — ESP32 firmware, hardware design, and a self-hosted monitoring stack. Measures water level via a 4–20 mA pressure sensor, dispatches two-tier SMS/Discord/webhook alerts during floods, and streams live telemetry to a Grafana dashboard. Configuration is local (captive-portal UI on the device — no companion app). Alerts and telemetry still depend on the external services you enable (Twilio, Discord/webhooks, your MQTT broker, etc.); see [Architecture — On-device vs external hosts](docs/architecture.md#on-device-vs-external-hosts).
 
-<img width="500" alt="hero image" src="https://github.com/user-attachments/assets/67ef94db-ea68-4508-ad74-67d70f768ae9" />
+<img width="280" alt="BilgeRise captive-portal home screen in an iPhone mock-up" src="docs/screenshots/main-config-screen-mockup.png" />
+
+<details>
+<summary><strong>Grafana dashboard</strong> — live water level, system state, and device health</summary>
 
 ![Grafana monitoring dashboard: live water level, system state, and device health](docs/screenshots/grafana-full.png)
+
+</details>
 
 <details>
 <summary><strong>Web interface</strong> — dashboard, settings, notifications, WiFi, and calibration</summary>
